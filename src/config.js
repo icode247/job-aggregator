@@ -21,7 +21,7 @@ module.exports = {
   DISCOVERY_INTERVAL_MS: 1000 * 60 * 60 * 24 * 7, // 7 days
   SYNC_INTERVAL_MS: 1000 * 60 * 60 * 2,           // 2 hours
   DISCOVERY_RATE_LIMIT: { max: 5, duration: 60000 },
-  SYNC_RATE_LIMIT: { max: 50, duration: 60000 },
+  SYNC_RATE_LIMIT: { max: 80, duration: 60000 },
 
   // Crawl settings
   CRAWL_RATE_LIMIT: { max: 3, duration: 60000 },
