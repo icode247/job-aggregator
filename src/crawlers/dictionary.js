@@ -97,8 +97,9 @@ async function probeBatch(names) {
 /**
  * Crawl using a dictionary of company names.
  * Probes all ATS APIs in parallel for each name.
+ * @param {Function} onHits - optional callback(hits[]) called after each batch with new hits
  */
-async function crawlDictionary() {
+async function crawlDictionary(onHits) {
   const names = loadAllNames();
 
   if (names.length === 0) {
@@ -115,6 +116,13 @@ async function crawlDictionary() {
     const batch = names.slice(i, i + batchSize);
     const hits = await probeBatch(batch);
     allResults.push(...hits);
+
+    // Process hits incrementally so new companies appear immediately
+    if (hits.length > 0 && onHits) {
+      try { await onHits(hits); } catch (err) {
+        logger.error({ err: err.message }, 'Failed to process dictionary hits');
+      }
+    }
 
     // Rate limit: pause between batches
     if (i % 50 === 0 && i > 0) {

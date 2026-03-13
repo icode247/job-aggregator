@@ -73,7 +73,9 @@ function createCrawlWorker(syncQueue) {
           break;
         }
         case 'dictionary':
-          slugs = await crawlDictionary();
+          slugs = await crawlDictionary(async (hits) => {
+            await processDiscoveredSlugs(hits, 'dictionary', run, syncQueue);
+          });
           break;
         case 'sitemap':
           slugs = await crawlSitemaps();
