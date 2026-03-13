@@ -25,6 +25,15 @@ const LOGO_PATTERNS = {
     // Recruitee CDN logos
     /https:\/\/careers\.recruiteecdn\.com\/image\/upload\/[^"'\s)]+/,
   ],
+  smartrecruiters: [
+    // SmartRecruiters CDN logos
+    /https:\/\/c\.smartrecruiters\.com\/sr-company-logo[^"'\s)]+/,
+    /https:\/\/c\.smartrecruiters\.com\/sr-careersite-image[^"'\s)]+/,
+  ],
+  rippling: [
+    // Rippling company logos
+    /https:\/\/[^"'\s)]*rippling[^"'\s)]*logo[^"'\s)]+/i,
+  ],
 };
 
 /**
@@ -48,6 +57,8 @@ async function fetchLogoUrl(ats, atsSlug, domain) {
     ashby: `https://jobs.ashbyhq.com/${atsSlug}`,
     workable: `https://apply.workable.com/${atsSlug}`,
     recruitee: `https://${atsSlug}.recruitee.com`,
+    smartrecruiters: `https://careers.smartrecruiters.com/${atsSlug}`,
+    rippling: `https://ats.rippling.com/${atsSlug}`,
   };
 
   const pageUrl = pageUrls[ats];
