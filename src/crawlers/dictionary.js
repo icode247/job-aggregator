@@ -117,7 +117,7 @@ async function crawlDictionary(onHits) {
   logger.info({ count: names.length }, 'Starting dictionary crawl');
 
   const allResults = [];
-  const batchSize = 5; // 5 names concurrently, each probing 5 ATS = 25 requests
+  const batchSize = 15; // 15 names concurrently, each probing 7 ATS = 105 requests
 
   for (let i = 0; i < names.length; i += batchSize) {
     const batch = names.slice(i, i + batchSize);
@@ -132,10 +132,10 @@ async function crawlDictionary(onHits) {
     }
 
     // Rate limit: pause between batches
-    if (i % 50 === 0 && i > 0) {
+    if (i % 150 === 0 && i > 0) {
       logger.info({ progress: `${i}/${names.length}`, hits: allResults.length }, 'Dictionary crawl progress');
     }
-    await new Promise(r => setTimeout(r, 1000));
+    await new Promise(r => setTimeout(r, 500));
   }
 
   logger.info({ totalHits: allResults.length, totalProbed: names.length }, 'Dictionary crawl complete');
