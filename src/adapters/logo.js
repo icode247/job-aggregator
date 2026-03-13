@@ -83,7 +83,7 @@ async function fetchLogoUrl(ats, atsSlug, domain) {
     // 2. Try generic img/meta patterns
     for (const regex of GENERIC_PATTERNS) {
       const match = html.match(regex);
-      if (match && match[1]) {
+      if (match && match[1] && !match[1].includes('sr-logo/')) {
         logger.info({ ats, atsSlug, logoUrl: match[1] }, 'Logo found via generic pattern');
         return match[1];
       }
