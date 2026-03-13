@@ -1,0 +1,226 @@
+# Top tech companies globally
+Stripe
+Spotify
+Notion
+Figma
+Canva
+Datadog
+Cloudflare
+Vercel
+Supabase
+Linear
+Retool
+Airtable
+Amplitude
+Brex
+Ramp
+Plaid
+Gusto
+Rippling
+Deel
+Remote
+Lattice
+Gem
+Ashby
+Lever
+Greenhouse
+Workday
+Okta
+Twilio
+Segment
+Miro
+Loom
+Zapier
+Webflow
+Framer
+PostHog
+GitLab
+Snyk
+HashiCorp
+Grafana Labs
+Elastic
+MongoDB
+Cockroach Labs
+PlanetScale
+Neon
+Prisma
+Railway
+Render
+Fly
+Deno
+Bun
+Turso
+Convex
+Clerk
+Auth0
+Stytch
+WorkOS
+Resend
+Loops
+Customer
+Intercom
+Zendesk
+Freshworks
+HubSpot
+Salesforce
+Atlassian
+JetBrains
+Sentry
+LaunchDarkly
+Split
+Statsig
+Eppo
+Mutiny
+Writer
+Jasper
+Copy
+Cohere
+Mistral
+Together AI
+Perplexity
+OpenAI
+Scale AI
+Weights & Biases
+Hugging Face
+Runway
+Midjourney
+Stability AI
+Character AI
+Inflection AI
+Adept AI
+Imbue
+# European companies
+Revolut
+Wise
+Monzo
+N26
+Klarna
+Adyen
+Mollie
+GoCardless
+Checkout
+SumUp
+Trade Republic
+Scalable Capital
+Bitpanda
+Wefox
+Alan
+Doctolib
+BlaBlaCar
+Deezer
+Criteo
+Contentful
+Personio
+Celonis
+UiPath
+Malt
+Back Market
+Vinted
+Bolt
+Wolt
+Delivery Hero
+Gorillas
+Getir
+Flink
+Tier
+# Asia-Pacific companies
+Grab
+GoTo
+Sea
+Shopee
+Lazada
+Razorpay
+Zerodha
+Freshworks
+Zoho
+Flipkart
+Swiggy
+Zomato
+PhonePe
+Cred
+# Latin America
+Nubank
+Mercado Libre
+Rappi
+Kavak
+Clip
+dLocal
+Vtex
+# Middle East & Africa
+Careem
+Swvl
+Fawry
+Jumia
+Flutterwave
+Paystack
+Andela
+# Fortune 500 / Enterprise
+Google
+Microsoft
+Amazon
+Apple
+Meta
+Netflix
+Uber
+Lyft
+Airbnb
+DoorDash
+Instacart
+Coinbase
+Robinhood
+Square
+Block
+PayPal
+Visa
+Mastercard
+American Express
+Goldman Sachs
+JPMorgan
+Morgan Stanley
+Citadel
+Two Sigma
+Jane Street
+DE Shaw
+Bridgewater
+Point72
+Palantir
+Snowflake
+Databricks
+Confluent
+Fivetran
+dbt Labs
+Census
+Hightouch
+Rudderstack
+Segment
+Adobe
+Oracle
+SAP
+ServiceNow
+Workday
+Splunk
+VMware
+Dell
+HP
+IBM
+Intel
+AMD
+NVIDIA
+Qualcomm
+Broadcom
+Texas Instruments
+Applied Materials
+ASML
+Samsung
+Sony
+Panasonic
+Toyota
+Honda
+BMW
+Mercedes
+Volkswagen
+Bosch
+Siemens
+Philips
+Ericsson
+Nokia

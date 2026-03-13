@@ -1,0 +1,21 @@
+{
+  "name": "job-aggregator",
+  "version": "2.0.0",
+  "description": "Job aggregator with ATS discovery and sync",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "start:web": "node src/web.js",
+    "start:worker": "node src/worker.js",
+    "seed": "node scripts/seed.js",
+    "migrate": "node src/db/schema.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.6.2",
+    "bullmq": "^5.71.0",
+    "express": "^5.2.1",
+    "ioredis": "^5.10.0",
+    "pino": "^10.3.1"
+  }
+}
