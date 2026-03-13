@@ -1,0 +1,1174 @@
+# India - Major companies across industries
+
+# IT Services & Software
+Tata Consultancy Services
+Infosys
+Wipro
+HCL Technologies
+Tech Mahindra
+LTIMindtree
+Mphasis
+Persistent Systems
+Coforge
+NIIT Technologies
+Zensar Technologies
+Hexaware Technologies
+Cyient
+Birlasoft
+Sonata Software
+KPIT Technologies
+Mastek
+Happiest Minds
+Newgen Software
+Rategain Travel Technologies
+Nucleus Software
+Intellect Design Arena
+Tata Elxsi
+L&T Technology Services
+LTTS
+Sasken Technologies
+Subex
+Tanla Platforms
+Route Mobile
+Affle India
+InMobi
+Freshworks
+Zoho
+Druva
+Postman
+BrowserStack
+Icertis
+Highradius
+Chargebee
+Leadsquared
+CleverTap
+MoEngage
+WebEngage
+Haptik
+Yellow.ai
+Niki.ai
+Locus
+FarEye
+Delhivery Tech
+Capillary Technologies
+Manthan Software
+ThoughtSpot India
+Hasura
+Setu
+Signzy
+Perfios
+Razorpay
+PhonePe
+Paytm
+Pine Labs
+Billdesk
+CCAvenue
+Juspay
+Cashfree Payments
+Decentro
+M2P Fintech
+Open Financial Technologies
+Jupiter
+Fi Money
+Niyo Solutions
+Smallcase Technologies
+Groww
+Zerodha
+Upstox
+Angel One
+5paisa Capital
+Dhan
+Kite by Zerodha
+Paytm Money
+INDmoney
+Scripbox
+Kuvera
+Coin by Zerodha
+Vested Finance
+Winvesta
+Jar
+Tortoise
+Navi Technologies
+Digit Insurance
+Acko General Insurance
+PolicyBazaar
+Coverfox
+Turtlemint
+RenewBuy
+InsuranceDekho
+GoDigit
+Star Health Insurance
+HDFC Ergo
+ICICI Lombard
+Bajaj Allianz
+New India Assurance
+United India Insurance
+SBI General Insurance
+Tata AIG
+Reliance General Insurance
+Max Bupa Health Insurance
+Aditya Birla Health Insurance
+Manipal Cigna Health Insurance
+Care Health Insurance
+MediBuddy
+Practo
+PharmEasy
+1mg
+Netmeds
+Apollo 24/7
+Lybrate
+mfine
+Pristyn Care
+Cult.fit
+HealthifyMe
+GOQii
+StepSetGo
+coto
+BeatO
+Sugar.fit
+Ultrahuman
+Dozee
+Niramai
+Qure.ai
+SigTuple
+Predible Health
+Tricog Health
+Wysa
+Amaha
+InnerHour
+YourDOST
+
+# E-Commerce & Consumer Internet
+Flipkart
+Amazon India
+Myntra
+Ajio
+Nykaa
+Meesho
+Snapdeal
+ShopClues
+Paytm Mall
+Tata CLiQ
+JioMart
+BigBasket
+Blinkit
+Zepto
+Swiggy
+Zomato
+Dunzo
+Urban Company
+Housejoy
+Porter
+Rapido
+Ola
+Uber India
+BluSmart
+Bounce
+Vogo
+Yulu
+MakeMyTrip
+Goibibo
+Cleartrip
+ixigo
+EaseMyTrip
+Yatra
+OYO Rooms
+Treebo Hotels
+FabHotels
+Zostel
+RedBus
+AbhiBus
+IntrCity SmartBus
+Ola Shuttle
+Shuttl
+NoBroker
+Housing.com
+99acres
+MagicBricks
+CommonFloor
+Square Yards
+Quikr
+OLX India
+Cars24
+CarDekho
+Spinny
+Droom
+CarTrade
+Park+
+Revv
+Zoomcar
+Drivezy
+Udaan
+Jumbotail
+ShopX
+DealShare
+CityMall
+Mall91
+GlowRoad
+BulkBuy
+ElasticRun
+Shiprocket
+Delhivery
+Ecom Express
+XpressBees
+Shadowfax
+LoadShare
+BlackBuck
+Rivigo
+LetsTransport
+Vahak
+TruckEasy
+FreightBro
+Cogoport
+
+# Fintech & Banking
+HDFC Bank
+ICICI Bank
+State Bank of India
+Axis Bank
+Kotak Mahindra Bank
+Yes Bank
+IndusInd Bank
+Federal Bank
+Bandhan Bank
+IDFC First Bank
+RBL Bank
+South Indian Bank
+City Union Bank
+Karur Vysya Bank
+DCB Bank
+CSB Bank
+Suryoday Small Finance Bank
+Ujjivan Small Finance Bank
+AU Small Finance Bank
+Equitas Small Finance Bank
+Jana Small Finance Bank
+ESAF Small Finance Bank
+Fincare Small Finance Bank
+Capital Small Finance Bank
+Northeast Small Finance Bank
+Shivalik Small Finance Bank
+Unity Small Finance Bank
+Airtel Payments Bank
+India Post Payments Bank
+Paytm Payments Bank
+Fino Payments Bank
+Jio Payments Bank
+NSDL Payments Bank
+Bharti AXA Life Insurance
+Exide Life Insurance
+Future Generali India
+Canara HSBC Life Insurance
+Edelweiss Tokio Life Insurance
+PNB MetLife
+Pramerica Life Insurance
+Ageas Federal Life Insurance
+Sahara India Life Insurance
+Shriram Life Insurance
+Aegon Life Insurance
+Aviva India
+DBS Bank India
+Standard Chartered India
+Citibank India
+HSBC India
+Deutsche Bank India
+Barclays India
+BNP Paribas India
+Credit Suisse India
+JP Morgan India
+Goldman Sachs India
+Morgan Stanley India
+Bank of America India
+Wells Fargo India
+UBS India
+Nomura India
+Macquarie India
+Societe Generale India
+Credit Agricole India
+ING Bank India
+ABN Amro India
+Rabobank India
+
+# IT Product Companies
+SAP India
+Oracle India
+Microsoft India
+Google India
+Meta India
+Apple India
+Amazon Web Services India
+IBM India
+Accenture India
+Deloitte India
+PwC India
+EY India
+KPMG India
+McKinsey India
+BCG India
+Bain India
+Capgemini India
+Cognizant
+DXC Technology India
+Atos India
+NTT Data India
+Fujitsu India
+Hitachi India
+Panasonic India
+Sony India
+Samsung India
+LG Electronics India
+Xiaomi India
+Vivo India
+Oppo India
+OnePlus India
+Realme India
+Nokia India
+Ericsson India
+Cisco India
+Dell India
+HP India
+Lenovo India
+Intel India
+AMD India
+Qualcomm India
+Texas Instruments India
+Broadcom India
+Micron India
+Western Digital India
+Seagate India
+NetApp India
+VMware India
+Nutanix India
+Commvault India
+Veritas India
+Palo Alto Networks India
+Fortinet India
+Check Point India
+CrowdStrike India
+SentinelOne India
+Zscaler India
+Cloudflare India
+Akamai India
+Fastly India
+Imperva India
+F5 India
+Citrix India
+Juniper Networks India
+Arista Networks India
+Extreme Networks India
+Ruckus Networks India
+Aruba Networks India
+Brocade India
+Ciena India
+Ribbon Communications India
+ADTRAN India
+Calix India
+Harmonic India
+Synamedia India
+MediaKind India
+Imagine Communications India
+Grass Valley India
+Avid Technology India
+Ross Video India
+Vizrt India
+
+# Automotive & Manufacturing
+Tata Motors
+Mahindra & Mahindra
+Maruti Suzuki
+Hyundai Motor India
+Kia India
+Toyota India
+Honda Cars India
+Renault India
+Nissan India
+MG Motor India
+Skoda India
+Volkswagen India
+BMW India
+Mercedes-Benz India
+Audi India
+Jaguar Land Rover India
+Volvo India
+Ford India
+General Motors India
+Jeep India
+Citroën India
+BYD India
+Great Wall Motor India
+SAIC Motor India
+Changan Auto India
+Ather Energy
+Ola Electric
+Hero Electric
+Bajaj Auto
+TVS Motor
+Hero MotoCorp
+Royal Enfield
+KTM India
+Revolt Motors
+Okinawa Autotech
+Ampere Vehicles
+Ultraviolette Automotive
+Simple Energy
+Hop Electric
+Euler Motors
+Omega Seiki Mobility
+Switch Mobility
+Olectra Greentech
+PMI Electro Mobility
+JBM Auto
+Ashok Leyland
+Tata Hitachi
+BEML
+Bharat Forge
+Motherson Group
+Sundaram Clayton
+Minda Industries
+Bosch India
+Continental India
+ZF India
+Schaeffler India
+SKF India
+Timken India
+NRB Bearings
+Endurance Technologies
+Varroc Engineering
+Suprajit Engineering
+Sona BLW Precision
+Sandhar Technologies
+Jamna Auto Industries
+Gabriel India
+Munjal Showa
+Rico Auto
+Lumax Industries
+Fiem Industries
+Subros
+Denso India
+Aisin India
+Toyoda Gosei India
+Yazaki India
+Sumitomo Electric India
+Hitachi Astemo India
+Keihin India
+Mikuni India
+Exedy India
+NSK India
+NTN India
+JTEKT India
+
+# Pharma & Healthcare
+Sun Pharmaceutical
+Dr. Reddy's Laboratories
+Cipla
+Lupin
+Aurobindo Pharma
+Zydus Lifesciences
+Torrent Pharmaceuticals
+Glenmark Pharmaceuticals
+Alkem Laboratories
+Biocon
+Divis Laboratories
+Natco Pharma
+Laurus Labs
+Granules India
+Aarti Drugs
+Solara Active Pharma
+Shilpa Medicare
+Neuland Laboratories
+Suven Pharmaceuticals
+Syngene International
+GVK Biosciences
+Jubilant Pharmova
+Piramal Pharma
+Strides Pharma
+Eris Lifesciences
+Abbott India
+Pfizer India
+GSK India
+AstraZeneca India
+Sanofi India
+Novartis India
+Roche India
+Merck India
+Bayer India
+Johnson & Johnson India
+Baxter India
+B. Braun India
+Fresenius Kabi India
+Becton Dickinson India
+Medtronic India
+Stryker India
+Zimmer Biomet India
+Smith & Nephew India
+Boston Scientific India
+Edwards Lifesciences India
+Intuitive Surgical India
+Siemens Healthineers India
+GE Healthcare India
+Philips Healthcare India
+Fujifilm India
+Olympus India
+Trivitron Healthcare
+Agappe Diagnostics
+Transasia Bio-Medicals
+Meril Life Sciences
+Sahajanand Medical Technologies
+Opto Circuits
+Poly Medicure
+Skanray Technologies
+BPL Medical Technologies
+Allied Medical
+Narayana Health
+Apollo Hospitals
+Fortis Healthcare
+Max Healthcare
+Manipal Hospitals
+Aster DM Healthcare
+Columbia Asia India
+Global Hospitals
+Medanta
+Kokilaben Hospital
+Lilavati Hospital
+Breach Candy Hospital
+Jaslok Hospital
+HCG Oncology
+Sahyadri Hospitals
+Ruby Hall Clinic
+Jupiter Hospital
+Wockhardt Hospitals
+KIMS Hospitals
+Yashoda Hospitals
+Care Hospitals
+AIG Hospitals
+Rainbow Children's Hospital
+Cloudnine Hospitals
+Motherhood Hospitals
+Nova IVF
+Indira IVF
+Milann Fertility
+
+# Telecom & Media
+Reliance Jio
+Bharti Airtel
+Vodafone Idea
+BSNL
+MTNL
+Tata Communications
+Sterlite Technologies
+Tejas Networks
+HFCL
+Vindhya Telelinks
+GTL Infrastructure
+Bharti Infratel
+American Tower India
+Summit Digitel
+Data Infrastructure Trust
+CtrlS Datacenters
+NxtGen Datacenter
+Yotta Infrastructure
+Nxtra Data
+Web Werks
+Pi Datacenters
+Sify Technologies
+Netmagic Solutions
+GPX Global Systems
+NetApp India
+Rackspace India
+DigitalOcean India
+Linode India
+Vultr India
+Hetzner India
+OVHcloud India
+Zee Entertainment
+Sony Pictures Networks India
+Star India
+Viacom18
+Sun TV Network
+TV Today Network
+NDTV
+Republic Media
+Times Network
+News18
+ABP Network
+Eenadu Television
+Asianet News
+Manorama News
+India Today
+Aaj Tak
+Zee News
+Republic TV
+Times Now
+WION
+CNN-News18
+CNBC-TV18
+ET Now
+Bloomberg Quint India
+Moneycontrol
+Economic Times
+Mint
+Business Standard
+Financial Express
+LiveMint
+The Hindu
+Indian Express
+Hindustan Times
+Times of India
+Deccan Herald
+Telegraph India
+The Wire
+Scroll.in
+Firstpost
+News18
+The Quint
+ThePrint
+Newslaundry
+Alt News
+Pratilipi
+Pocket Aces
+TVF
+Dice Media
+FilterCopy
+ScoopWhoop
+Culture Machine
+AIB
+Being Indian
+Girliyapa
+
+# EdTech
+BYJU'S
+Unacademy
+Vedantu
+Toppr
+Doubtnut
+PhysicsWallah
+Testbook
+Gradeup
+Embibe
+Cuemath
+WhiteHat Jr
+Coding Ninjas
+Scaler Academy
+Masai School
+Newton School
+AlmaBetter
+Pesto Tech
+AttainU
+Kalvium
+Guvi
+UpGrad
+Simplilearn
+Great Learning
+Jigsaw Academy
+NIIT
+Manipal ProLearn
+Imarticus Learning
+Edureka
+Intellipaat
+KnowledgeHut
+Springboard India
+Coursera India
+Udemy India
+LinkedIn Learning India
+Pluralsight India
+DataCamp India
+Codecademy India
+FreeCodeCamp India
+Skillshare India
+MasterClass India
+Extramarks
+Meritnation
+Aakash Educational
+Allen Career Institute
+Resonance
+FIITJEE
+Vidyamandir Classes
+Career Point
+Bansal Classes
+Narayana Group
+Sri Chaitanya
+LEAD School
+Teachmint
+Classplus
+Winuall
+TagHive
+ConveGenius
+iDream Education
+DIKSHA
+Sunbird
+EkStep Foundation
+Avanti Learning Centres
+Khan Academy India
+Pratham
+Room to Read India
+Teach For India
+iTeach Schools
+Akanksha Foundation
+Muktangan Education
+Design For Change
+Dream a Dream
+Magic Bus
+
+# Energy & Infrastructure
+Reliance Industries
+Adani Group
+Tata Power
+NTPC
+Power Grid Corporation
+Indian Oil Corporation
+Bharat Petroleum
+Hindustan Petroleum
+ONGC
+GAIL India
+Coal India
+Vedanta Resources
+Hindalco Industries
+Tata Steel
+JSW Steel
+SAIL
+NMDC
+Jindal Steel & Power
+Essar Steel
+Kalyani Steels
+Rathi Steel
+Uttam Galva
+Mukand Steel
+Electrosteel Steels
+Bhushan Power & Steel
+Visa Steel
+Aarti Steel
+Godawari Power & Ispat
+Monnet Ispat & Energy
+Adani Power
+Tata Power Solar
+Vikram Solar
+Waaree Energies
+Adani Solar
+Goldi Solar
+Loom Solar
+Tata Solar
+Luminous Power Technologies
+Microtek International
+Su-Kam Power Systems
+Exide Industries
+Amara Raja Batteries
+Luminous Power
+Okaya Power
+Base Corp Power
+HBL Power Systems
+Southern Electronics
+Greaves Cotton
+Kirloskar Oil Engines
+Cummins India
+Ashok Leyland
+Force Motors
+Eicher Motors
+Escorts Kubota
+TAFE
+Mahindra Tractors
+Sonalika Tractors
+John Deere India
+CNH India
+Claas India
+Kubota India
+Preet Group
+Standard Tractors
+Captain Tractors
+VST Tillers
+Fieldking
+Shaktiman
+Lemken India
+Kuhn India
+Maschio Gaspardo India
+Beri Udyog
+Jain Irrigation
+Netafim India
+EPC Industrie
+Coromandel International
+UPL
+PI Industries
+Rallis India
+Bayer CropScience India
+Syngenta India
+BASF India
+FMC India
+Corteva Agriscience India
+Sumitomo Chemical India
+Nufarm India
+Crystal Crop Protection
+Insecticides India
+Dhanuka Agritech
+Godrej Agrovet
+ITC Agri Business
+Cargill India
+ADM India
+Bunge India
+Louis Dreyfus India
+Olam India
+Wilmar India
+
+# FMCG & Retail
+Hindustan Unilever
+ITC
+Nestle India
+Britannia Industries
+Dabur India
+Marico
+Godrej Consumer Products
+Emami
+Colgate-Palmolive India
+Procter & Gamble India
+Reckitt India
+Henkel India
+SC Johnson India
+Church & Dwight India
+Kimberly-Clark India
+Energizer India
+Spectrum Brands India
+Revlon India
+Coty India
+L'Oreal India
+Estee Lauder India
+Shiseido India
+Beiersdorf India
+Kao India
+Lion Corporation India
+Wipro Consumer Care
+CavinKare
+Jyothy Labs
+VLCC
+Nykaa
+Sugar Cosmetics
+Plum Goodness
+Mamaearth
+WOW Skin Science
+mCaffeine
+The Man Company
+Bombay Shaving Company
+Ustraa
+Beardo
+Park Avenue
+Set Wet
+Axe India
+Old Spice India
+Gillette India
+Philips India
+Havells India
+Crompton Greaves
+Orient Electric
+Bajaj Electricals
+V-Guard Industries
+Polycab India
+Finolex Cables
+KEI Industries
+Havells India
+Syska LED
+Wipro Lighting
+Signify India
+Osram India
+Eveready Industries
+Panasonic India
+LG India
+Samsung India
+Whirlpool India
+Bosch Home India
+Haier India
+Godrej Appliances
+Voltas
+Blue Star
+Daikin India
+Carrier India
+Hitachi India
+Lloyd
+IFB Industries
+Elica India
+Faber India
+Glen India
+Prestige Group
+TTK Prestige
+Hawkins
+Butterfly India
+Preethi Kitchen Appliances
+Maharaja Whiteline
+Morphy Richards India
+Kenstar
+Usha International
+Singer India
+Eureka Forbes
+Aquaguard
+Kent RO Systems
+HUL Pureit
+Livpure
+DrinkPrime
+AO Smith India
+Racold
+Bajaj Electricals
+Venus Home Appliances
+Crompton Greaves
+Orient Electric
+
+# Real Estate & Construction
+DLF
+Godrej Properties
+Prestige Estates
+Brigade Enterprises
+Oberoi Realty
+Sobha Developers
+Phoenix Mills
+Embassy Group
+Puravankara
+Mahindra Lifespace Developers
+Tata Housing
+L&T Realty
+Shapoorji Pallonji Real Estate
+Lodha Group
+Hiranandani Group
+Rustomjee Group
+Kalpataru Group
+Wadhwa Group
+Runwal Group
+Dosti Group
+Hubtown
+Man Infraconstruction
+Sunteck Realty
+Nirmal Lifestyle
+JP Infra
+Marathon Group
+Gera Developments
+VTP Realty
+Kolte-Patil Developers
+Rohan Builders
+Naiknavare Developers
+Panchshil Realty
+Vascon Engineers
+Kumar Properties
+Paranjape Schemes
+DSK Group
+Atul Enterprises
+Pride Group
+Nyati Group
+Bramha Corp
+Signature Global
+M3M India
+Elan Group
+Vatika Group
+BPTP
+Ambience Group
+Emaar India
+ATS Infrastructure
+Supertech
+Gaurs Group
+Mahagun Group
+Sikka Group
+Prateek Group
+Saya Group
+Ace Group
+Civitech
+CRC Group
+Fusion Homes
+SKA Group
+SVP Group
+Migsun Group
+Ajnara India
+Landcraft Developers
+Spring Homes
+Amrapali Group
+Jaypee Greens
+Unitech
+Wave Group
+Ansal API
+Raheja Developers
+MGF Group
+CHD Group
+TDI Group
+Omaxe
+Eldeco
+Ashiana Housing
+Mahima Group
+Unique Group
+Shriram Properties
+Casagrand
+Alliance Group
+Navin's
+Appaswamy Real Estates
+TVS Emerald
+TVH
+Radiance Realty
+PBEL
+Vajram Group
+Total Environment
+RMZ Corp
+Mfar Group
+Mantri Developers
+Salarpuria Sattva
+Provident Housing
+Century Real Estate
+Assetz Property Group
+Birla Estates
+Arvind SmartSpaces
+Adani Realty
+Sun Builders
+Shivalik Group
+Savvy Group
+Pacifica Companies
+Goyal & Co
+Shela Group
+
+# Consulting & Professional Services
+Tata Strategic Management Group
+A.T. Kearney India
+Roland Berger India
+Oliver Wyman India
+L.E.K. Consulting India
+Strategy& India
+Parthenon-EY India
+Alvarez & Marsal India
+FTI Consulting India
+Huron Consulting India
+West Monroe India
+Slalom India
+Infosys Consulting
+Wipro Consulting
+TCS Consulting
+HCL Consulting
+Mindtree Consulting
+Mphasis Consulting
+Gartner India
+Forrester India
+IDC India
+Frost & Sullivan India
+Zinnov
+RedSeer Consulting
+Redseer Strategy Consultants
+Praxis Global Alliance
+Nomura Research Institute India
+Arthur D. Little India
+Simon-Kucher India
+Kanvic Consulting
+Valoriser Consultants
+Naman Group
+ABC Consultants
+TeamLease Services
+Randstad India
+Adecco India
+Manpower India
+Kelly Services India
+Hays India
+Robert Half India
+Michael Page India
+PageGroup India
+Korn Ferry India
+Spencer Stuart India
+Egon Zehnder India
+Heidrick & Struggles India
+Russell Reynolds India
+Boyden India
+Stanton Chase India
+Amrop India
+Odgers Berndtson India
+Pedersen & Partners India
+
+# Logistics & Supply Chain
+Blue Dart Express
+DTDC Express
+Gati
+Allcargo Logistics
+Transport Corporation of India
+Mahindra Logistics
+TVS Supply Chain Solutions
+Safexpress
+Rivigo
+BlackBuck
+Delhivery
+Ecom Express
+XpressBees
+Shadowfax
+Loadshare Networks
+Porter
+Dunzo
+ElasticRun
+Locus
+FarEye
+Shipsy
+LogiNext
+GreyOrange
+Addverb Technologies
+Falcon Autotech
+Dematic India
+Swisslog India
+Daifuku India
+SSI Schaefer India
+Honeywell Intelligrated India
+Knapp India
+TGW India
+Vanderlande India
+Beumer Group India
+Interroll India
+Hytrol India
+Conveyor & Caster India
+Godrej Storage Solutions
+KION India
+Jungheinrich India
+Toyota Material Handling India
+Crown Equipment India
+Mitsubishi Forklift India
+Hyster-Yale India
+Raymond Forklift India
+EP Equipment India
+Doosan India
+Clark Material Handling India
+Combilift India
+Hubtex India
+
+# Hospitality & Travel
+Indian Hotels Company (Taj)
+ITC Hotels
+Oberoi Hotels
+Lemon Tree Hotels
+The Leela Palaces
+Radisson Hotel Group India
+Marriott India
+Hilton India
+Hyatt India
+InterContinental Hotels India
+Accor India
+Wyndham Hotels India
+Choice Hotels India
+Best Western India
+Sarovar Hotels
+Keys Hotels
+Fortune Hotels
+Ginger Hotels
+Treebo Hotels
+FabHotels
+OYO Rooms
+Zostel
+goSTOPS
+The Hosteller
+Backpacker Panda
+Moustache Hostel
+Thomas Cook India
+Cox & Kings
+SOTC Travel
+Kesari Tours
+Veena World
+Club Mahindra
+Sterling Holidays
+Country Club
+Mahindra Holidays
+Byke Hospitality
+Royal Orchid Hotels
+Pride Hotels
+Fern Hotels
+Welcomhotel
+Vivanta
+The Park Hotels
+ITDC
+HRH Group
+Suryaa Hotels
+Jaypee Hotels
+Eros Hotel
+Claridges Hotels
+The Imperial
+ITC Grand
+Leela Palace

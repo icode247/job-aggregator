@@ -1,0 +1,954 @@
+# Emerging Markets Companies
+
+# Israel
+Check Point Software
+CyberArk
+Wix
+Monday.com
+Fiverr
+IronSource
+SimilarWeb
+Global-e
+Riskified
+Payoneer
+JFrog
+Walkme
+AppsFlyer
+Gong
+Snyk
+Rapyd
+Tipalti
+Hippo Insurance
+Lemonade
+Next Insurance
+At-Bay
+Wiz
+Orca Security
+Cato Networks
+Axonius
+Island
+Torq
+Fireblocks
+Capitolis
+ThetaRay
+Forter
+Riskified
+Pagaya
+eToro
+Plus500
+Taboola
+Outbrain
+ironSource
+Unity Israel
+Playtika
+Moon Active
+Beach Bum
+Plarium
+Lightricks
+Lumen5
+Kaltura
+Cloudinary
+Redis
+Amdocs
+NICE Systems
+Verint Systems
+Tower Semiconductor
+Elbit Systems
+Israel Aerospace Industries
+Rafael Advanced Defense
+IMI Systems
+Teva Pharmaceutical
+ICL Group
+Bank Leumi
+Bank Hapoalim
+Israel Discount Bank
+Mizrahi Tefahot Bank
+First International Bank
+Strauss Group
+Osem-Nestle Israel
+Tnuva
+Central Bottling Company
+SodaStream
+Mobileye
+Intel Israel
+Apple Israel
+Google Israel
+Microsoft Israel
+Amazon Israel
+Meta Israel
+Nvidia Israel
+Qualcomm Israel
+Broadcom Israel
+Samsung Israel
+Cisco Israel
+IBM Israel
+HP Israel
+Dell Israel
+Oracle Israel
+SAP Israel
+Salesforce Israel
+ServiceNow Israel
+
+# UAE
+Emirates Group
+Etihad Airways
+Abu Dhabi National Oil Company (ADNOC)
+Dubai Ports World (DP World)
+Emaar Properties
+DAMAC Properties
+Aldar Properties
+Nakheel
+Meraas
+Dubai Holding
+Majid Al Futtaim
+Al Futtaim Group
+Landmark Group
+Chalhoub Group
+Apparel Group
+Al Tayer Group
+Jumeirah Group
+Rotana Hotels
+Marriott UAE
+Hilton UAE
+Accor UAE
+IHG UAE
+Hyatt UAE
+Four Seasons UAE
+Atlantis Dubai
+Careem
+Kitopi
+Fetchr
+Property Finder
+Bayut
+Dubizzle
+Yallacompare
+Tabby
+Tamara
+Postpay
+CashU
+Network International
+Magnati
+Mashreq Bank
+Emirates NBD
+First Abu Dhabi Bank (FAB)
+Abu Dhabi Commercial Bank
+Dubai Islamic Bank
+Abu Dhabi Islamic Bank
+Commercial Bank of Dubai
+Sharjah Islamic Bank
+National Bank of Fujairah
+RAK Bank
+Union National Bank
+HSBC UAE
+Standard Chartered UAE
+Citibank UAE
+JPMorgan UAE
+Goldman Sachs UAE
+Morgan Stanley UAE
+Barclays UAE
+BNP Paribas UAE
+Credit Suisse UAE
+UBS UAE
+Deutsche Bank UAE
+ENOC
+DEWA
+ADWEA
+Masdar
+Mubadala
+ADQ
+Investment Corporation of Dubai
+Emirates Investment Authority
+Abu Dhabi Investment Authority
+Etisalat
+Du (Emirates Integrated Telecommunications)
+Virgin Mobile UAE
+Noon
+Amazon.ae
+Namshi
+Ounass
+Sivvi
+Mumzworld
+Sprii
+Kibsons
+InstaShop
+Deliveroo UAE
+Talabat
+Zomato UAE
+Uber Eats UAE
+Carriage UAE
+
+# Saudi Arabia
+Saudi Aramco
+SABIC
+Saudi Telecom (STC)
+Mobily
+Zain KSA
+Al Rajhi Bank
+Saudi National Bank
+Riyad Bank
+Banque Saudi Fransi
+Saudi British Bank
+Arab National Bank
+Alinma Bank
+Bank AlBilad
+Bank AlJazira
+Gulf International Bank
+ACWA Power
+Saudi Electricity Company
+Ma'aden
+SIPCHEM
+Yanbu National Petrochemical
+Advanced Petrochemical
+Saudi Kayan
+National Industrialization Company
+Savola Group
+Almarai
+Nadec
+Americana Group KSA
+Herfy Food Services
+AlBaik
+Kudu
+Jarir Marketing
+Extra Stores
+Saco Hardware
+Nahdi Medical Company
+Al Nahla Group
+Tabuk Pharmaceutical
+Dallah Healthcare
+Dr. Sulaiman Al Habib
+Mouwasat Medical Services
+Al Borg Medical Laboratories
+National Medical Care
+United Electronics (Extra)
+Elm Company
+Thiqah Business Services
+Saudi Arabian Mining Company
+Lucid Motors Saudi
+NEOM
+The Red Sea Development
+Qiddiya
+ROSHN
+Saudi Entertainment Ventures
+Saudi Tourism Authority
+Noon KSA
+Jahez
+Hungerstation
+Mrsool
+Nana Direct
+Tamimi Markets
+Danube Company
+Panda Retail
+Lulu KSA
+Carrefour KSA
+HyperPanda
+BinDawood Holding
+Stc Pay
+Tamara KSA
+Tabby KSA
+
+# Brazil
+Petrobras
+Vale
+Itau Unibanco
+Banco Bradesco
+Banco do Brasil
+Banco Safra
+BTG Pactual
+XP Inc
+Nu Holdings (Nubank)
+PagSeguro
+Stone Co
+Cielo
+B3 (Brasil Bolsa Balcao)
+Ambev
+JBS
+BRF
+Marfrig
+Minerva Foods
+Cosan
+Raizen
+Ultrapar
+Votorantim
+Gerdau
+Suzano
+Klabin
+WEG
+Embraer
+TOTVS
+Locaweb
+Movile
+iFood
+99 (DiDi Brazil)
+QuintoAndar
+Creditas
+Loft
+MadeiraMadeira
+Vtex
+Dock
+Ebanx
+CloudWalk
+Neon
+Inter (Banco Inter)
+C6 Bank
+Agibank
+Original Bank
+Mercado Livre Brazil
+Magazine Luiza
+Americanas
+Via (Casas Bahia)
+Shopee Brazil
+Amazon Brazil
+B2W Digital
+Dafiti
+Netshoes
+Centauro
+Renner
+Riachuelo
+Marisa
+Hering
+Havaianas
+Natura & Co
+O Boticario
+Avon Brazil
+Grupo Boticario
+Multiplan
+BR Malls
+Iguatemi
+JHSF
+Cyrela
+MRV Engenharia
+Even Construtora
+Tenda
+Direcional Engenharia
+Eztec
+Gafisa
+Tecnisa
+Helbor
+RD Saude (Raia Drogasil)
+Hapvida
+Notre Dame Intermedica
+Rede D'Or Sao Luiz
+Fleury
+Dasa
+Hermes Pardini
+Oncoclínicas
+Rede Mater Dei
+Hospital Albert Einstein
+Hospital Sirio-Libanes
+Globo
+Record TV
+SBT
+Band
+Folha de São Paulo
+Estadao
+Valor Economico
+UOL
+Terra
+R7
+G1
+InfoMoney
+Exame
+
+# Mexico
+America Movil
+Grupo Bimbo
+FEMSA
+Cemex
+Grupo Mexico
+Banorte
+Grupo Financiero Inbursa
+Grupo Elektra
+Televisa-Univision
+TV Azteca
+Liverpool
+Palacio de Hierro
+Coppel
+Soriana
+Chedraui
+Walmex (Walmart Mexico)
+OXXO
+Alsea
+CMR Restaurantes
+Grupo Herdez
+Grupo Lala
+Gruma
+Sigma Alimentos
+Bachoco
+Arca Continental
+Coca-Cola FEMSA
+Grupo Modelo
+Heineken Mexico
+Constellation Brands Mexico
+Jose Cuervo
+Nemak
+Metalsa
+Ternium Mexico
+Deacero
+Vitro
+Mexichem (Orbia)
+Grupo Carso
+ICA
+IDEAL
+Fibra Uno
+Vesta
+PrologisReit Mexico
+Kavak
+Bitso
+Clip
+Konfio
+Kueski
+Stori
+Albo
+Fondeadora
+Klar
+Rappi Mexico
+Uber Mexico
+DiDi Mexico
+Beat Mexico
+Cornershop
+Jokr Mexico
+Mercado Libre Mexico
+Amazon Mexico
+Linio
+Privalia Mexico
+Claro Mexico
+Telcel
+AT&T Mexico
+Totalplay
+Izzi Telecom
+Megacable
+Axtel
+Softtek
+Neoris
+GBM
+KIO Networks
+Telmex
+Hays Mexico
+Manpower Mexico
+Adecco Mexico
+PageGroup Mexico
+
+# Argentina
+Mercado Libre
+Globant
+Despegar
+Auth0
+Vercel
+Mural
+Satellogic
+Ualá
+Naranja X
+Brubank
+Reba
+Buenbit
+Lemon Cash
+Ripio
+SatoshiTango
+Belo App
+TiendaNube
+Agrotoken
+Agrology
+Kilimo
+Auravant
+Nubimetrics
+Tul
+Extrimian
+Pomelo
+Increase
+Openqube
+Ank
+Modo
+YPF
+Tenaris
+Ternium Argentina
+Pampa Energia
+Telecom Argentina
+Claro Argentina
+Movistar Argentina
+Personal Argentina
+Grupo Clarin
+La Nacion
+Infobae
+Techint Group
+Arcor
+Molinos Rio de la Plata
+Ledesma
+Cresud
+IRSA
+Banco Galicia
+Banco Macro
+BBVA Argentina
+Santander Argentina
+HSBC Argentina
+Supervielle
+Grupo Financiero Galicia
+Pan American Energy
+Vista Energy
+Pluspetrol
+
+# Colombia
+Grupo Aval
+Bancolombia
+Grupo Sura
+Grupo Nutresa
+Grupo Argos
+Ecopetrol
+ISA (Interconexion Electrica)
+EPM
+Avianca
+Copa Airlines Colombia
+Grupo Exito
+Alkosto
+Falabella Colombia
+Homecenter Colombia
+Rappi
+Platzi
+Frubana
+Truora
+Habi
+La Haus
+Addi
+Bold
+Tpaga
+Nequi
+Daviplata
+RealPage Colombia
+Zemoga
+Gorilla Logic
+PSL
+Perficient Latin America
+Endava Colombia
+Globant Colombia
+Accenture Colombia
+McKinsey Colombia
+BCG Colombia
+Bain Colombia
+Deloitte Colombia
+PwC Colombia
+EY Colombia
+KPMG Colombia
+Bavaria (AB InBev)
+Postobón
+Colombina
+Alpina
+Alqueria
+Totto
+Crystal
+Leonisa
+
+# Chile
+Codelco
+SQM (Sociedad Quimica y Minera)
+Antofagasta Minerals
+BHP Chile
+Anglo American Chile
+Freeport-McMoRan Chile
+Banco de Chile
+Banco Santander Chile
+BCI
+Scotiabank Chile
+Itau Chile
+BICE
+Falabella
+Cencosud
+LATAM Airlines
+SKY Airline
+Entel Chile
+Movistar Chile
+Claro Chile
+WOM Chile
+GTD Group
+Enel Chile
+AES Gener
+Colbun
+CMPC
+Arauco
+Empresas COPEC
+Sigdo Koppers
+Embotelladora Andina
+CCU
+Viña Concha y Toro
+Cornershop Chile
+NotCo
+Betterfly
+Fintual
+Buk
+Coperacha
+Destacame
+Migrante
+Global66
+Kushki
+Toku
+Modyo
+ComparaOnline
+Groupon Chile
+Linio Chile
+Mercado Libre Chile
+Amazon Chile
+Falabella.com
+Ripley Chile
+Paris Chile
+Easy Chile
+
+# South Africa
+Naspers
+Prosus
+Standard Bank
+FirstRand
+Absa Group
+Nedbank
+Capitec Bank
+Discovery Limited
+Old Mutual
+Sanlam
+Liberty Holdings
+Momentum Metropolitan
+African Rainbow Minerals
+Gold Fields
+Sibanye Stillwater
+AngloGold Ashanti
+Impala Platinum
+Northam Platinum
+Harmony Gold
+Pan African Resources
+Exxaro Resources
+Sasol
+Sappi
+Mondi
+BHP South Africa
+Anglo American Platinum
+De Beers South Africa
+Vodacom
+MTN Group
+Telkom South Africa
+Cell C
+Rain
+Liquid Intelligent Technologies
+Dimension Data
+Datatec
+Altron
+EOH Holdings
+Silvertree Internet
+Takealot
+Superbalist
+Mr D Food
+Checkers Sixty60
+Woolworths SA
+Pick n Pay
+Shoprite
+Spar South Africa
+Massmart
+Clicks Group
+Dis-Chem
+Aspen Pharmacare
+Adcock Ingram
+Life Healthcare
+Netcare
+Mediclinic
+Afrox
+Bidvest
+Barloworld
+Imperial Logistics
+Grindrod
+Transnet
+Tiger Brands
+Pioneer Foods
+RCL Foods
+AVI
+Famous Brands
+Nando's
+Steers
+Ocean Basket
+Yuppiechef
+Luno
+VALR
+Ozow
+Peach Payments
+Stitch
+Yoco
+SnapScan
+Zapper
+Aerobotics
+DataProphet
+SweepSouth
+OfferZen
+Hyperiondev
+WeThinkCode
+Andela South Africa
+
+# Nigeria
+Dangote Group
+BUA Group
+MTN Nigeria
+Airtel Nigeria
+Glo
+9mobile
+Zenith Bank
+Access Bank
+GT Bank
+First Bank of Nigeria
+UBA
+Fidelity Bank
+Stanbic IBTC
+Ecobank Nigeria
+Sterling Bank
+Wema Bank
+Polaris Bank
+Union Bank Nigeria
+FCMB
+Jaiz Bank
+Seplat Energy
+Oando
+Total Nigeria
+Nestle Nigeria
+Unilever Nigeria
+PZ Cussons Nigeria
+Cadbury Nigeria
+Nigerian Breweries
+International Breweries
+Guinness Nigeria
+Flour Mills Nigeria
+Lafarge Africa
+BUA Cement
+Dangote Cement
+Flutterwave
+Paystack
+Interswitch
+Moniepoint
+Kuda Bank
+OPay
+PalmPay
+Carbon
+FairMoney
+Branch Nigeria
+Renmoney
+TeamApt
+Piggyvest
+Cowrywise
+Bamboo
+Risevest
+Chippercash
+Andela
+Decagon
+AltSchool Africa
+Semicolon Africa
+HNG
+Reliance HMO
+Helium Health
+54gene
+mDoc
+Lifestores Healthcare
+DrugStoc
+myPharma
+Farmcrowdy
+Thrive Agric
+Releaf
+ThriveAgric
+Kobo360
+MVXchange
+Max.ng
+Gokada
+SafeBoda Nigeria
+Shuttlers
+Treepz
+Jumia Nigeria
+Konga
+Jiji
+Cars45
+Autochek
+Moove
+
+# Kenya
+Safaricom
+M-Pesa
+Equity Group Holdings
+KCB Group
+Co-operative Bank of Kenya
+Absa Bank Kenya
+Standard Chartered Kenya
+NCBA Group
+I&M Group
+Diamond Trust Bank
+Stanbic Kenya
+Family Bank
+HF Group
+Britam Holdings
+Jubilee Insurance
+UAP Old Mutual Kenya
+APA Insurance
+CIC Insurance
+ICEA Lion
+Resolution Insurance
+East African Breweries
+BAT Kenya
+Bamburi Cement
+Nation Media Group
+Standard Group
+Royal Media Services
+Mediamax
+Twiga Foods
+Sendy
+Lori Systems
+iProcure
+Apollo Agriculture
+FarmDrive
+Pula
+Arifu
+Eneza Education
+M-Shule
+eLimu
+Kytabu
+Andela Kenya
+Moringa School
+Strathmore @iLabAfrica
+iHub
+Nairobi Garage
+Africa's Talking
+BRCK
+Angani
+Craft Silicon
+Cellulant Kenya
+Pesapal
+DPO Group Kenya
+Tala
+Branch Kenya
+Zepz (WorldRemit)
+Chipper Cash Kenya
+Kyanda
+Pezesha
+Umba
+Carbon Kenya
+
+# Egypt
+CIB (Commercial International Bank)
+QNB Al Ahli
+HSBC Egypt
+Banque Misr
+National Bank of Egypt
+Arab African International Bank
+Banque du Caire
+Alex Bank
+Faisal Islamic Bank
+Abu Dhabi Islamic Bank Egypt
+EFG Hermes
+CI Capital
+Beltone Financial
+Orascom Construction
+Orascom Development
+Elsewedy Electric
+El Sewedy Electric
+Oriental Weavers
+Juhayna Food Industries
+Edita Food Industries
+Domty
+Americana Egypt
+B.TECH
+Fawry
+MNT-Halan
+Paymob
+Khazna
+valU
+Lucky
+Telda
+Swvl
+Halan
+MaxAB
+Capiter
+Breadfast
+Elmenus
+Otlob
+Talabat Egypt
+Jumia Egypt
+Amazon Egypt (Souq)
+Noon Egypt
+Vezeeta
+Instabug
+Si-Ware Systems
+Dsquares
+Robusta
+Integrant
+ITWorx
+Valeo
+Link Development
+eFinance
+Raya Group
+Vodafone Egypt
+Orange Egypt
+Etisalat Egypt
+WE (Telecom Egypt)
+
+# Turkey
+Koc Holding
+Sabanci Holding
+Turkcell
+Türk Telekom
+Vodafone Turkey
+Garanti BBVA
+Is Bank
+Akbank
+Yapi Kredi
+Halkbank
+Vakifbank
+QNB Finansbank
+Denizbank
+Ziraat Bank
+ING Turkey
+HSBC Turkey
+Turkish Airlines
+Pegasus Airlines
+SunExpress
+Enka Insaat
+TAV Airports
+Anadolu Group
+Eczacibasi Group
+Dogus Group
+Zorlu Group
+Vestel
+Arcelik (Beko)
+Ford Otosan
+Toyota Turkey
+Hyundai Turkey
+Fiat Turkey
+Renault Turkey
+Mercedes Turkey
+MAN Turkey
+Tofas
+Getir
+Trendyol
+Hepsiburada
+n11.com
+GittiGidiyor
+Sahibinden.com
+Yemeksepeti
+Iyzico
+Papara
+Param
+Colendi
+Lidio
+Dream Games
+Peak Games
+Masomo
+Gram Games
+Rollic
+Spyke Games
+Bigger Games
+Ace Games
+Good Job Games
+Ruby Games
+Panteon Academy
+Loop Games
+TaleWorlds Entertainment
+Crytek Istanbul
+Insider
+Akinon
+Modanisa
+Boyner
+LC Waikiki
+DeFacto
+Koton
+Mavi Jeans
+Ipekyol
+Vakko
+Teknosa
+MediaMarkt Turkey
+Amazon Turkey

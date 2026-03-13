@@ -67,17 +67,18 @@ async function query(sql, params = []) {
     };
   }
 
-  // SQLite
+  // SQLite — convert ILIKE to LIKE (SQLite LIKE is case-insensitive for ASCII)
+  const sqliteSql = sql.replace(/ILIKE/gi, 'LIKE');
   const database = getDb();
-  const isSelect = sql.trimStart().toUpperCase().startsWith('SELECT');
-  const isInsert = sql.trimStart().toUpperCase().startsWith('INSERT');
+  const isSelect = sqliteSql.trimStart().toUpperCase().startsWith('SELECT');
+  const isInsert = sqliteSql.trimStart().toUpperCase().startsWith('INSERT');
 
   if (isSelect) {
-    const rows = database.prepare(sql).all(...params);
+    const rows = database.prepare(sqliteSql).all(...params);
     return { rows, rowCount: rows.length, lastId: null };
   }
 
-  const result = database.prepare(sql).run(...params);
+  const result = database.prepare(sqliteSql).run(...params);
   return {
     rows: [],
     rowCount: result.changes,

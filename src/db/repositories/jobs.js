@@ -1,28 +1,94 @@
-const { query, transaction } = require('../connection');
+const { query, transaction, isPostgres } = require('../connection');
 const logger = require('../../logger');
 
+/**
+ * Build WHERE clauses from filters.
+ * Returns { clauses: string[], params: any[], needsJoin: boolean }
+ */
+function buildFilters(filters = {}) {
+  const clauses = ['j.removed_at IS NULL'];
+  const params = [];
+  let needsJoin = false;
+
+  // Role / Keywords — searches title, department, and company name
+  if (filters.q) {
+    const terms = filters.q.trim().split(/\s+/).filter(Boolean);
+    for (const term of terms) {
+      clauses.push('(j.title ILIKE ? OR j.department ILIKE ? OR c.company_name ILIKE ?)');
+      const pattern = `%${term}%`;
+      params.push(pattern, pattern, pattern);
+      needsJoin = true;
+    }
+  }
+
+  // Work mode: remote, hybrid, onsite
+  if (filters.workMode && filters.workMode !== 'any') {
+    if (filters.workMode === 'remote') {
+      clauses.push("(j.workplace_type ILIKE ? OR j.location ILIKE ? OR j.title ILIKE ?)");
+      params.push('%remote%', '%remote%', '%remote%');
+    } else if (filters.workMode === 'hybrid') {
+      clauses.push("(j.workplace_type ILIKE ? OR j.location ILIKE ?)");
+      params.push('%hybrid%', '%hybrid%');
+    } else if (filters.workMode === 'onsite') {
+      clauses.push("(j.workplace_type ILIKE ? OR j.workplace_type ILIKE ?)");
+      params.push('%on-site%', '%onsite%');
+    }
+  }
+
+  // Employment type: full-time, part-time, contract, internship
+  if (filters.employmentType && filters.employmentType !== 'any') {
+    clauses.push("(j.employment_type ILIKE ? OR j.title ILIKE ?)");
+    params.push(`%${filters.employmentType}%`, `%${filters.employmentType}%`);
+  }
+
+  // Location — free text match on location field
+  if (filters.location) {
+    clauses.push('j.location ILIKE ?');
+    params.push(`%${filters.location}%`);
+  }
+
+  // Posted — time window: 24h, 7d, 30d, 90d
+  if (filters.posted) {
+    const intervals = { '24h': 1, '7d': 7, '30d': 30, '90d': 90 };
+    const days = intervals[filters.posted];
+    if (days) {
+      if (isPostgres) {
+        clauses.push(`j.first_seen_at >= NOW() - INTERVAL '${days} days'`);
+      } else {
+        clauses.push(`j.first_seen_at >= datetime('now', '-${days} days')`);
+      }
+    }
+  }
+
+  // Exact filters
+  if (filters.companyId) {
+    clauses.push('j.company_id = ?');
+    params.push(filters.companyId);
+  }
+  if (filters.ats) {
+    clauses.push('j.ats = ?');
+    params.push(filters.ats);
+  }
+
+  return { clauses, params, needsJoin };
+}
+
 const jobsRepo = {
-  async findActive({ companyId, ats, limit, offset } = {}) {
-    let sql = 'SELECT j.*, c.domain, c.ats_slug, c.company_name, c.logo_url FROM jobs j JOIN companies c ON j.company_id = c.id WHERE j.removed_at IS NULL';
-    const params = [];
+  async findActive(filters = {}) {
+    const { clauses, params, needsJoin } = buildFilters(filters);
 
-    if (companyId) {
-      sql += ' AND j.company_id = ?';
-      params.push(companyId);
-    }
-    if (ats) {
-      sql += ' AND j.ats = ?';
-      params.push(ats);
-    }
+    // Always join companies for company data in response
+    let sql = `SELECT j.*, c.domain, c.ats_slug, c.company_name, c.logo_url
+      FROM jobs j JOIN companies c ON j.company_id = c.id
+      WHERE ${clauses.join(' AND ')}
+      ORDER BY j.first_seen_at DESC`;
 
-    sql += ' ORDER BY j.first_seen_at DESC';
-
-    if (limit) {
+    if (filters.limit) {
       sql += ' LIMIT ?';
-      params.push(limit);
-      if (offset) {
+      params.push(filters.limit);
+      if (filters.offset) {
         sql += ' OFFSET ?';
-        params.push(offset);
+        params.push(filters.offset);
       }
     }
 
@@ -30,11 +96,16 @@ const jobsRepo = {
     return rows;
   },
 
-  async countActive({ companyId, ats } = {}) {
-    let sql = 'SELECT COUNT(*) as count FROM jobs WHERE removed_at IS NULL';
-    const params = [];
-    if (companyId) { sql += ' AND company_id = ?'; params.push(companyId); }
-    if (ats) { sql += ' AND ats = ?'; params.push(ats); }
+  async countActive(filters = {}) {
+    const { clauses, params, needsJoin } = buildFilters(filters);
+
+    let sql;
+    if (needsJoin) {
+      sql = `SELECT COUNT(*) as count FROM jobs j JOIN companies c ON j.company_id = c.id WHERE ${clauses.join(' AND ')}`;
+    } else {
+      sql = `SELECT COUNT(*) as count FROM jobs j WHERE ${clauses.join(' AND ')}`;
+    }
+
     const { rows } = await query(sql, params);
     return parseInt(rows[0].count, 10);
   },

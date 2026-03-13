@@ -224,3 +224,440 @@ Siemens
 Philips
 Ericsson
 Nokia
+# Additional US Tech & SaaS
+Dropbox
+Slack
+Asana
+Monday
+ClickUp
+Notion
+Grammarly
+Calendly
+Loom
+Typeform
+SurveyMonkey
+Mailchimp
+SendGrid
+Twilio
+Pendo
+FullStory
+Hotjar
+Mixpanel
+Heap
+Segment
+Braze
+Iterable
+Klaviyo
+Attentive
+Gorgias
+Recharge
+Yotpo
+Smile
+Shogun
+Nacelle
+BigCommerce
+Shopify
+Squarespace
+Wix
+GoDaddy
+Cloudinary
+Imgix
+Fastly
+Akamai
+Zscaler
+CrowdStrike
+SentinelOne
+Palo Alto Networks
+Fortinet
+Crowdstrike
+Tanium
+Arctic Wolf
+Huntress
+Abnormal Security
+Material Security
+Tessian
+Ironclad
+Docusign
+PandaDoc
+Conga
+Icertis
+Agiloft
+ContractPodAi
+LinkSquares
+# Fintech
+Affirm
+Marqeta
+Lithic
+Unit
+Treasury Prime
+Column
+Increase
+Modern Treasury
+Sardine
+Alloy
+Persona
+Socure
+Onfido
+Veriff
+Jumio
+Trulioo
+# Developer Tools
+Vercel
+Netlify
+Heroku
+DigitalOcean
+Linode
+Vultr
+Hetzner
+OVH
+Scaleway
+CircleCI
+Travis CI
+Buildkite
+Earthly
+Pulumi
+Terraform
+Spacelift
+Env0
+Atlantis
+ArgoCD
+Flux
+Harness
+LaunchDarkly
+Unleash
+Flagsmith
+ConfigCat
+DevCycle
+# Data & Analytics
+Looker
+Tableau
+ThoughtSpot
+Metabase
+Preset
+Lightdash
+Hex
+Mode
+Sigma Computing
+Fivetran
+Airbyte
+Stitch
+Matillion
+Talend
+dbt Labs
+Monte Carlo
+Bigeye
+Anomalo
+Great Expectations
+Atlan
+Alation
+Collibra
+Informatica
+# AI & ML Companies
+Anthropic
+OpenAI
+Google DeepMind
+Cohere
+Mistral AI
+AI21 Labs
+Aleph Alpha
+Lighton
+Cerebras
+SambaNova
+Graphcore
+Groq
+Modular
+Anyscale
+Mosaic ML
+Lightning AI
+Weights and Biases
+Neptune
+Determined AI
+Tecton
+Feast
+Hopsworks
+Modal
+Banana
+Replicate
+Baseten
+# Cybersecurity
+Wiz
+Orca Security
+Lacework
+Aqua Security
+Sysdig
+Snyk
+Veracode
+Checkmarx
+Sonatype
+JFrog
+GitHub
+GitLab
+Bitbucket
+Sourcegraph
+Codeium
+Tabnine
+Cursor
+Replit
+CodeSandbox
+StackBlitz
+Gitpod
+# Healthcare Tech
+Veeva Systems
+Epic Systems
+Cerner
+Tempus
+Flatiron Health
+Ro
+Hims
+Cerebral
+Spring Health
+Lyra Health
+Headspace
+Calm
+Noom
+Oura
+Whoop
+# Real Estate Tech
+Zillow
+Redfin
+Compass
+Opendoor
+Offerpad
+Divvy
+Blend
+Better
+Roofstock
+Loft
+QuintoAndar
+# EdTech
+Coursera
+Udemy
+Duolingo
+Quizlet
+Khan Academy
+Chegg
+Brainly
+Photomath
+Byjus
+Unacademy
+# Gaming
+Epic Games
+Riot Games
+Blizzard
+EA
+Ubisoft
+Unity
+Roblox
+Niantic
+Supercell
+King
+Zynga
+Scopely
+MiHoYo
+# E-commerce & Marketplace
+Etsy
+Poshmark
+ThredUp
+Depop
+StockX
+Goat
+Faire
+Handshake
+Alibaba
+JD
+Pinduoduo
+# Logistics & Supply Chain
+Flexport
+ShipBob
+Shippo
+EasyPost
+Samsara
+Project44
+FourKites
+Loadsmart
+Convoy
+Transfix
+# HR & People
+BambooHR
+Namely
+Justworks
+TriNet
+Paychex
+ADP
+Workday
+Cornerstone
+Phenom
+Eightfold
+Beamery
+Gem
+Hireology
+iCIMS
+SmartRecruiters
+Jobvite
+Avature
+# Communication & Collaboration
+Zoom
+RingCentral
+Dialpad
+Vonage
+Bandwidth
+Telnyx
+Gong
+Chorus
+Outreach
+SalesLoft
+Apollo
+ZoomInfo
+Clearbit
+6sense
+Demandbase
+Bombora
+G2
+TrustRadius
+# Cloud Infrastructure
+Confluent
+Redpanda
+Materialize
+SingleStore
+Couchbase
+Redis Labs
+Aerospike
+ScyllaDB
+ClickHouse
+Timescale
+QuestDB
+InfluxData
+Datadog
+New Relic
+Dynatrace
+AppDynamics
+Honeycomb
+Lightstep
+Chronosphere
+# Crypto & Web3
+Coinbase
+Binance
+Kraken
+Gemini
+Circle
+Paxos
+Fireblocks
+Chainalysis
+Elliptic
+Anchorage
+BitGo
+Ledger
+Consensys
+Alchemy
+Infura
+Moralis
+Thirdweb
+# Travel & Hospitality
+Booking
+Expedia
+Tripadvisor
+Hopper
+Kayak
+Skyscanner
+Kiwi
+Omio
+FlixBus
+GetYourGuide
+Viator
+Klook
+# Food & Delivery
+Instacart
+DoorDash
+Grubhub
+Deliveroo
+Just Eat
+iFood
+Glovo
+Meituan
+# Insurance Tech
+Lemonade
+Root
+Hippo
+Next Insurance
+Coalition
+At-Bay
+Corvus
+Pie Insurance
+# Legal Tech
+Clio
+LawDepot
+LegalZoom
+Rocket Lawyer
+Harvey
+CoCounsel
+EvenUp
+# Marketing Tech
+HubSpot
+Marketo
+Pardot
+ActiveCampaign
+Drip
+ConvertKit
+Beehiiv
+Substack
+Ghost
+Buffer
+Hootsuite
+Sprout Social
+Later
+Sprinklr
+Khoros
+Reputation
+Podium
+Birdeye
+# Additional Global Companies
+Grab
+Gojek
+Tokopedia
+Traveloka
+Bukalapak
+Sea Group
+Shopee
+Lazada
+Agora
+ByteDance
+Kuaishou
+Xiaomi
+OnePlus
+Oppo
+Vivo
+DJI
+Tencent
+Baidu
+Alibaba
+JD
+Meituan
+Pinduoduo
+NIO
+XPeng
+Li Auto
+BYD
+Reliance Jio
+Paytm
+Ola
+MakeMyTrip
+Myntra
+PolicyBazaar
+Nykaa
+Dream11
+Meesho
+ShareChat
+Rapido
+Dunzo
+Urban Company
+Groww
+Upstox
+Zerodha
+Cred
+Chargebee
+Freshworks
+Zoho
+Postman
+BrowserStack
+Hasura
+Razorpay

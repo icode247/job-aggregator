@@ -32,6 +32,7 @@ async function main() {
 
   await fanoutDiscovery(discoveryQueue);
   await fanoutSync(syncQueue);
+  await fanoutCrawl(crawlQueue);
 
   logger.info('Worker started — processing discovery, sync, and crawl queues');
 

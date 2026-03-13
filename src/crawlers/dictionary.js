@@ -56,46 +56,74 @@ async function probeSlug(slug) {
 }
 
 /**
- * Crawl using a dictionary of company names.
- * Probes all ATS APIs in parallel for each name.
+ * Load company names from all dictionary files in the data directory.
  */
-async function crawlDictionary() {
-  const dictPath = config.CRAWL_DICTIONARY_PATH;
+function loadAllNames() {
+  const dataDir = path.join(__dirname, '..', '..', 'data');
+  const files = fs.readdirSync(dataDir).filter(f => f.endsWith('.txt'));
+  const allNames = new Set();
 
-  if (!fs.existsSync(dictPath)) {
-    logger.warn({ path: dictPath }, 'Dictionary file not found');
-    return [];
+  for (const file of files) {
+    const content = fs.readFileSync(path.join(dataDir, file), 'utf-8');
+    const names = content.split('\n')
+      .map(l => l.trim())
+      .filter(l => l && !l.startsWith('#'));
+    for (const name of names) allNames.add(name);
   }
 
-  const names = fs.readFileSync(dictPath, 'utf-8')
-    .split('\n')
-    .map(l => l.trim())
-    .filter(l => l && !l.startsWith('#'));
+  return [...allNames];
+}
 
-  logger.info({ count: names.length }, 'Starting dictionary crawl');
-
-  const allResults = [];
-
-  for (let i = 0; i < names.length; i++) {
-    const name = names[i];
+/**
+ * Process a batch of names concurrently.
+ */
+async function probeBatch(names) {
+  const results = [];
+  const promises = names.map(async (name) => {
     const slugs = nameToSlugs(name);
-
     for (const slug of slugs) {
       const hits = await probeSlug(slug);
       if (hits.length > 0) {
         logger.info({ name, slug, hits: hits.map(h => h.ats) }, 'Dictionary hit');
-        allResults.push(...hits);
-        break; // Found a hit for this name, skip remaining slug variants
+        results.push(...hits);
+        break;
       }
     }
+  });
+  await Promise.allSettled(promises);
+  return results;
+}
 
-    // Rate limit: small delay between names
-    if (i % 10 === 9) {
-      await new Promise(r => setTimeout(r, 2000));
-    }
+/**
+ * Crawl using a dictionary of company names.
+ * Probes all ATS APIs in parallel for each name.
+ */
+async function crawlDictionary() {
+  const names = loadAllNames();
+
+  if (names.length === 0) {
+    logger.warn('No dictionary files found or all empty');
+    return [];
   }
 
-  logger.info({ totalHits: allResults.length }, 'Dictionary crawl complete');
+  logger.info({ count: names.length }, 'Starting dictionary crawl');
+
+  const allResults = [];
+  const batchSize = 5; // 5 names concurrently, each probing 5 ATS = 25 requests
+
+  for (let i = 0; i < names.length; i += batchSize) {
+    const batch = names.slice(i, i + batchSize);
+    const hits = await probeBatch(batch);
+    allResults.push(...hits);
+
+    // Rate limit: pause between batches
+    if (i % 50 === 0 && i > 0) {
+      logger.info({ progress: `${i}/${names.length}`, hits: allResults.length }, 'Dictionary crawl progress');
+    }
+    await new Promise(r => setTimeout(r, 1000));
+  }
+
+  logger.info({ totalHits: allResults.length, totalProbed: names.length }, 'Dictionary crawl complete');
   return allResults;
 }
 

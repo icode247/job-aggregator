@@ -22,7 +22,7 @@ module.exports = {
 
   // Crawl settings
   CRAWL_RATE_LIMIT: { max: 3, duration: 60000 },
-  CRAWL_INTERVAL_MS: 1000 * 60 * 60 * 24 * 30, // 30 days
-  CRAWL_GOOGLE_MAX_PAGES: parseInt(process.env.CRAWL_GOOGLE_MAX_PAGES, 10) || 5,
+  CRAWL_INTERVAL_MS: 1000 * 60 * 60 * 24 * 3, // 3 days
+  CRAWL_GOOGLE_MAX_PAGES: parseInt(process.env.CRAWL_GOOGLE_MAX_PAGES, 10) || 10,
   CRAWL_DICTIONARY_PATH: process.env.CRAWL_DICTIONARY_PATH || path.join(__dirname, '..', 'data', 'company-names.txt'),
 };

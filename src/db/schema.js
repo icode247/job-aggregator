@@ -70,6 +70,14 @@ async function migrate() {
 
   await exec('CREATE INDEX IF NOT EXISTS idx_crawl_sources_ats ON crawl_sources(ats)');
 
+  // Additional indexes for search/sort performance
+  if (isPostgres) {
+    try { await exec('CREATE EXTENSION IF NOT EXISTS pg_trgm'); } catch { /* may not have permission */ }
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_location ON jobs(location)');
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_first_seen ON jobs(first_seen_at DESC)');
+    await exec('CREATE INDEX IF NOT EXISTS idx_companies_name ON companies(company_name)');
+  }
+
   logger.info({ engine: isPostgres ? 'postgresql' : 'sqlite' }, 'Database schema migrated');
 }
 
