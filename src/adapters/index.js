@@ -3,6 +3,8 @@ const ashby = require('./ashby');
 const lever = require('./lever');
 const workable = require('./workable');
 const recruitee = require('./recruitee');
+const smartrecruiters = require('./smartrecruiters');
+const rippling = require('./rippling');
 
 const adapters = {
   greenhouse,
@@ -10,6 +12,8 @@ const adapters = {
   lever,
   workable,
   recruitee,
+  smartrecruiters,
+  rippling,
 };
 
 function getAdapter(atsName) {
