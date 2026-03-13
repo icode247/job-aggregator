@@ -2,17 +2,21 @@ const config = require('../config');
 const logger = require('../logger');
 
 const ATS_SEARCH_QUERIES = {
-  greenhouse: { query: 'site:boards.greenhouse.io', regex: /boards\.greenhouse\.io\/([a-z0-9_-]+)/gi },
-  lever:      { query: 'site:jobs.lever.co',        regex: /jobs\.lever\.co\/([a-z0-9_-]+)/gi },
-  ashby:      { query: 'site:jobs.ashbyhq.com',     regex: /jobs\.ashbyhq\.com\/([a-z0-9_-]+)/gi },
-  workable:   { query: 'site:apply.workable.com',   regex: /apply\.workable\.com\/([a-z0-9_-]+)/gi },
-  recruitee:  { query: 'site:*.recruitee.com',      regex: /([a-z0-9_-]+)\.recruitee\.com/gi },
+  greenhouse:      { query: 'site:boards.greenhouse.io',       regex: /boards\.greenhouse\.io\/([a-z0-9_-]+)/gi },
+  lever:           { query: 'site:jobs.lever.co',              regex: /jobs\.lever\.co\/([a-z0-9_-]+)/gi },
+  ashby:           { query: 'site:jobs.ashbyhq.com',           regex: /jobs\.ashbyhq\.com\/([a-z0-9_-]+)/gi },
+  workable:        { query: 'site:apply.workable.com',         regex: /apply\.workable\.com\/([a-z0-9_-]+)/gi },
+  recruitee:       { query: 'site:*.recruitee.com',            regex: /([a-z0-9_-]+)\.recruitee\.com/gi },
+  smartrecruiters: { query: 'site:jobs.smartrecruiters.com',   regex: /jobs\.smartrecruiters\.com\/([a-z0-9_-]+)/gi },
+  rippling:        { query: 'site:ats.rippling.com',           regex: /ats\.rippling\.com\/([a-z0-9_-]+)/gi },
+  personio:        { query: 'site:*.jobs.personio.de',         regex: /([a-z0-9_-]+)\.jobs\.personio\.de/gi },
 };
 
 const IGNORE_SLUGS = new Set([
   'www', 'api', 'app', 'cdn', 'js', 'css', 'docs', 'support', 'help',
   'about', 'blog', 'careers', 'embed', 'static', 'assets', 'login',
   'signup', 'register', 'admin', 'status', 'undefined', 'null',
+  'jobs', 'xml', 'en', 'de', 'fr', 'apply', 'posting', 'postings',
 ]);
 
 /**

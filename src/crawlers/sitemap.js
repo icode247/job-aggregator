@@ -4,12 +4,14 @@ const SITEMAP_URLS = {
   greenhouse: 'https://boards.greenhouse.io/sitemap.xml',
   ashby: 'https://jobs.ashbyhq.com/sitemap.xml',
   lever: 'https://jobs.lever.co/sitemap.xml',
+  smartrecruiters: 'https://jobs.smartrecruiters.com/sitemap.xml',
 };
 
 const SLUG_EXTRACTORS = {
   greenhouse: /boards\.greenhouse\.io\/([a-z0-9_-]+)/gi,
   ashby: /jobs\.ashbyhq\.com\/([a-z0-9_-]+)/gi,
   lever: /jobs\.lever\.co\/([a-z0-9_-]+)/gi,
+  smartrecruiters: /jobs\.smartrecruiters\.com\/([a-z0-9_-]+)/gi,
 };
 
 const IGNORE_SLUGS = new Set([
