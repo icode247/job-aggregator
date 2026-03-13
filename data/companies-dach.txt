@@ -2929,3 +2929,639 @@ Michigan Synth Works Deutschland
 Erica Synths Deutschland
 Dreadbox Deutschland
 ENDOFCHUNK
+# Additional Germany - Tech & Startups
+Celonis
+N26
+FlixBus
+Personio
+Contentful
+Mambu
+Forto
+Sennder
+Gorillas
+Flink Germany
+GetYourGuide
+Auto1 Group
+Lilium
+Volocopter
+Isar Aerospace
+Wingcopter
+Agile Robots
+Helsing
+Aleph Alpha
+DeepL
+Adjust
+Scalable Capital
+Trade Republic
+Wefox
+Clark
+Friday Insurance
+Ottonova
+Lemonade Germany
+Element Insurance
+Huk24
+Check24
+Idealo
+Trivago
+HomeToGo
+Westwing
+About You
+Zalando
+Global Fashion Group
+mytheresa
+Mybudget
+TeamViewer
+Babbel
+Blinkist
+Statista
+Pitch
+Staffbase
+Brainly Germany
+Lingoda
+GoStudent Germany
+StudySmarter
+simpleclub
+Lecturio
+iversity
+openHPI
+Udacity Germany
+Coursera Germany
+edX Germany
+LinkedIn Learning Germany
+Pluralsight Germany
+Codecademy Germany
+
+# Additional Germany - Enterprise & Industry
+ThyssenKrupp
+Daimler Truck
+MAN Group
+Knorr-Bremse
+WABCO
+ZF Friedrichshafen
+Schaeffler
+Continental AG
+Hella
+Osram
+Trumpf
+Zeiss
+Leica
+Stihl
+Kärcher
+Miele
+Vorwerk
+Liebherr
+Putzmeister
+Wirtgen Group
+Claas
+Fendt
+Deutz
+AGCO Germany
+John Deere Germany
+Kubota Germany
+Horsch
+Lemken
+Amazone
+Krone
+Rauch
+Grimme
+Poettinger
+Kuhn Germany
+Vaderstad Germany
+Bayer CropScience
+BASF Agricultural
+Syngenta Germany
+Corteva Germany
+KWS SAAT
+Evonik Industries
+Lanxess
+Wacker Chemie
+Altana
+Fuchs Petrolub
+Henkel AG
+Beiersdorf AG
+Nivea
+Eucerin
+La Prairie Germany
+tesa
+Loctite Germany
+Pritt
+Persil
+Schwarzkopf
+Syoss
+Fa
+Theramed
+Dial Germany
+got2b
+Palette
+Igora
+BlondMe
+Indola
+Goldwell
+Joico Germany
+Redken Germany
+Kerastase Germany
+L'Oreal Germany
+Garnier Germany
+Maybelline Germany
+NYX Germany
+Urban Decay Germany
+Lancome Germany
+Biotherm Germany
+Vichy Germany
+La Roche-Posay Germany
+Cerave Germany
+SkinCeuticals Germany
+
+# Additional Germany - Finance & Insurance
+Deutsche Bank AG
+Commerzbank
+DZ Bank
+KfW
+Landesbank Baden-Württemberg
+Bayerische Landesbank
+Norddeutsche Landesbank
+Helaba
+Hamburg Commercial Bank
+DekaBank
+Union Investment
+DWS Group
+Allianz Global Investors
+PIMCO Germany
+BlackRock Germany
+Vanguard Germany
+Fidelity Germany
+J.P. Morgan Germany
+Goldman Sachs Germany
+Morgan Stanley Germany
+UBS Germany
+Credit Suisse Germany
+BNP Paribas Germany
+Société Générale Germany
+HSBC Germany
+Barclays Germany
+Citibank Germany
+Bank of America Germany
+ING Germany
+ABN AMRO Germany
+Rabobank Germany
+UniCredit Germany
+Santander Germany
+BBVA Germany
+Intesa Germany
+Mediobanca Germany
+Erste Group Germany
+Raiffeisen Germany
+Berenberg Bank
+Metzler Bank
+Hauck Aufhäuser Lampe
+Quirin Privatbank
+Baader Bank
+Lang & Schwarz
+comdirect
+Consorsbank
+ING-DiBa
+DKB
+N26 Germany
+Revolut Germany
+Wise Germany
+Vivid Money
+Tomorrow Bank
+Nuri
+Bitwala
+Solarisbank
+Raisin
+Deposit Solutions
+WeltSparen
+Zinspilot
+Exporo
+Bergfürst
+Crowdinvesting Germany
+Seedmatch
+Companisto
+Kapilendo
+Funding Circle Germany
+Auxmoney
+Smava
+Finanzcheck
+Verivox
+Check24 Finance
+HypoVereinsbank
+Postbank
+Targobank
+Santander Consumer Bank
+CreditPlus Bank
+SWK Bank
+Bank11
+SKG Bank
+Volkswagen Bank
+BMW Bank
+Mercedes-Benz Bank
+Porsche Bank Germany
+Audi Bank
+Opel Bank
+
+# Additional Germany - Media & Entertainment
+Bertelsmann
+RTL Group
+ProSiebenSat.1
+Axel Springer
+Burda Media
+Hubert Burda Media
+Funke Mediengruppe
+Madsack
+DuMont Mediengruppe
+Ippen Digital
+VG Media
+BILD
+Die Welt
+Die Zeit
+Spiegel
+Focus
+Stern
+Handelsblatt
+Manager Magazin
+Wirtschaftswoche
+Capital Magazine
+brand eins
+Gründerszene
+t3n
+Heise
+Golem
+Chip
+ComputerBild
+PCWelt
+c't
+iX
+Telepolis
+Der Tagesspiegel
+Süddeutsche Zeitung
+Frankfurter Allgemeine
+taz
+Berliner Morgenpost
+Hamburger Abendblatt
+Münchner Merkur
+Kölner Stadt-Anzeiger
+Rheinische Post
+Stuttgarter Zeitung
+Nürnberger Nachrichten
+Westdeutsche Allgemeine
+Leipziger Volkszeitung
+Dresdner Neueste Nachrichten
+Berliner Zeitung
+BZ Berlin
+Morgenpost
+Abendzeitung München
+tz München
+
+# Additional Germany - Automotive Suppliers & EV
+Continental Automotive
+ZF Group
+Schaeffler Group
+Mahle
+Mann+Hummel
+ElringKlinger
+Leoni
+Dräxlmaier
+Brose
+Webasto
+Eberspächer
+Grammer
+Stabilus
+Norma Group
+SAF-Holland
+Jost Werke
+BorgWarner Germany
+Dana Germany
+Gentherm Germany
+Modine Germany
+Martinrea Germany
+Magna Germany
+Aptiv Germany
+Autoliv Germany
+Toyoda Gosei Germany
+Aisin Germany
+Denso Germany
+Nidec Germany
+Alps Alpine Germany
+Yazaki Germany
+Sumitomo Electric Germany
+Furukawa Germany
+TE Connectivity Germany
+Amphenol Germany
+Molex Germany
+Rosenberger
+Weidmüller
+Phoenix Contact
+Harting
+LAPP Group
+Helukabel
+LEONI AG
+Nexans Germany
+Prysmian Germany
+nkt Germany
+Southwire Germany
+General Cable Germany
+Brugg Cables Germany
+Corning Germany
+CommScope Germany
+Belden Germany
+Panduit Germany
+
+# Additional Austria
+Erste Group Bank
+Raiffeisen Bank International
+Wienerberger
+Voestalpine
+OMV
+Verbund
+Andritz
+Mayr-Melnhof
+Lenzing
+Palfinger
+AMAG Austria Metall
+Schoeller-Bleckmann Oilfield
+Fabasoft
+Kapsch TrafficCom
+AT&S
+RHI Magnesita
+Zumtobel Group
+Rosenbauer
+SBO
+Agrana
+Strabag
+Porr
+Borealis
+Mondi Austria
+Sappi Austria
+POLYTEC Group
+Frequentis
+Kontron
+S&T AG
+Valneva Austria
+Marinomed Biotech
+Hookipa Pharma
+Themis Bioscience
+Affiris
+Nabriva Therapeutics
+Shire Austria
+Takeda Austria
+Novartis Austria
+Roche Austria
+Pfizer Austria
+Bayer Austria
+Sanofi Austria
+MSD Austria
+Boehringer Ingelheim Austria
+AstraZeneca Austria
+Eli Lilly Austria
+Abbott Austria
+Baxter Austria
+Fresenius Austria
+Siemens Healthineers Austria
+GE Healthcare Austria
+Philips Austria
+Medtronic Austria
+Boston Scientific Austria
+Johnson & Johnson Austria
+B. Braun Austria
+Olympus Austria
+Dräger Austria
+Karl Storz Austria
+Richard Wolf Austria
+Leica Microsystems Austria
+Zeiss Austria
+Trumpf Austria
+Fronius
+Plansee Group
+Miba
+AVL List
+Magna Steyr
+BRP-Rotax
+KTM AG
+Red Bull
+Rauch Fruchtsäfte
+Manner
+Niemetz
+Zotter
+Haas Group
+Julius Meinl
+Swarovski
+Wolford
+Getzner Textil
+Blum
+Grass
+Doppelmayr
+Innio Jenbacher
+Liebherr Austria
+Wacker Neuson
+Baumit
+Eternit Austria
+Isover Austria
+Rockwool Austria
+Knauf Austria
+Saint-Gobain Austria
+Holcim Austria
+Kirchdorfer Industries
+SPL Tele Group
+A1 Telekom Austria
+Magenta Telekom
+Drei Hutchison
+Yesss
+Hot Telecom
+Salzburg AG
+Wien Energie
+EVN
+Kelag
+Illwerke VKW
+Tiroler Wasserkraft
+Energie Steiermark
+Linz Strom
+Oberösterreichische Ferngas
+Netz Oberösterreich
+Austrian Power Grid
+Bitmovin
+Anyline
+Prewave
+Adverity
+Storyblok
+Usersnap
+Swat.io
+Storebox
+GoStudent
+Refurbed
+Woom
+Gropyus
+Byrd
+Waterdrop
+Runtastic
+Shpock
+willhaben
+Jobiqo
+hokify
+karriere.at
+StepStone Austria
+Indeed Austria
+LinkedIn Austria
+XING Austria
+Glassdoor Austria
+Kununu
+
+# Additional Switzerland
+Nestlé
+Novartis
+Roche Holding
+ABB Switzerland
+Zurich Insurance
+Swiss Re
+UBS
+Credit Suisse
+Glencore
+LafargeHolcim
+Sika
+Givaudan
+Firmenich
+Lonza
+Sonova
+Straumann
+Temenos
+Logitech
+Garmin Switzerland
+STMicroelectronics Switzerland
+ams-OSRAM
+u-blox
+Sensirion
+Comet Group
+VAT Group
+Inficon
+Bühler Group
+Oerlikon
+Schindler Group
+Geberit
+Dormakaba
+Belimo
+Georg Fischer
+Sulzer
+Burckhardt Compression
+Bobst Group
+Rieter
+Saurer Group
+Autoneum
+Feintool
+Komax
+Stadler Rail
+SBB
+Swiss International Air Lines
+Edelweiss Air
+Helvetic Airways
+Swiss WorldCargo
+Swissport
+Gate Gourmet
+Dufry
+Swatch Group
+Rolex
+Patek Philippe
+Audemars Piguet
+Richard Mille
+Jaeger-LeCoultre
+Omega
+Breitling
+TAG Heuer
+IWC
+Chopard
+Piaget
+Vacheron Constantin
+Hublot
+Zenith
+Ulysse Nardin
+Baume & Mercier
+Longines
+Tissot
+Certina
+Hamilton Switzerland
+Rado
+Mido
+Oris
+Nomos Switzerland
+Mondaine
+Victorinox
+Wenger
+Swatch
+Casio Switzerland
+Fossil Switzerland
+Michael Kors Switzerland
+On Running
+Mammut
+Scott Sports
+Odlo
+X-Bionic
+Zimtstern
+Peak Performance Switzerland
+Norrøna Switzerland
+Arc'teryx Switzerland
+Salomon Switzerland
+Rossignol Switzerland
+Atomic Switzerland
+Head
+K2 Switzerland
+Fischer Sports
+Stöckli
+Kästle
+Völkl
+Blizzard
+Elan Switzerland
+Black Diamond Switzerland
+Petzl Switzerland
+Beal Switzerland
+Edelrid Switzerland
+Mammut Climbing
+Grivel Switzerland
+Camp Switzerland
+Singing Rock Switzerland
+Wild Country Switzerland
+DMM Switzerland
+Ocun Switzerland
+Tendon Switzerland
+Bornack Switzerland
+Skylotec Switzerland
+Petzl Professional Switzerland
+IRUDEK Switzerland
+Tractel Switzerland
+Miller Switzerland
+3M Switzerland
+Honeywell Switzerland
+MSA Switzerland
+Dräger Switzerland
+Scott Safety Switzerland
+Sundström Switzerland
+GVS Switzerland
+Moldex Switzerland
+Uvex Switzerland
+Bollé Switzerland
+Smith Switzerland
+Giro Switzerland
+POC Switzerland
+Sweet Protection Switzerland
+Alpina Switzerland
+Casco Switzerland
+Abus Switzerland
+Kask Switzerland
+MET Switzerland
+Catlike Switzerland
+Lazer Switzerland
+Limar Switzerland
+Bell Switzerland
+Fox Racing Switzerland
+Troy Lee Switzerland
+100% Switzerland
+Oakley Switzerland
+Adidas Eyewear Switzerland
+Nike Vision Switzerland
+Rudy Project Switzerland
+Julbo
+Cebe Switzerland
+Revo Switzerland
+Costa Switzerland
+Maui Jim Switzerland
+Serengeti Switzerland
+Randolph Switzerland
+AO Eyewear Switzerland

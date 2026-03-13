@@ -1172,3 +1172,827 @@ Claridges Hotels
 The Imperial
 ITC Grand
 Leela Palace
+
+# Additional IT & Software Companies
+Zoho Corporation
+ManageEngine
+Freshdesk
+Freshservice
+Freshcaller
+Freshchat
+Kissflow
+Vtiger
+Ramco Systems
+IBS Software
+Mphasis Digital
+Mindtree
+Larsen & Toubro Infotech
+Geometric Software
+iGate
+Patni Computer Systems
+Polaris Financial Technology
+3i Infotech
+Firstsource Solutions
+WNS Global Services
+EXL Service
+Genpact
+iEnergizer
+Quatrro Global Services
+Aditya Birla Minacs
+Hinduja Global Solutions
+Startek India
+Sitel India
+Alorica India
+Teleperformance India
+Concentrix India
+Conduent India
+Unisys India
+CGI India
+Sapient India
+Publicis Sapient India
+Merkle India
+Epsilon India
+Fractal Analytics
+Mu Sigma
+LatentView Analytics
+AbsolutData
+Cartesian Consulting
+Bridgei2i
+Tiger Analytics
+Gramener
+Sigmoid
+MathCo
+Affine Analytics
+Tredence
+Manthan Analytics
+Crayon Data
+Customer Analytics
+Ugam Solutions
+Hansa Cequity
+Dataweave
+SocialCops
+Dataiku India
+Palantir India
+Databricks India
+Snowflake India
+Confluent India
+Elastic India
+MongoDB India
+Redis India
+CockroachDB India
+SingleStore India
+InfluxData India
+TimescaleDB India
+PlanetScale India
+Supabase India
+Hasura Technologies
+Dgraph Labs
+Yugabyte India
+Couchbase India
+Aerospike India
+ScyllaDB India
+MemSQL India
+VoltDB India
+NuoDB India
+MariaDB India
+Percona India
+EDB India
+Citus Data India
+Timescale India
+
+# Additional Startups & Tech
+ShareChat
+Moj App
+Josh App
+Chingari
+Roposo
+TakaTak
+MX TakaTak
+Mitron TV
+Bolo Indya
+Kutumb
+Apna
+CRED
+Slice
+BharatPe
+ZestMoney
+LazyPay
+Simpl
+PaySense
+EarlySalary
+MoneyTap
+KreditBee
+CASHe
+FlexSalary
+Dhani
+Ring
+Freecharge
+Mobikwik
+Amazon Pay India
+Google Pay India
+WhatsApp Pay India
+Samsung Pay India
+BHIM App
+Payzapp
+Pockets ICICI
+iMobile Pay
+YONO SBI
+Kotak 811
+Digibank DBS
+PayTM for Business
+Razorpay X
+Cashfree for Business
+Instamojo
+PayU India
+CCAvenue
+Atom Technologies
+TechProcess
+FSS (Financial Software and Systems)
+Mindgate Solutions
+AGS Transact Technologies
+Hitachi Payment Services
+Worldline India
+FIS India
+Fiserv India
+ACI Worldwide India
+NCR India
+Diebold Nixdorf India
+GRG Banking India
+Euronet India
+Atos Worldline India
+Ingenico India
+Verifone India
+Thales India
+Gemalto India
+IDEMIA India
+HID Global India
+Entrust India
+Oberthur India
+
+# Additional Manufacturing & Industrial
+Larsen & Toubro
+Thermax
+KSB India
+Grundfos India
+Alfa Laval India
+Siemens India
+ABB India
+Honeywell India
+Emerson India
+Yokogawa India
+Endress+Hauser India
+Schneider Electric India
+Rockwell Automation India
+Mitsubishi Electric India
+Omron India
+Keyence India
+Sick India
+IFM India
+Pepperl+Fuchs India
+Turck India
+Banner Engineering India
+Balluff India
+Leuze India
+Pilz India
+Phoenix Contact India
+Weidmuller India
+Wago India
+Harting India
+Molex India
+TE Connectivity India
+Amphenol India
+Hirose India
+JAE India
+Samtec India
+Smiths Connectors India
+Bel Fuse India
+Eaton India
+Littelfuse India
+Bourns India
+Vishay India
+ON Semiconductor India
+Microchip Technology India
+Renesas India
+Cypress Semiconductor India
+Dialog Semiconductor India
+Maxim Integrated India
+Analog Devices India
+Linear Technology India
+Silicon Labs India
+Marvell India
+Cavium India
+MediaTek India
+Realtek India
+Novatek India
+Himax India
+Raydium India
+Synaptics India
+Goodix India
+FPC India
+Fingerprints India
+CrucialTec India
+Egis Technology India
+AuthenTec India
+Apple India R&D
+Samsung India R&D
+Xiaomi India R&D
+OnePlus India R&D
+Vivo India R&D
+Oppo India R&D
+Realme India R&D
+Motorola India R&D
+Nokia India R&D
+Sony India R&D
+LG India R&D
+Panasonic India R&D
+Sharp India R&D
+TCL India R&D
+Hisense India R&D
+Haier India R&D
+Midea India R&D
+
+# Additional Banking & Financial Services
+Bajaj Finance
+Bajaj Finserv
+Shriram Finance
+Cholamandalam Investment
+Sundaram Finance
+Manappuram Finance
+Muthoot Finance
+IIFL Finance
+PNB Housing Finance
+Can Fin Homes
+LIC Housing Finance
+HDFC Home Loans
+SBI Home Finance
+Indiabulls Housing Finance
+GIC Housing Finance
+Repco Home Finance
+Dewan Housing Finance
+Reliance Home Finance
+Home First Finance
+Aptus Value Housing
+Aavas Financiers
+Star Housing Finance
+Gruh Finance
+Motilal Oswal Financial Services
+Angel Broking
+Sharekhan
+ICICI Securities
+HDFC Securities
+Kotak Securities
+Axis Securities
+SBI Securities
+BOB Capital Markets
+IDBI Capital
+Geojit Financial Services
+Karvy Stock Broking
+Religare Securities
+Edelweiss Financial Services
+JM Financial
+Nippon India Asset Management
+HDFC Asset Management
+ICICI Prudential AMC
+SBI Funds Management
+Aditya Birla Sun Life AMC
+UTI Asset Management
+Kotak Mahindra AMC
+DSP Investment Managers
+Axis Asset Management
+Franklin Templeton India
+Invesco India
+Mirae Asset India
+PGIM India
+HSBC Asset Management India
+BNP Paribas Asset Management India
+Sundaram Asset Management
+Tata Asset Management
+Canara Robeco AMC
+Union Asset Management
+IDFC Asset Management
+L&T Investment Management
+Mahindra Manulife AMC
+Principal Asset Management India
+Quantum Asset Management
+PPFAS Asset Management
+Baroda BNP Paribas AMC
+Navi Asset Management
+Groww Asset Management
+Zerodha Asset Management
+
+# Additional Education & Training
+Manipal Global Education
+Amity University
+Ashoka University
+Shiv Nadar University
+OP Jindal Global University
+Flame University
+Bennett University
+Plaksha University
+Krea University
+Azim Premji University
+IIIT Hyderabad
+IIIT Bangalore
+IIIT Delhi
+ISB Hyderabad
+IIM Ahmedabad
+IIM Bangalore
+IIM Calcutta
+IIM Lucknow
+IIM Kozhikode
+IIM Indore
+XLRI Jamshedpur
+MDI Gurgaon
+FMS Delhi
+SPJIMR
+NMIMS
+Symbiosis International
+Christ University
+Manipal Academy
+VIT University
+SRM University
+Amrita University
+BITS Pilani
+IISC Bangalore
+Thapar University
+NIT Trichy
+NIT Warangal
+NIT Surathkal
+NIT Calicut
+NIT Rourkela
+NIT Durgapur
+NIT Jamshedpur
+NIT Allahabad
+NSUT Delhi
+DTU Delhi
+IIITM Gwalior
+ABV IIITM Gwalior
+DA-IICT Gandhinagar
+
+# Additional Healthcare & Biotech
+Biocon Biologics
+Bharat Biotech
+Serum Institute of India
+Zydus Cadila
+Indian Immunologicals
+Panacea Biotec
+Shantha Biotechnics
+Reliance Life Sciences
+Intas Pharmaceuticals
+Mankind Pharma
+Micro Labs
+Macleods Pharmaceuticals
+Alembic Pharmaceuticals
+Ajanta Pharma
+IPCA Laboratories
+Emcure Pharmaceuticals
+Gland Pharma
+Suven Life Sciences
+Divi's Laboratories
+Aarti Industries
+Deepak Nitrite
+SRF Limited
+Navin Fluorine
+Gujarat Fluorochemicals
+Vinati Organics
+Fine Organic Industries
+Clean Science and Technology
+Tatva Chintan Pharma
+Anupam Rasayan
+Hikal
+Atul Limited
+Galaxy Surfactants
+NOCIL
+Thirumalai Chemicals
+Tata Chemicals
+Pidilite Industries
+Asian Paints
+Berger Paints
+Kansai Nerolac
+Akzo Nobel India
+Nippon Paint India
+Indigo Paints
+JSW Paints
+Grasim Industries
+UltraTech Cement
+Ambuja Cements
+ACC Limited
+Shree Cement
+Dalmia Bharat
+JK Cement
+Birla Corporation
+India Cements
+Ramco Cements
+JK Lakshmi Cement
+Star Cement
+Heidelberg Cement India
+Sagar Cements
+Orient Cement
+Mangalam Cement
+Deccan Cements
+Chettinad Cement
+Zuari Cement
+OCL India
+NCL Industries
+
+# Food Processing & Agriculture
+Nestle India
+Britannia Industries
+ITC Foods
+Hindustan Unilever Foods
+Parle Products
+Amul (GCMMF)
+Mother Dairy
+Haldiram's
+MTR Foods
+Bikaji Foods
+Prataap Snacks
+DFM Foods
+Balaji Wafers
+Bikanervala
+Laxmi Snacks
+Cornitos
+Too Yumm
+Snackible
+Wingreens Farms
+Veeba Food Services
+Capital Foods
+ID Fresh Food
+Fresho
+Country Delight
+Milk Basket
+Licious
+FreshToHome
+Star Quik
+JioMart Fresh
+BigBasket Fresh
+Amazon Fresh India
+Swiggy Instamart
+Blinkit (Grofers)
+Zepto Fresh
+Dunzo Daily
+BB Daily
+Supr Daily
+DailyNinja
+MilkBasket
+BBDaily
+Country Delight
+Akshayakalpa
+Sid's Farm
+Pride of Cows
+A2 Milk India
+Amul Organic
+Dabur Foods
+Vadilal Industries
+Kwality Walls
+Havmor Ice Cream
+Naturals Ice Cream
+Baskin Robbins India
+Cream Bell
+Dinshaw's
+Arun Ice Cream
+Hatsun Agro Products
+Heritage Foods
+Tirumala Milk Products
+Dodla Dairy
+Parag Milk Foods
+Prabhat Dairy
+Schreiber Dynamix
+Lactalis India
+Danone India
+Fonterra India
+
+# Retail & Fashion
+Reliance Retail
+Future Retail
+Aditya Birla Fashion
+Trent (Westside)
+Shoppers Stop
+Lifestyle International
+Max Fashion India
+Pantaloons
+V-Mart Retail
+Vishal Mega Mart
+DMart (Avenue Supermarts)
+Spencer's Retail
+Star Bazaar
+Easyday
+Nilgiris
+Namdhari's Fresh
+More Retail
+Spar India
+Metro Cash & Carry India
+Costco India
+IKEA India
+Decathlon India
+Zara India
+H&M India
+Uniqlo India
+Forever 21 India
+Gap India
+Marks & Spencer India
+Superdry India
+Tommy Hilfiger India
+Calvin Klein India
+Levi's India
+Pepe Jeans India
+United Colors of Benetton India
+Jack & Jones India
+Only India
+Vero Moda India
+Mango India
+Massimo Dutti India
+Charles & Keith India
+Aldo India
+Steve Madden India
+Clarks India
+Bata India
+Metro Shoes
+Khadim India
+Liberty Shoes
+Relaxo Footwears
+Paragon Footwear
+VKC Group
+Campus Shoes
+Sparx
+Puma India
+Nike India
+Adidas India
+Reebok India
+Skechers India
+Woodland India
+Red Chief
+Hush Puppies India
+Florsheim India
+Cole Haan India
+Crocs India
+Birkenstock India
+Titan Company
+Tanishq
+Kalyan Jewellers
+Malabar Gold
+Joyalukkas
+PC Jeweller
+Tribhovandas Bhimji Zaveri
+Senco Gold
+PNG Jewellers
+Vaibhav Global
+BlueStone
+CaratLane
+Melorra
+Candere
+Voylla
+Mirraw
+Craftsvilla
+FabIndia
+Good Earth
+Nicobar
+Raw Mango
+Sabyasachi
+Manish Malhotra
+Tarun Tahiliani
+Anita Dongre
+Ritu Kumar
+
+# Media & Entertainment
+Zee Studios
+Yash Raj Films
+Dharma Productions
+Red Chillies Entertainment
+Excel Entertainment
+Phantom Films
+Eros International
+PVR INOX
+Cinepolis India
+Carnival Cinemas
+Miraj Cinemas
+SPI Cinemas
+Asian Cinemas
+Mukta Arts
+Balaji Telefilms
+Endemol Shine India
+Banijay Asia
+BBC Studios India
+Viacom18 Studios
+Star Studios
+Sony Pictures India
+Warner Bros India
+Universal Pictures India
+Disney India
+Netflix India
+Amazon Prime Video India
+Hotstar India
+ZEE5
+SonyLIV
+Voot
+MX Player
+ALTBalaji
+Eros Now
+Hungama Digital
+Gaana
+JioSaavn
+Wynk Music
+Spotify India
+YouTube Music India
+Apple Music India
+Amazon Music India
+Tidal India
+SoundCloud India
+Audiomack India
+Resso India
+Times Music
+T-Series
+Saregama
+Tips Industries
+Aditya Music
+Speed Records
+Lahiri Music
+Venus Records
+Zee Music Company
+Sony Music India
+Universal Music India
+Warner Music India
+BMG India
+Believe India
+DistroKid India
+TuneCore India
+CD Baby India
+Amuse India
+UnitedMasters India
+
+# Aerospace & Defense
+Hindustan Aeronautics
+Bharat Electronics
+Bharat Dynamics
+BEML
+Mazagon Dock Shipbuilders
+Cochin Shipyard
+Garden Reach Shipbuilders
+Goa Shipyard
+Hindustan Shipyard
+Reliance Naval
+L&T Defence
+Tata Advanced Systems
+Adani Defence
+Kalyani Group Defence
+Mahindra Defence
+Godrej Aerospace
+Dynamatic Technologies
+Astra Microwave Products
+Data Patterns India
+Tonbo Imaging
+ideaForge
+Paras Aerospace
+NewSpace Research
+Ananth Technologies
+Centum Electronics
+Alpha Design Technologies
+Zen Technologies
+BEL Optronic Devices
+Mishra Dhatu Nigam
+Wadia Group
+Walchandnagar Industries
+Premier Explosives
+Solar Industries
+Economic Explosives
+Keltech Energies
+VEM Technologies
+Cyient Defence
+Tata SIA Airlines
+IndiGo (InterGlobe Aviation)
+SpiceJet
+Go First
+Akasa Air
+Air India Express
+Vistara
+Alliance Air
+Star Air
+FlyBig
+TruJet
+Deccan Charters
+Club One Air
+Pawan Hans
+Blade India
+JetSetGo
+THUMBY Aviation
+Global Vectra Helicorp
+Heligo Charters
+
+# Sports & Fitness
+Dream11
+MPL (Mobile Premier League)
+WinZO Games
+Paytm First Games
+A23
+Zupee
+Ludo King
+Getmega
+RummyCircle
+PokerBaazi
+BalleBaazi
+My11Circle
+FanCode
+Cricbuzz
+ESPN India
+Star Sports
+Sony Sports India
+JioCinema Sports
+Tata IPL
+ProKabaddi
+Indian Super League
+Pro Volleyball League
+Tennis Premier League
+Badminton Premier League
+Hockey India League
+FITPASS
+HealthifyMe
+CureFit (Cult)
+Fitternity
+StepSetGo
+GOQii
+Ultrahuman
+Noise Fitness
+boAt Fitness
+Fastrack Reflex
+Titan Smart
+Amazfit India
+Garmin India
+Fitbit India
+Apple Watch India
+Samsung Galaxy Watch India
+Xiaomi Smart Band India
+Realme Watch India
+OnePlus Watch India
+Huawei Watch India
+
+# Logistics & Warehousing
+Blue Dart Express
+DTDC Express
+Professional Couriers
+Gati Limited
+Allcargo Logistics
+Mahindra Logistics
+TVS SCS
+Safexpress
+GATI-KWE
+FedEx India
+UPS India
+DHL India
+Aramex India
+TNT India
+DPD India
+Hermes India
+Yodel India
+Royal Mail India
+PostNL India
+Geodis India
+DB Schenker India
+Kuehne Nagel India
+DSV India
+XPO Logistics India
+JB Hunt India
+Werner India
+Schneider India
+Old Dominion India
+Saia India
+Forward Air India
+TForce Freight India
+Estes Express India
+R+L Carriers India
+ABF Freight India
+Southeastern Freight India
+Holland India
+Reddaway India
+USF Holland India
+Central Transport India
+Dayton Freight India
+Pitt Ohio India
+Ward Transport India
+AAA Cooper India
+Averitt Express India
+Roadrunner India
+Echo Global India
+Coyote Logistics India
+CH Robinson India
+Total Quality Logistics India
+Landstar India
+Ceva Logistics India
+Bolloré India
+Panalpina India
+UTi India
+Agility India
+Hellmann India
+Nippon Express India
+Yusen Logistics India
+Kintetsu World Express India
+Mitsui-Soko India
+Seino India
+Hankyu Hanshin Express India
+Sagawa Express India
+Yamato Transport India
+SF Express India
+ZTO Express India
+YTO Express India
+STO Express India
+Yunda Express India
+Best Express India

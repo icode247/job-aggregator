@@ -1277,3 +1277,1201 @@ Western Union Lithuania
 Nasdaq Lithuania
 Barclays Lithuania
 Fidelity Lithuania
+
+# Additional France
+Thales Digital Identity and Security
+Dassault Aviation
+Naval Group
+Nexter Systems
+MBDA France
+Zodiac Aerospace
+Latécoère
+Liebherr Aerospace France
+Collins Aerospace France
+Honeywell France
+GE Aviation France
+Pratt & Whitney France
+Rolls-Royce France
+Messier-Bugatti-Dowty
+Aubert & Duval
+Eramet
+Imerys
+Vicat
+Lafarge France
+Nexity
+Icade
+Gecina
+Covivio
+Unibail-Rodamco-Westfield
+Carmila
+Altarea
+Frey
+Mercialys
+SFL
+Tour Eiffel
+Orpea
+Korian
+Ramsay Generale de Sante
+Biomérieux
+Sartorius Stedim Biotech
+bioMerieux
+Ipsen
+Pierre Fabre
+Stallergenes Greer
+DBV Technologies
+Genfit
+Innate Pharma
+Valneva
+Transgene
+Oncodesign
+Median Technologies
+Voluntis
+Affluent Medical
+Abivax
+Nanobiotix
+Cellectis
+Ose Immunotherapeutics
+Lysogene
+Pharnext
+Poxel
+Adocia
+Biophytis
+Global Bioenergies
+McPhy Energy
+Neoen
+Voltalia
+Albioma
+Boralex France
+Akuo Energy
+Total Eren
+Lhyfe
+HDF Energy
+Engie Green
+EDF Renewables
+Compagnie Nationale du Rhône
+CNR
+Meridiam
+InfraVia
+Antin Infrastructure
+Ardian
+PAI Partners
+Eurazeo
+Tikehau Capital
+Wendel
+IDI
+Siparex
+Naxicap Partners
+LBO France
+Sagard
+Towerbrook France
+CVC France
+KKR France
+Blackstone France
+Apollo France
+Carlyle France
+TPG France
+Permira France
+Warburg Pincus France
+General Atlantic France
+Silver Lake France
+Thoma Bravo France
+Vista Equity France
+Francisco Partners France
+Insight Partners France
+JMI Equity France
+Summit Partners France
+GI Partners France
+Welsh Carson France
+GTCR France
+
+# Additional Netherlands
+Adevinta Netherlands
+Prosus Netherlands
+Takeaway.com
+Just Eat Netherlands
+Hello Fresh Netherlands
+Picnic Online Supermarket
+Crisp
+Flink Netherlands
+Getir Netherlands
+Gorillas Netherlands
+Zooplus Netherlands
+Thuisbezorgd.nl
+Deliveroo Netherlands
+Uber Eats Netherlands
+New York Pizza
+Domino's Netherlands
+McDonald's Netherlands
+KFC Netherlands
+Burger King Netherlands
+Five Guys Netherlands
+Subway Netherlands
+Starbucks Netherlands
+Costa Coffee Netherlands
+Albert Heijn
+Jumbo Supermarkets
+Lidl Netherlands
+Aldi Netherlands
+Spar Netherlands
+Plus Supermarkt
+DekaMarkt
+Dirk
+Vomar
+Hoogvliet
+Coop Netherlands
+Ekoplaza
+Marqt
+Heinen & Hopman
+IHC Merwede
+Damen Shipyards
+Van Oord
+Baggermaatschappij Boskalis
+Heerema Marine Contractors
+Allseas
+Huisman Equipment
+SBM Offshore Netherlands
+Mammoet
+Sarens Netherlands
+Riwal
+Hertel
+Mourik
+Van Wijnen
+BAM Group Netherlands
+VolkerWessels Netherlands
+Heijmans Netherlands
+Strukton
+Ballast Nedam
+Dura Vermeer
+JP van Eesteren
+Van Hattum en Blankevoort
+Koninklijke Vopak
+SHV Holdings
+HAL Holding
+Heineken Netherlands
+HEINEKEN
+Bavaria Brewery
+Grolsch
+Brand Brewery
+Hertog Jan
+Amstel
+Jupiler Netherlands
+Palm Belgium Netherlands
+Affligem Netherlands
+La Trappe
+Gulpener
+Texels
+IJ-Brouwerij
+Brouwerij 't IJ
+Lowlander
+Two Chefs Brewing
+Oedipus Brewing
+VanMoof
+Swapfiets
+Felyx
+Check Mobility
+TIER Netherlands
+Lime Netherlands
+Dott Netherlands
+Bird Netherlands
+Bolt Netherlands
+Uber Netherlands
+Lyft Netherlands
+FreeNow Netherlands
+Sixt Netherlands
+Europcar Netherlands
+Hertz Netherlands
+Avis Netherlands
+Enterprise Netherlands
+National Car Rental Netherlands
+Budget Netherlands
+
+# Additional Sweden
+Volvo Cars
+Scania AB
+SAAB Automobile
+Koenigsegg
+Polestar Automotive
+Lynk & Co
+Husqvarna Group
+Atlas Copco Industrial
+Sandvik Mining
+Boliden Minerals
+LKAB
+Lundin Mining Sweden
+Lundin Energy
+Tethys Oil
+International Petroleum Corporation
+Africa Oil Sweden
+Maha Energy
+Enquest Sweden
+Preem
+St1 Sweden
+OKQ8
+Circle K Sweden
+Coop Sweden
+ICA Gruppen
+Axfood
+Bergendahls
+Dagab
+Martin & Servera
+Menigo
+Dafgards
+Orkla Sweden
+Felix Sweden
+Findus Sweden
+Arla Sweden
+Valio Sweden
+Skånemejerier
+Norrmejerier
+Falköping Mejerier
+Gävle Mejerier
+Milko Sweden
+Semper
+HiPP Sweden
+Nestlé Sweden
+Danone Sweden
+Unilever Sweden
+Procter & Gamble Sweden
+Henkel Sweden
+Colgate-Palmolive Sweden
+SC Johnson Sweden
+Reckitt Sweden
+Church & Dwight Sweden
+Kimberly-Clark Sweden
+Essity Sweden
+SCA Swedish Cellulosa
+BillerudKorsnäs
+Holmen
+Södra
+Sveaskog
+Skogsägarna
+Moelven Sweden
+Stora Enso Sweden
+UPM Sweden
+Metsä Group Sweden
+Sappi Sweden
+Mondi Sweden
+DS Smith Sweden
+Smurfit Kappa Sweden
+International Paper Sweden
+WestRock Sweden
+Graphic Packaging Sweden
+AR Packaging
+Nefab
+ÅR Carton
+Perstorp
+Nouryon Sweden
+Akzo Nobel Sweden
+Hempel Sweden
+Jotun Sweden
+Beckers Group
+Teknos Sweden
+Tikkurila Sweden
+Alcro
+Nordsjö
+Sadolin Sweden
+Dulux Sweden
+Caparol Sweden
+Sigma Coatings Sweden
+PPG Sweden
+Sherwin-Williams Sweden
+Axalta Sweden
+BASF Sweden
+Dow Sweden
+DuPont Sweden
+3M Sweden
+Sika Sweden
+
+# Additional Denmark
+AP Moller-Maersk
+Maersk Line
+Maersk Tankers
+Maersk Drilling
+Svitzer
+Maersk Container Industry
+Hamburg Süd Denmark
+MPC Container Ships Denmark
+Torm
+Norden Shipping
+DFDS
+Scandlines
+Stena Line Denmark
+Viking Line Denmark
+Color Line Denmark
+Fjord Line
+Smyril Line
+Hurtigruten Denmark
+Royal Arctic Line
+Esvagt
+J. Lauritzen
+Ultragas
+Dan-Bunkering
+Bunker Holding
+World Fuel Services Denmark
+Monjasa
+Malik Supply
+Royal Greenland
+Polar Seafood
+Espersen
+Aker BioMarine Denmark
+BioMar
+Skretting Denmark
+Cargill Denmark
+Bunge Denmark
+ADM Denmark
+Louis Dreyfus Denmark
+Olam Denmark
+Viterra Denmark
+Glencore Agriculture Denmark
+Nidera Denmark
+Toepfer Denmark
+Cofco Denmark
+Noble Group Denmark
+Sievert Denmark
+DLG Denmark
+Danish Agro
+Vestjyllands Andel
+DAVA Foods
+Arla Foods
+Danish Crown
+Tulip Food Company
+Friland
+Leverandørselskabet Danish Crown
+Scanio
+Haarby Andel
+Thyborøn Andel
+Jutlander Bank
+Sydbank
+Jyske Bank
+Ringkjøbing Landbobank
+Spar Nord Bank
+Nykredit
+Realkredit Danmark
+BRFkredit
+DLR Kredit
+Kommunekredit
+Nordic Investment Bank Denmark
+Nordea Denmark
+Danske Bank
+Saxo Bank
+BankNordik
+Vestjysk Bank
+Lån & Spar Bank
+Arbejdernes Landsbank
+AL Bank
+Merkur Andelskasse
+Coop Bank Denmark
+Handelsbanken Denmark
+SEB Denmark
+Swedbank Denmark
+ING Denmark
+ABN AMRO Denmark
+Rabobank Denmark
+BNP Paribas Denmark
+Societe Generale Denmark
+Credit Agricole Denmark
+Credit Suisse Denmark
+UBS Denmark
+Julius Baer Denmark
+Pictet Denmark
+Lombard Odier Denmark
+Edmond de Rothschild Denmark
+
+# Additional Norway
+Aker ASA
+Aker BP
+Aker Solutions Norway
+TGS-NOPEC Geophysical
+Petroleum Geo-Services
+Polaris Media
+NHST Media Group
+TV 2 Norway
+NRK
+Discovery Norway
+Bauer Media Norway
+Aller Media Norway
+Egmont Norway
+Cappelen Damm
+Gyldendal Norway
+Aschehoug
+Kagge Forlag
+Vigmostad & Bjørke
+Spartacus Norway
+Dinamo Norway
+Oktober Norway
+Flamme Forlag
+Dreyers Forlag
+Press Norway
+Font Forlag
+Forlaget Manifest
+Res Publica
+Humanist Forlag
+Pax Forlag
+Samlaget
+Orkla Food
+Mills Norway
+Stabburet
+Gilde
+Prior
+Tine
+Q-Meieriene
+Synnøve Finden
+Kavli
+Bama
+Rema 1000
+Norgesgruppen
+Coop Norway
+ICA Norway
+Lidl Norway
+Aldi Norway
+Spar Norway
+Joker Norway
+Kiwi Norway
+Meny Norway
+Ultra Norway
+Europris
+Nille
+Clas Ohlson Norway
+Jula Norway
+Biltema Norway
+XXL Norway
+Sport 1 Norway
+Intersport Norway
+G-Sport Norway
+MX Sport
+Stormberg
+Bergans
+Helly Hansen
+Norrøna
+Devold
+Dale of Norway
+Swix
+Madshus
+Rottefella
+Alfa Norway
+Viking Footwear
+Bakers Norway
+Skoringen
+Footway Norway
+Zalando Norway
+Boozt Norway
+NA-KD Norway
+Nelly Norway
+
+# Additional Finland
+Fortum Corporation
+Neste Corporation
+Outokumpu
+Metso Corporation
+Terex Finland
+Ponsse
+Kalmar (Cargotec)
+MacGregor
+Hiab
+Konecranes Finland
+AGCO Finland
+Valtra
+Massey Ferguson Finland
+Fendt Finland
+Case IH Finland
+New Holland Finland
+John Deere Finland
+Claas Finland
+Sampo Rosenlew
+Sisu Auto
+Sisu Axles
+Patria
+Nammo Finland
+Saab Finland
+Kongsberg Finland
+Millog
+Insta Group
+Bittium
+Airbus Finland
+Collins Aerospace Finland
+GE Aviation Finland
+Rolls-Royce Finland
+Wärtsilä Marine
+Wärtsilä Energy
+ABB Finland
+Siemens Finland
+Schneider Electric Finland
+Eaton Finland
+Danfoss Finland
+Grundfos Finland
+Alfa Laval Finland
+Atlas Copco Finland
+Sandvik Finland
+Metso Outotec Finland
+SKF Finland
+Timken Finland
+NSK Finland
+NTN Finland
+Schaeffler Finland
+INA Finland
+FAG Finland
+Parker Hannifin Finland
+Bosch Rexroth Finland
+Moog Finland
+Honeywell Finland
+Emerson Finland
+Yokogawa Finland
+Endress Hauser Finland
+Vaisala
+Nixu
+F-Secure
+WithSecure
+SSH Communications Security
+Stonesoft
+Codenomicon
+Synopsys Finland
+Arm Finland
+Intel Finland
+Google Finland
+Microsoft Finland
+Amazon Finland
+Meta Finland
+Apple Finland
+Samsung Finland
+Huawei Finland
+Xiaomi Finland
+OnePlus Finland
+Oppo Finland
+Qualcomm Finland
+MediaTek Finland
+Broadcom Finland
+TI Finland
+NXP Finland
+Infineon Finland
+STMicroelectronics Finland
+Renesas Finland
+Microchip Finland
+Cypress Finland
+Dialog Finland
+MaxLinear Finland
+Marvell Finland
+Analog Devices Finland
+ON Semiconductor Finland
+
+# Additional Ireland
+Stripe Ireland
+Intercom Ireland
+Workhuman Ireland
+Fenergo Ireland
+Flipdish Ireland
+Wayflyer Ireland
+Glofox Ireland
+Learnosity Ireland
+Ding Ireland
+Teamwork Ireland
+Version 1
+Ergo Group
+Asavie
+Cubic Telecom
+Taoglas
+Decawave
+Movidius
+Pointy
+Logentries
+CoderDojo Foundation
+Tines
+Corlytics
+Mastercard Ireland
+Visa Ireland
+PayPal Ireland
+Revolut Ireland
+N26 Ireland
+Bunq Ireland
+Monzo Ireland
+Starling Ireland
+Chase Ireland
+Goldman Sachs Ireland
+JP Morgan Ireland
+Citibank Ireland
+Bank of America Ireland
+Morgan Stanley Ireland
+Barclays Ireland
+Deutsche Bank Ireland
+BNP Paribas Ireland
+Societe Generale Ireland
+Credit Agricole Ireland
+Nomura Ireland
+Macquarie Ireland
+HSBC Ireland
+Standard Chartered Ireland
+UBS Ireland
+Credit Suisse Ireland
+Wells Fargo Ireland
+State Street Ireland
+BNY Mellon Ireland
+Northern Trust Ireland
+Citco Ireland
+Maples Group Ireland
+Walkers Ireland
+Matheson
+A&L Goodbody
+McCann FitzGerald
+William Fry
+Mason Hayes & Curran
+Arthur Cox
+Byrne Wallace
+Eversheds Sutherland Ireland
+DLA Piper Ireland
+Baker McKenzie Ireland
+Linklaters Ireland
+Allen & Overy Ireland
+Clifford Chance Ireland
+Freshfields Ireland
+Herbert Smith Freehills Ireland
+Hogan Lovells Ireland
+Norton Rose Fulbright Ireland
+Simmons & Simmons Ireland
+Ashurst Ireland
+CMS Ireland
+Dentons Ireland
+Reed Smith Ireland
+Pinsent Masons Ireland
+Fieldfisher Ireland
+
+# Additional Spain
+Inditex Group
+Mango Fashion
+Desigual
+Loewe
+Balenciaga Spain
+Pronovias
+Pedro del Hierro
+Carolina Herrera Spain
+Adolfo Dominguez
+Massimo Dutti Spain
+Pull & Bear
+Bershka
+Stradivarius
+Oysho
+Uterque
+Tempe
+Zara Home
+Lefties
+Kiddy's Class
+Springfield
+Cortefiel
+Women'secret
+Hoss Intropia
+Sita Murt
+Custo Barcelona
+Tween
+TCN
+Dolores Promesas
+Bimba y Lola
+Aristocrazy
+UNOde50
+Tous Spain
+Majorica
+Suarez
+Grassy
+Rabat
+Wempe Spain
+Chopard Spain
+Piaget Spain
+Cartier Spain
+Tiffany Spain
+Bulgari Spain
+Van Cleef Spain
+Harry Winston Spain
+Graff Spain
+Chaumet Spain
+Boucheron Spain
+Caixabank Tech
+Everis Spain
+Minsait (Indra)
+Accenture Spain
+Deloitte Spain
+PwC Spain
+EY Spain
+KPMG Spain
+McKinsey Spain
+BCG Spain
+Bain Spain
+Roland Berger Spain
+Oliver Wyman Spain
+Strategy& Spain
+Kearney Spain
+Simon-Kucher Spain
+Alvarez & Marsal Spain
+FTI Consulting Spain
+Huron Spain
+BearingPoint Spain
+Capgemini Spain
+Atos Spain
+Sopra Steria Spain
+CGI Spain
+TCS Spain
+Infosys Spain
+Wipro Spain
+Cognizant Spain
+HCL Spain
+Tech Mahindra Spain
+DXC Technology Spain
+NTT Data Spain
+Fujitsu Spain
+Hitachi Vantara Spain
+IBM Spain
+Oracle Spain
+SAP Spain
+Microsoft Spain
+Google Spain
+Amazon Spain
+Meta Spain
+Apple Spain
+Salesforce Spain
+ServiceNow Spain
+Workday Spain
+VMware Spain
+Dell Spain
+HP Spain
+Lenovo Spain
+Intel Spain
+Cisco Spain
+Nvidia Spain
+AMD Spain
+Qualcomm Spain
+Broadcom Spain
+Juniper Networks Spain
+Palo Alto Networks Spain
+Fortinet Spain
+CrowdStrike Spain
+Check Point Spain
+Trend Micro Spain
+Sophos Spain
+McAfee Spain
+Kaspersky Spain
+Bitdefender Spain
+Norton Spain
+Avast Spain
+ESET Spain
+Malwarebytes Spain
+Webroot Spain
+
+# Additional Italy
+Luxottica Group
+EssilorLuxottica Italy
+Safilo Group
+Marcolin
+De Rigo Vision
+Marchon Italy
+Kering Eyewear Italy
+Thélios
+Technogym
+Brembo Italy
+Magneti Marelli
+Piaggio Group
+Ducati Motor
+Aprilia
+Moto Guzzi
+Vespa
+Benelli
+MV Agusta
+SWM Motorcycles
+Fantic Motor
+Beta Motor
+Husqvarna Italy
+GasGas Italy
+Sherco Italy
+TM Racing
+Ossa Italy
+Montesa Italy
+Bultaco Italy
+AJP Motors Italy
+SUR-RON Italy
+Zero Motorcycles Italy
+Energica Motor Company
+Italian Volt
+Tacita
+Askoll EVA
+Wayel
+Piaggio Elettrica
+Vmoto Italy
+NIU Italy
+Seat Italia
+Cupra Italia
+Skoda Italia
+Audi Italia
+Porsche Italia
+Lamborghini
+Maserati
+Alfa Romeo
+Lancia
+Abarth
+Pagani Automobili
+Dallara
+Pininfarina
+Giugiaro
+Bertone
+Zagato
+Touring Superleggera
+Ital Design
+Manifattura Automobili Torino
+Garage Italia
+Italdesign
+Aehra
+Automobili Estrema
+DR Automobiles
+MOLE Automobiles
+Totem Automobili
+Fornasari
+Covini Engineering
+Jannarelly Italy
+Ermini Italy
+Rezvani Italy
+
+# Additional Poland
+CD Projekt Red
+11 bit studios
+Techland
+People Can Fly
+Flying Wild Hog
+CI Games
+The Astronauts
+Bloober Team
+Farm 51
+Creepy Jar
+Jujubee
+Artifex Mundi
+PlayWay
+Movie Games
+SimFabric
+Carbon Studio
+Real Games
+Draw Distance
+T-Bull
+BoomBit
+Vivid Games
+Ten Square Games
+Huuuge Games
+G5 Entertainment Poland
+Gameloft Poland
+Ubisoft Poland
+EA Poland
+Activision Poland
+Rockstar Poland
+Bethesda Poland
+Square Enix Poland
+Bandai Namco Poland
+Capcom Poland
+Sega Poland
+Konami Poland
+Nintendo Poland
+Sony Interactive Poland
+Xbox Poland
+Epic Games Poland
+Riot Games Poland
+Wargaming Poland
+Supercell Poland
+King Poland
+Zynga Poland
+Rovio Poland
+InPost Poland
+Allegro Poland
+OLX Poland
+Morele.net
+x-kom
+Komputronik
+Media Expert
+RTV Euro AGD
+Neonet
+Electro Poland
+Saturn Poland
+MediaMarkt Poland
+Empik
+Merlin Poland
+Lidl Poland
+Biedronka Poland
+Żabka Poland
+Carrefour Poland
+Auchan Poland
+Tesco Poland
+Netto Poland
+Intermarché Poland
+Makro Poland
+Selgros Poland
+E.Leclerc Poland
+Kaufland Poland
+Rossmann Poland
+Hebe Poland
+Sephora Poland
+Douglas Poland
+Super-Pharm Poland
+Natura Poland
+Inglot
+Ziaja
+Bielenda
+Eveline Cosmetics
+AA Cosmetics
+Dermika
+Soraya
+Celia
+Joanna
+Marion
+Dax Cosmetics
+Kolastyna
+Wibo
+Golden Rose Poland
+Paese Cosmetics
+Pupa Poland
+Catrice Poland
+Essence Poland
+Revolution Poland
+NYX Poland
+Maybelline Poland
+L'Oreal Poland
+Garnier Poland
+Nivea Poland
+
+# Additional Czech Republic
+Skoda Auto Mladá Boleslav
+Hyundai Czech
+Toyota Czech
+Foxconn Czech
+ON Semiconductor Czech
+Texas Instruments Czech
+STMicroelectronics Czech
+Rohde & Schwarz Czech
+Honeywell Czech
+Siemens Czech
+ABB Czech
+Schneider Electric Czech
+Eaton Czech
+Emerson Czech
+Rockwell Automation Czech
+Yokogawa Czech
+Endress+Hauser Czech
+Krohne Czech
+Phoenix Contact Czech
+Weidmuller Czech
+Wago Czech
+Harting Czech
+Molex Czech
+TE Connectivity Czech
+Amphenol Czech
+Continental Czech
+Bosch Czech
+ZF Czech
+Schaeffler Czech
+SKF Czech
+Timken Czech
+NSK Czech
+NTN Czech
+INA Czech
+FAG Czech
+Parker Czech
+Danfoss Czech
+Grundfos Czech
+Alfa Laval Czech
+Atlas Copco Czech
+Sandvik Czech
+Hilti Czech
+Makita Czech
+DeWalt Czech
+Bosch Power Tools Czech
+Stanley Black & Decker Czech
+Husqvarna Czech
+Stihl Czech
+Kärcher Czech
+Miele Czech
+BSH Czech
+Electrolux Czech
+Whirlpool Czech
+Gorenje Czech
+Hisense Czech
+Haier Czech
+Midea Czech
+TCL Czech
+Foxconn Display Czech
+LG Display Czech
+Samsung Display Czech
+BOE Czech
+AU Optronics Czech
+Innolux Czech
+Sharp Czech
+Japan Display Czech
+Tianma Czech
+Visionox Czech
+Royole Czech
+
+# Additional Romania
+UiPath Romania
+Bitdefender Romania
+FintechOS Romania
+Druid AI Romania
+TypingDNA Romania
+Elrond Network Romania
+MultiversX Romania
+Tremend Software
+Endava Romania Office
+Fortech Romania
+NTT Data Romania Office
+Cognizant Romania Office
+Softvision Romania
+Luxoft Romania
+EPAM Romania
+GlobalLogic Romania
+Centric Romania
+iQuest Romania
+Stefanini Romania
+Wipro Romania
+TCS Romania
+Infosys Romania
+HCL Romania
+Tech Mahindra Romania
+DXC Romania
+Atos Romania Office
+Capgemini Romania Office
+CGI Romania
+Alten Romania
+Altran Romania
+Adesso Romania
+msg systems Romania
+All for One Romania
+T-Systems Romania
+Avanade Romania
+Accenture Romania Office
+IBM Romania Office
+Oracle Romania Office
+Microsoft Romania Office
+Google Romania Office
+Amazon Romania Office
+Adobe Romania
+Autodesk Romania
+Electronic Arts Romania
+Gameloft Romania
+Ubisoft Romania
+King Romania
+Amber Studio
+Green Horse Games
+AMC Romania
+Those Awesome Guys
+Celsius Online
+Socialpoint Romania
+Bandai Namco Romania
+Twin Tails Romania
+
+# Additional Belgium
+Degroof Petercam
+Delen Private Bank
+Van Breda
+Argenta
+Belfius
+ING Belgium
+BNP Paribas Fortis
+KBC Belgium
+AXA Belgium
+AG Insurance
+Ethias
+P&V Insurance
+Baloise Belgium
+Allianz Belgium
+Zurich Belgium
+Generali Belgium
+NN Belgium
+Athora Belgium
+Monument Assurance Belgium
+Patronale Life
+Van Lanschot Belgium
+ABN AMRO Belgium
+Rabobank Belgium
+Deutsche Bank Belgium
+HSBC Belgium
+Barclays Belgium
+Credit Suisse Belgium
+UBS Belgium
+JPMorgan Belgium
+Goldman Sachs Belgium
+Morgan Stanley Belgium
+Bank of America Belgium
+Citibank Belgium
+Wells Fargo Belgium
+BNY Mellon Belgium
+State Street Belgium
+Northern Trust Belgium
+Nomura Belgium
+Macquarie Belgium
+Lazard Belgium
+Rothschild Belgium
+Greenhill Belgium
+Perella Weinberg Belgium
+Moelis Belgium
+Evercore Belgium
+PJT Partners Belgium
+Centerview Belgium
+Qatalyst Belgium
+
+# Additional Portugal
+OutSystems Portugal
+Talkdesk Portugal
+Unbabel Portugal
+Feedzai Portugal
+Farfetch Portugal
+Aptoide Portugal
+Codacy Portugal
+Sword Group Portugal
+Altice Labs
+SISCOG
+WIT Software
+Blip Portugal
+Novabase Portugal
+Critical TechWorks
+Natixis Portugal
+BNP Paribas CIB Portugal
+Capgemini Engineering Portugal
+Aubay Portugal
+CGI Portugal
+Devoteam Portugal
+KPMG Portugal
+EY Portugal
+PwC Portugal
+Deloitte Portugal
+McKinsey Portugal
+BCG Portugal
+Bain Portugal
+Accenture Portugal
+Atos Portugal
+Capgemini Portugal
+NTT Data Portugal
+Cognizant Portugal
+Infosys Portugal
+TCS Portugal
+Wipro Portugal
+HCL Portugal
+DXC Technology Portugal
+Celfocus
+Compta
+Opensoft
+PHC Software
+Primavera BSS
+TOTVS Portugal
+Sage Portugal
+SAP Portugal
+Oracle Portugal
+Microsoft Portugal
+Google Portugal
+Amazon Portugal
+Meta Portugal
+Apple Portugal
+Salesforce Portugal
+ServiceNow Portugal
+Workday Portugal
+VMware Portugal
+Dell Portugal
+HP Portugal
+Lenovo Portugal
+Intel Portugal
+Cisco Portugal
+Bosch Portugal
+Siemens Portugal
+Continental Portugal
+Volkswagen Digital Portugal
+Mercedes-Benz.io Portugal
+BMW Portugal
+Stellantis Portugal
+Toyota Portugal
+Renault Portugal
