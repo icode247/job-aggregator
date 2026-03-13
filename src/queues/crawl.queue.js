@@ -65,7 +65,7 @@ function createCrawlWorker(syncQueue) {
           break;
         }
         case 'google-all': {
-          for (const ats of ['greenhouse', 'lever', 'ashby', 'workable', 'recruitee', 'smartrecruiters', 'rippling', 'personio']) {
+          for (const ats of ['greenhouse', 'lever', 'ashby', 'workable', 'recruitee']) {
             const results = await crawlGoogle(ats, config.CRAWL_GOOGLE_MAX_PAGES);
             slugs.push(...results);
             await new Promise(r => setTimeout(r, 5000));

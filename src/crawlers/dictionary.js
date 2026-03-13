@@ -9,9 +9,6 @@ const ATS_PROBE_URLS = {
   lever: (slug) => `https://api.lever.co/v0/postings/${slug}`,
   workable: (slug) => `https://apply.workable.com/api/v1/widget/accounts/${slug}`,
   recruitee: (slug) => `https://${slug}.recruitee.com/api/offers`,
-  smartrecruiters: (slug) => `https://api.smartrecruiters.com/v1/companies/${slug}/postings`,
-  rippling: (slug) => `https://api.rippling.com/platform/api/ats/v1/board/${slug}/jobs`,
-  personio: (slug) => `https://${slug}.jobs.personio.de/xml`,
 };
 
 /**
@@ -47,11 +44,6 @@ async function probeSlug(slug) {
     try {
       const res = await fetch(urlFn(slug), { signal: AbortSignal.timeout(8000) });
       if (res.ok) {
-        // SmartRecruiters returns 200 with empty content for invalid slugs
-        if (ats === 'smartrecruiters') {
-          const data = await res.json();
-          if (!data.totalFound || data.totalFound === 0) return;
-        }
         results.push({ ats, slug });
       }
     } catch {

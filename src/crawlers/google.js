@@ -7,9 +7,6 @@ const ATS_SEARCH_QUERIES = {
   ashby:           { query: 'site:jobs.ashbyhq.com',           regex: /jobs\.ashbyhq\.com\/([a-z0-9_-]+)/gi },
   workable:        { query: 'site:apply.workable.com',         regex: /apply\.workable\.com\/([a-z0-9_-]+)/gi },
   recruitee:       { query: 'site:*.recruitee.com',            regex: /([a-z0-9_-]+)\.recruitee\.com/gi },
-  smartrecruiters: { query: 'site:jobs.smartrecruiters.com',   regex: /jobs\.smartrecruiters\.com\/([a-z0-9_-]+)/gi },
-  rippling:        { query: 'site:ats.rippling.com',           regex: /ats\.rippling\.com\/([a-z0-9_-]+)/gi },
-  personio:        { query: 'site:*.jobs.personio.de',         regex: /([a-z0-9_-]+)\.jobs\.personio\.de/gi },
 };
 
 const IGNORE_SLUGS = new Set([
