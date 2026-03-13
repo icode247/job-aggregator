@@ -35,8 +35,8 @@ async function migrate() {
       location        TEXT,
       workplace_type  TEXT,
       employment_type TEXT,
-      salary_min      INTEGER,
-      salary_max      INTEGER,
+      salary_min      TEXT,
+      salary_max      TEXT,
       salary_currency TEXT,
       salary_interval TEXT,
       description     TEXT,
@@ -69,6 +69,14 @@ async function migrate() {
   `);
 
   await exec('CREATE INDEX IF NOT EXISTS idx_crawl_sources_ats ON crawl_sources(ats)');
+
+  // Fix salary columns from INTEGER to TEXT (avoid type issues with decimals)
+  if (isPostgres) {
+    try {
+      await exec('ALTER TABLE jobs ALTER COLUMN salary_min TYPE TEXT USING salary_min::TEXT');
+      await exec('ALTER TABLE jobs ALTER COLUMN salary_max TYPE TEXT USING salary_max::TEXT');
+    } catch { /* already text */ }
+  }
 
   // Additional indexes for search/sort performance
   if (isPostgres) {
