@@ -31,7 +31,10 @@ router.post('/api/auth/token', (req, res) => {
 
   const { name, expiresIn } = req.body || {};
   const payload = { sub: name || 'api-client', iat: Math.floor(Date.now() / 1000) };
-  const token = jwt.sign(payload, config.API_SECRET, { expiresIn: expiresIn || '90d' });
+  const opts = {};
+  if (expiresIn && expiresIn !== 'never') opts.expiresIn = expiresIn;
+  else if (!expiresIn) opts.expiresIn = '90d';
+  const token = jwt.sign(payload, config.API_SECRET, opts);
 
   return res.json({ token });
 });
