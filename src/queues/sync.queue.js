@@ -12,7 +12,7 @@ function createSyncQueue() {
   return new Queue(QUEUE_NAME, {
     connection: createRedisConnection(),
     defaultJobOptions: {
-      attempts: 3,
+      attempts: 5,
       backoff: { type: 'exponential', delay: 60000 },
       removeOnComplete: 100,
       removeOnFail: 200,
