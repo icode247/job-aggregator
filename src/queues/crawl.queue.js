@@ -19,33 +19,20 @@ function createCrawlQueue() {
   });
 }
 
-/**
- * Process discovered slugs: deduplicate, create companies, enqueue sync jobs.
- */
 async function processDiscoveredSlugs(slugs, source, crawlRun, syncQueue) {
   let newCompanies = 0;
   let duplicates = 0;
 
   for (const { ats, slug } of slugs) {
-    // Dedup against crawl_sources
-    const isNew = crawlSourcesRepo.insertIfNew(ats, slug, source, crawlRun);
-    if (!isNew) {
-      duplicates++;
-      continue;
-    }
+    const isNew = await crawlSourcesRepo.insertIfNew(ats, slug, source, crawlRun);
+    if (!isNew) { duplicates++; continue; }
 
-    // Dedup against existing companies
-    const existing = companiesRepo.findByAtsAndSlug(ats, slug);
-    if (existing) {
-      duplicates++;
-      continue;
-    }
+    const existing = await companiesRepo.findByAtsAndSlug(ats, slug);
+    if (existing) { duplicates++; continue; }
 
-    // Create new company
-    const company = companiesRepo.createFromCrawl({ ats, atsSlug: slug, origin: 'crawl' });
+    const company = await companiesRepo.createFromCrawl({ ats, atsSlug: slug, origin: 'crawl' });
     if (company) {
       newCompanies++;
-      // Enqueue sync job to fetch actual jobs
       await syncQueue.add(`sync-${company.id}`, {
         companyId: company.id,
         ats: company.ats,
@@ -78,23 +65,19 @@ function createCrawlWorker(syncQueue) {
           break;
         }
         case 'google-all': {
-          // Crawl Google for all ATS platforms
           for (const ats of ['greenhouse', 'lever', 'ashby', 'workable', 'recruitee']) {
             const results = await crawlGoogle(ats, config.CRAWL_GOOGLE_MAX_PAGES);
             slugs.push(...results);
-            // Pause between ATS platforms
             await new Promise(r => setTimeout(r, 5000));
           }
           break;
         }
-        case 'dictionary': {
+        case 'dictionary':
           slugs = await crawlDictionary();
           break;
-        }
-        case 'sitemap': {
+        case 'sitemap':
           slugs = await crawlSitemaps();
           break;
-        }
         default:
           throw new Error(`Unknown crawl strategy: ${strategy}`);
       }

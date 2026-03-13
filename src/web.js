@@ -5,34 +5,37 @@ const { createApp } = require('./api/server');
 const { createCrawlQueue } = require('./queues/crawl.queue');
 const { createSyncQueue } = require('./queues/sync.queue');
 
-// Initialize
-migrate();
+async function main() {
+  await migrate();
 
-// Create queue connections so the API can enqueue jobs
-const crawlQueue = createCrawlQueue();
-const syncQueue = createSyncQueue();
+  const crawlQueue = createCrawlQueue();
+  const syncQueue = createSyncQueue();
 
-const app = createApp({ crawlQueue, syncQueue });
+  const app = createApp({ crawlQueue, syncQueue });
 
-const server = app.listen(config.PORT, () => {
-  logger.info({ port: config.PORT }, 'API server listening');
-});
-
-// Graceful shutdown
-async function shutdown(signal) {
-  logger.info({ signal }, 'Shutting down API server');
-  server.close(async () => {
-    await crawlQueue.close();
-    await syncQueue.close();
-    closeDb();
-    process.exit(0);
+  const server = app.listen(config.PORT, () => {
+    logger.info({ port: config.PORT }, 'API server listening');
   });
-  setTimeout(() => process.exit(1), 10000);
+
+  async function shutdown(signal) {
+    logger.info({ signal }, 'Shutting down API server');
+    server.close(async () => {
+      await crawlQueue.close();
+      await syncQueue.close();
+      await closeDb();
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(1), 10000);
+  }
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('unhandledRejection', (err) => {
+    logger.error({ err: err?.message }, 'Unhandled rejection');
+  });
 }
 
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
-
-process.on('unhandledRejection', (err) => {
-  logger.error({ err: err?.message }, 'Unhandled rejection');
+main().catch((err) => {
+  logger.fatal({ err: err.message }, 'Web server failed to start');
+  process.exit(1);
 });

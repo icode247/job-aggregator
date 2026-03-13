@@ -24,13 +24,11 @@ function createDiscoveryWorker(syncQueue) {
   const worker = new Worker(
     QUEUE_NAME,
     async (job) => {
-      // Fan-out jobs are handled by the worker 'completed' event in worker.js
       if (job.data.fanout) return { status: 'fanout' };
 
       const { companyId, careerUrl, domain } = job.data;
       logger.info({ companyId, careerUrl }, 'Discovery job started');
 
-      // Try Bright Data HTML scan first, then fall back to direct API probing
       let html = '';
       try {
         html = await fetchUnlockedHtml(careerUrl);
@@ -41,17 +39,16 @@ function createDiscoveryWorker(syncQueue) {
       const result = await extractAtsSlug(html, domain);
 
       if (!result) {
-        companiesRepo.markUnsupported(companyId);
+        await companiesRepo.markUnsupported(companyId);
         logger.warn({ companyId, careerUrl }, 'No supported ATS found');
         return { status: 'unsupported' };
       }
 
-      companiesRepo.updateDiscovery(companyId, {
+      await companiesRepo.updateDiscovery(companyId, {
         ats: result.ats,
         atsSlug: result.clientname,
       });
 
-      // Enqueue a sync job for this newly discovered company
       await syncQueue.add(`sync-${companyId}`, {
         companyId,
         ats: result.ats,
@@ -68,10 +65,10 @@ function createDiscoveryWorker(syncQueue) {
     }
   );
 
-  worker.on('failed', (job, err) => {
+  worker.on('failed', async (job, err) => {
     logger.error({ jobId: job?.id, companyId: job?.data?.companyId, err: err.message }, 'Discovery job failed');
     if (job?.data?.companyId && job.attemptsMade >= job.opts.attempts) {
-      companiesRepo.markFailed(job.data.companyId, err.message);
+      await companiesRepo.markFailed(job.data.companyId, err.message);
     }
   });
 

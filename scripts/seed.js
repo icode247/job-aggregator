@@ -16,17 +16,21 @@ function extractDomain(url) {
   }
 }
 
-migrate();
+async function main() {
+  await migrate();
 
-let added = 0;
-for (const url of SEED_URLS) {
-  const domain = extractDomain(url);
-  const company = companiesRepo.create({ careerUrl: url, domain });
-  if (company) {
-    added++;
-    logger.info({ id: company.id, domain, url }, 'Seeded company');
+  let added = 0;
+  for (const url of SEED_URLS) {
+    const domain = extractDomain(url);
+    const company = await companiesRepo.create({ careerUrl: url, domain });
+    if (company) {
+      added++;
+      logger.info({ id: company.id, domain, url }, 'Seeded company');
+    }
   }
+
+  logger.info({ added, total: SEED_URLS.length }, 'Seed complete');
+  process.exit(0);
 }
 
-logger.info({ added, total: SEED_URLS.length }, 'Seed complete');
-process.exit(0);
+main().catch(err => { console.error(err); process.exit(1); });

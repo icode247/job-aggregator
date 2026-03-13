@@ -1,28 +1,34 @@
-const { getDb } = require('../connection');
+const { query, isPostgres } = require('../connection');
 
 const crawlSourcesRepo = {
-  /**
-   * Insert a new crawl source. Returns true if it was new, false if already existed.
-   */
-  insertIfNew(ats, slug, source, crawlRun) {
-    const result = getDb().prepare(
-      'INSERT OR IGNORE INTO crawl_sources (ats, slug, source, crawl_run) VALUES (?, ?, ?, ?)'
-    ).run(ats, slug, source, crawlRun);
-    return result.changes > 0;
+  async insertIfNew(ats, slug, source, crawlRun) {
+    if (isPostgres) {
+      const { rowCount } = await query(
+        'INSERT INTO crawl_sources (ats, slug, source, crawl_run) VALUES (?, ?, ?, ?) ON CONFLICT(ats, slug) DO NOTHING',
+        [ats, slug, source, crawlRun]
+      );
+      return rowCount > 0;
+    }
+    const { rowCount } = await query(
+      'INSERT OR IGNORE INTO crawl_sources (ats, slug, source, crawl_run) VALUES (?, ?, ?, ?)',
+      [ats, slug, source, crawlRun]
+    );
+    return rowCount > 0;
   },
 
-  exists(ats, slug) {
-    return !!getDb().prepare('SELECT 1 FROM crawl_sources WHERE ats = ? AND slug = ?').get(ats, slug);
+  async exists(ats, slug) {
+    const { rows } = await query('SELECT 1 FROM crawl_sources WHERE ats = ? AND slug = ?', [ats, slug]);
+    return rows.length > 0;
   },
 
-  countBySource() {
-    return getDb().prepare(
-      'SELECT source, ats, COUNT(*) as count FROM crawl_sources GROUP BY source, ats'
-    ).all();
+  async countBySource() {
+    const { rows } = await query('SELECT source, ats, COUNT(*) as count FROM crawl_sources GROUP BY source, ats');
+    return rows;
   },
 
-  totalCount() {
-    return getDb().prepare('SELECT COUNT(*) as count FROM crawl_sources').get().count;
+  async totalCount() {
+    const { rows } = await query('SELECT COUNT(*) as count FROM crawl_sources');
+    return parseInt(rows[0].count, 10);
   },
 };
 

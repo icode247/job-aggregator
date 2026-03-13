@@ -33,7 +33,7 @@ function formatJob(row) {
   };
 }
 
-router.get('/api/jobs', (req, res) => {
+router.get('/api/jobs', async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
   const offset = parseInt(req.query.offset, 10) || 0;
   const filters = {};
@@ -41,8 +41,8 @@ router.get('/api/jobs', (req, res) => {
   if (req.query.company_id) filters.companyId = parseInt(req.query.company_id, 10);
   if (req.query.ats) filters.ats = req.query.ats;
 
-  const jobs = jobsRepo.findActive({ ...filters, limit, offset });
-  const total = jobsRepo.countActive(filters);
+  const jobs = await jobsRepo.findActive({ ...filters, limit, offset });
+  const total = await jobsRepo.countActive(filters);
 
   res.json({
     meta: { total, limit, offset },
@@ -50,8 +50,8 @@ router.get('/api/jobs', (req, res) => {
   });
 });
 
-router.get('/api/jobs/:id', (req, res) => {
-  const job = jobsRepo.findById(req.params.id);
+router.get('/api/jobs/:id', async (req, res) => {
+  const job = await jobsRepo.findById(req.params.id);
   if (!job) return res.status(404).json({ error: 'Job not found' });
 
   const formatted = formatJob(job);

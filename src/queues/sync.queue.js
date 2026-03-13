@@ -24,7 +24,6 @@ function createSyncWorker() {
   const worker = new Worker(
     QUEUE_NAME,
     async (job) => {
-      // Fan-out jobs are handled by the worker 'completed' event in worker.js
       if (job.data.fanout) return { status: 'fanout' };
 
       const { companyId, ats, atsSlug } = job.data;
@@ -33,15 +32,12 @@ function createSyncWorker() {
       const adapter = getAdapter(ats);
       const result = await adapter.fetchJobs(atsSlug);
 
-      // Adapters now return { jobs, meta }
       const incomingJobs = result.jobs || result;
       const meta = result.meta || {};
 
-      // Get the company's current data
-      const company = companiesRepo.findById(companyId);
+      const company = await companiesRepo.findById(companyId);
       const domain = company?.domain;
 
-      // For Greenhouse, fetch company name from board endpoint
       if (ats === 'greenhouse' && adapter.fetchCompanyMeta) {
         const ghMeta = await adapter.fetchCompanyMeta(atsSlug);
         if (ghMeta) {
@@ -49,20 +45,18 @@ function createSyncWorker() {
         }
       }
 
-      // Derive company name from ATS slug if API doesn't provide it
       if (!meta.companyName && atsSlug) {
         meta.companyName = atsSlug.charAt(0).toUpperCase() + atsSlug.slice(1);
       }
 
-      // Fetch real logo from the ATS hosted page (only if we don't have one yet)
       if (!company?.logo_url || company.logo_url.includes('clearbit.com')) {
         meta.logoUrl = await fetchLogoUrl(ats, atsSlug, domain);
       }
 
-      companiesRepo.updateMeta(companyId, meta);
+      await companiesRepo.updateMeta(companyId, meta);
 
-      const diff = jobsRepo.syncForCompany(companyId, ats, incomingJobs);
-      companiesRepo.updateLastSynced(companyId);
+      const diff = await jobsRepo.syncForCompany(companyId, ats, incomingJobs);
+      await companiesRepo.updateLastSynced(companyId);
 
       logger.info({ companyId, ats, ...diff }, 'Sync job complete');
       return diff;
@@ -74,10 +68,10 @@ function createSyncWorker() {
     }
   );
 
-  worker.on('failed', (job, err) => {
+  worker.on('failed', async (job, err) => {
     logger.error({ jobId: job?.id, companyId: job?.data?.companyId, err: err.message }, 'Sync job failed');
     if (job?.data?.companyId && job.attemptsMade >= job.opts.attempts) {
-      companiesRepo.markFailed(job.data.companyId, err.message);
+      await companiesRepo.markFailed(job.data.companyId, err.message);
     }
   });
 

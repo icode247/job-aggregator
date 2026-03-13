@@ -3,11 +3,13 @@ const { companiesRepo, jobsRepo } = require('../../db');
 
 const router = Router();
 
-router.get('/health', (req, res) => {
+router.get('/health', async (req, res) => {
+  const active = await companiesRepo.findActive();
+  const totalJobs = await jobsRepo.countActive();
   res.json({
     status: 'ok',
-    companies_tracked: companiesRepo.findActive().length,
-    total_active_jobs: jobsRepo.countActive(),
+    companies_tracked: active.length,
+    total_active_jobs: totalJobs,
   });
 });
 
