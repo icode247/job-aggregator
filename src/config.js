@@ -10,6 +10,9 @@ module.exports = {
   // Redis
   REDIS_URL: process.env.REDIS_URL || 'redis://127.0.0.1:6379',
 
+  // Auth
+  API_SECRET: process.env.API_SECRET || '',
+
   // Bright Data
   BRIGHT_DATA_API_KEY: process.env.BRIGHT_DATA_API_KEY || '',
   BRIGHT_DATA_ZONE: process.env.BRIGHT_DATA_ZONE || 'web_unlocker1',
