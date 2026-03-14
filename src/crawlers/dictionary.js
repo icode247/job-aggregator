@@ -11,6 +11,9 @@ const ATS_PROBE_URLS = {
   recruitee: (slug) => `https://${slug}.recruitee.com/api/offers`,
   smartrecruiters: (slug) => `https://api.smartrecruiters.com/v1/companies/${slug}/postings`,
   rippling: (slug) => `https://api.rippling.com/platform/api/ats/v1/board/${slug}/jobs`,
+  personio: (slug) => `https://${slug}.jobs.personio.de/search.json`,
+  breezy: (slug) => `https://${slug}.breezy.hr/json`,
+  jazzhr: (slug) => `https://app.jazz.co/widgets/basic/create/${slug}`,
 };
 
 /**
@@ -50,6 +53,11 @@ async function probeSlug(slug) {
         if (ats === 'smartrecruiters') {
           const data = await res.json();
           if (!data.totalFound || data.totalFound === 0) return;
+        }
+        // JazzHR returns 200 for invalid slugs but with no job links
+        if (ats === 'jazzhr') {
+          const html = await res.text();
+          if (!html.includes('applytojob.com')) return;
         }
         results.push({ ats, slug });
       }

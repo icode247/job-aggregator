@@ -34,6 +34,9 @@ const LOGO_PATTERNS = {
     // Rippling company logos
     /https:\/\/[^"'\s)]*rippling[^"'\s)]*logo[^"'\s)]+/i,
   ],
+  personio: [],
+  breezy: [],
+  jazzhr: [],
 };
 
 /**
@@ -59,6 +62,9 @@ async function fetchLogoUrl(ats, atsSlug, domain) {
     recruitee: `https://${atsSlug}.recruitee.com`,
     smartrecruiters: `https://careers.smartrecruiters.com/${atsSlug}`,
     rippling: `https://ats.rippling.com/${atsSlug}`,
+    personio: `https://${atsSlug}.jobs.personio.de`,
+    breezy: `https://${atsSlug}.breezy.hr`,
+    jazzhr: `https://${atsSlug}.applytojob.com`,
   };
 
   const pageUrl = pageUrls[ats];

@@ -14,6 +14,10 @@ const HTML_PATTERNS = [
   { ats: 'lever', regex: /api\.lever\.co\/v0\/postings\/([^/"'?#&\s]+)/ },
   { ats: 'workable', regex: /apply\.workable\.com\/(?:api\/v[12]\/widget\/accounts\/)?([^/"'?#&\s]+)/ },
   { ats: 'recruitee', regex: /([^/"'?#&\s]+)\.recruitee\.com/ },
+  { ats: 'personio', regex: /([^/"'?#&\s]+)\.jobs\.personio\.(?:de|com)/ },
+  { ats: 'breezy', regex: /([^/"'?#&\s]+)\.breezy\.hr/ },
+  { ats: 'jazzhr', regex: /([^/"'?#&\s]+)\.applytojob\.com/ },
+  { ats: 'jazzhr', regex: /app\.jazz\.co\/widgets\/basic\/create\/([^/"'?#&\s]+)/ },
 ];
 
 const FALSE_POSITIVES = new Set(['www', 'api', 'app', 'cdn', 'js', 'css', 'docs', 'support']);
@@ -45,6 +49,8 @@ async function probeAtsApis(domain) {
     { ats: 'lever', test: (slug) => fetch(`https://api.lever.co/v0/postings/${slug}`).then(r => r.ok) },
     { ats: 'workable', test: (slug) => fetch(`https://apply.workable.com/api/v1/widget/accounts/${slug}`).then(r => r.ok) },
     { ats: 'recruitee', test: (slug) => fetch(`https://${slug}.recruitee.com/api/offers`).then(r => r.ok) },
+    { ats: 'personio', test: (slug) => fetch(`https://${slug}.jobs.personio.de/search.json`).then(r => r.ok) },
+    { ats: 'breezy', test: (slug) => fetch(`https://${slug}.breezy.hr/json`).then(r => r.ok) },
   ];
 
   for (const slug of slugs) {

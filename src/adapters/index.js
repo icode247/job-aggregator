@@ -5,6 +5,9 @@ const workable = require('./workable');
 const recruitee = require('./recruitee');
 const smartrecruiters = require('./smartrecruiters');
 const rippling = require('./rippling');
+const personio = require('./personio');
+const breezy = require('./breezy');
+const jazzhr = require('./jazzhr');
 
 const adapters = {
   greenhouse,
@@ -14,6 +17,9 @@ const adapters = {
   recruitee,
   smartrecruiters,
   rippling,
+  personio,
+  breezy,
+  jazzhr,
 };
 
 function getAdapter(atsName) {
