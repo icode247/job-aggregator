@@ -31,7 +31,18 @@ async function fetchJobDetail(url) {
       if (logoUrl.startsWith('//')) logoUrl = 'https:' + logoUrl;
     }
 
-    return { description, logoUrl };
+    // Extract job attributes from detail page
+    const attr = (title) => {
+      const m = html.match(new RegExp(`title="${title}"[^>]*>\\s*<i[^>]*><\\/i>([^<]+)`, 'i'));
+      return m ? m[1].trim() : null;
+    };
+
+    const location = attr('Location');
+    const employmentType = attr('Type');
+    const department = attr('Department');
+    const experience = attr('Experience');
+
+    return { description, logoUrl, location, employmentType, department, experience };
   } catch {
     return null;
   }
@@ -115,13 +126,16 @@ async function fetchJobs(clientname) {
 
       if (!logoUrl && detail?.logoUrl) logoUrl = detail.logoUrl;
 
+      const location = detail?.location || l.location;
+      const department = detail?.department || l.department;
+
       jobs.push({
         external_id: `jazzhr_${l.jobId}`,
         title: l.title,
-        department: l.department,
-        location: l.location,
-        workplace_type: l.location?.toLowerCase().includes('remote') ? 'remote' : null,
-        employment_type: null,
+        department,
+        location,
+        workplace_type: location?.toLowerCase().includes('remote') ? 'remote' : null,
+        employment_type: detail?.employmentType || null,
         salary_min: null,
         salary_max: null,
         salary_currency: null,

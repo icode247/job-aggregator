@@ -9,21 +9,18 @@ async function fetchJobDetail(url) {
     if (!res.ok) return null;
     const html = await res.text();
 
-    // Extract description from JSON-LD
+    // Extract description from JSON-LD (find JobPosting, not WebSite)
     let description = null;
-    const ldMatch = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/i);
-    if (ldMatch) {
+    const ldRegex = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi;
+    let ldMatch;
+    while ((ldMatch = ldRegex.exec(html)) !== null) {
       try {
         const ld = JSON.parse(ldMatch[1]);
-        description = ld.description || null;
+        if (ld['@type'] === 'JobPosting' && ld.description) {
+          description = ld.description;
+          break;
+        }
       } catch { /* invalid JSON-LD */ }
-    }
-
-    // Fallback: extract from meta description
-    if (!description) {
-      const metaMatch = html.match(/<meta[^>]*name="description"[^>]*content="([^"]+)"/i)
-        || html.match(/<meta[^>]*content="([^"]+)"[^>]*name="description"/i);
-      if (metaMatch) description = metaMatch[1];
     }
 
     // Extract company logo from gallery CDN
