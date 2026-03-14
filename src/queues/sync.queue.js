@@ -8,6 +8,34 @@ const config = require('../config');
 
 const QUEUE_NAME = 'sync';
 
+// Per-ATS concurrency limits for platforms with aggressive rate limiting
+const ATS_MAX_CONCURRENT = { workable: 3, recruitee: 3 };
+const atsConcurrency = {};
+
+function acquireAtsSlot(ats) {
+  if (!ATS_MAX_CONCURRENT[ats]) return true;
+  atsConcurrency[ats] = atsConcurrency[ats] || 0;
+  if (atsConcurrency[ats] >= ATS_MAX_CONCURRENT[ats]) return false;
+  atsConcurrency[ats]++;
+  return true;
+}
+
+function releaseAtsSlot(ats) {
+  if (!ATS_MAX_CONCURRENT[ats]) return;
+  atsConcurrency[ats] = Math.max(0, (atsConcurrency[ats] || 0) - 1);
+}
+
+function waitForAtsSlot(ats, interval = 500) {
+  if (!ATS_MAX_CONCURRENT[ats]) return Promise.resolve();
+  return new Promise((resolve) => {
+    const check = () => {
+      if (acquireAtsSlot(ats)) return resolve();
+      setTimeout(check, interval);
+    };
+    check();
+  });
+}
+
 function createSyncQueue() {
   return new Queue(QUEUE_NAME, {
     connection: createRedisConnection(),
@@ -27,39 +55,47 @@ function createSyncWorker() {
       if (job.data.fanout) return { status: 'fanout' };
 
       const { companyId, ats, atsSlug } = job.data;
+
+      // Wait for a slot if this ATS has a concurrency cap
+      await waitForAtsSlot(ats);
+
       logger.info({ companyId, ats, atsSlug }, 'Sync job started');
 
       const adapter = getAdapter(ats);
-      const result = await adapter.fetchJobs(atsSlug);
+      try {
+        const result = await adapter.fetchJobs(atsSlug);
 
-      const incomingJobs = result.jobs || result;
-      const meta = result.meta || {};
+        const incomingJobs = result.jobs || result;
+        const meta = result.meta || {};
 
-      const company = await companiesRepo.findById(companyId);
-      const domain = company?.domain;
+        const company = await companiesRepo.findById(companyId);
+        const domain = company?.domain;
 
-      if (ats === 'greenhouse' && adapter.fetchCompanyMeta) {
-        const ghMeta = await adapter.fetchCompanyMeta(atsSlug);
-        if (ghMeta) {
-          meta.companyName = meta.companyName || ghMeta.companyName;
+        if (ats === 'greenhouse' && adapter.fetchCompanyMeta) {
+          const ghMeta = await adapter.fetchCompanyMeta(atsSlug);
+          if (ghMeta) {
+            meta.companyName = meta.companyName || ghMeta.companyName;
+          }
         }
+
+        if (!meta.companyName && atsSlug) {
+          meta.companyName = atsSlug.charAt(0).toUpperCase() + atsSlug.slice(1);
+        }
+
+        if (!company?.logo_url || company.logo_url.includes('clearbit.com')) {
+          meta.logoUrl = await fetchLogoUrl(ats, atsSlug, domain);
+        }
+
+        await companiesRepo.updateMeta(companyId, meta);
+
+        const diff = await jobsRepo.syncForCompany(companyId, ats, incomingJobs);
+        await companiesRepo.updateLastSynced(companyId);
+
+        logger.info({ companyId, ats, ...diff }, 'Sync job complete');
+        return diff;
+      } finally {
+        releaseAtsSlot(ats);
       }
-
-      if (!meta.companyName && atsSlug) {
-        meta.companyName = atsSlug.charAt(0).toUpperCase() + atsSlug.slice(1);
-      }
-
-      if (!company?.logo_url || company.logo_url.includes('clearbit.com')) {
-        meta.logoUrl = await fetchLogoUrl(ats, atsSlug, domain);
-      }
-
-      await companiesRepo.updateMeta(companyId, meta);
-
-      const diff = await jobsRepo.syncForCompany(companyId, ats, incomingJobs);
-      await companiesRepo.updateLastSynced(companyId);
-
-      logger.info({ companyId, ats, ...diff }, 'Sync job complete');
-      return diff;
     },
     {
       connection: createRedisConnection(),
