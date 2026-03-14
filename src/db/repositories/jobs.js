@@ -53,9 +53,9 @@ function buildFilters(filters = {}) {
     const days = intervals[filters.posted];
     if (days) {
       if (isPostgres) {
-        clauses.push(`j.first_seen_at >= NOW() - INTERVAL '${days} days'`);
+        clauses.push(`COALESCE(j.posted_at, j.first_seen_at) >= NOW() - INTERVAL '${days} days'`);
       } else {
-        clauses.push(`j.first_seen_at >= datetime('now', '-${days} days')`);
+        clauses.push(`COALESCE(j.posted_at, j.first_seen_at) >= datetime('now', '-${days} days')`);
       }
     }
   }
@@ -124,6 +124,14 @@ const jobsRepo = {
     let updated = 0;
     let removed = 0;
 
+    // Filter out jobs older than 3 months if they have a posted date
+    const THREE_MONTHS_AGO = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const freshJobs = incomingJobs.filter(job => {
+      if (!job.posted_at) return true; // Keep jobs without dates (can't determine age)
+      const posted = new Date(job.posted_at);
+      return !isNaN(posted.getTime()) && posted >= THREE_MONTHS_AGO;
+    });
+
     await transaction(async (tx) => {
       const { rows: existingJobs } = await tx.query(
         'SELECT id, external_id FROM jobs WHERE company_id = ? AND removed_at IS NULL',
@@ -131,9 +139,9 @@ const jobsRepo = {
       );
 
       const existingMap = new Map(existingJobs.map(j => [j.external_id, j.id]));
-      const incomingIds = new Set(incomingJobs.map(j => j.external_id));
+      const incomingIds = new Set(freshJobs.map(j => j.external_id));
 
-      for (const job of incomingJobs) {
+      for (const job of freshJobs) {
         await tx.query(
           `INSERT INTO jobs (
             external_id, company_id, ats, title, department, location,
