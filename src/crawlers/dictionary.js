@@ -116,13 +116,13 @@ async function crawlDictionary(onHits) {
 
   logger.info({ count: names.length }, 'Starting dictionary crawl');
 
-  const allResults = [];
-  const batchSize = 15; // 15 names concurrently, each probing 7 ATS = 105 requests
+  let totalHits = 0;
+  const batchSize = 25;
 
   for (let i = 0; i < names.length; i += batchSize) {
     const batch = names.slice(i, i + batchSize);
     const hits = await probeBatch(batch);
-    allResults.push(...hits);
+    totalHits += hits.length;
 
     // Process hits incrementally so new companies appear immediately
     if (hits.length > 0 && onHits) {
@@ -133,13 +133,13 @@ async function crawlDictionary(onHits) {
 
     // Rate limit: pause between batches
     if (i % 150 === 0 && i > 0) {
-      logger.info({ progress: `${i}/${names.length}`, hits: allResults.length }, 'Dictionary crawl progress');
+      logger.info({ progress: `${i}/${names.length}`, hits: totalHits }, 'Dictionary crawl progress');
     }
     await new Promise(r => setTimeout(r, 500));
   }
 
-  logger.info({ totalHits: allResults.length, totalProbed: names.length }, 'Dictionary crawl complete');
-  return allResults;
+  logger.info({ totalHits, totalProbed: names.length }, 'Dictionary crawl complete');
+  return totalHits;
 }
 
 module.exports = { crawlDictionary, nameToSlugs, probeSlug };

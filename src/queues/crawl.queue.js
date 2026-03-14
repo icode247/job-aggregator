@@ -84,6 +84,12 @@ function createCrawlWorker(syncQueue) {
           throw new Error(`Unknown crawl strategy: ${strategy}`);
       }
 
+      // Dictionary strategy already processes hits incrementally via onHits
+      if (strategy === 'dictionary') {
+        logger.info({ strategy, totalHits: slugs }, 'Crawl job complete');
+        return { newCompanies: 0, duplicates: 0, totalHits: slugs };
+      }
+
       const result = await processDiscoveredSlugs(slugs, strategy, run, syncQueue);
       logger.info({ strategy, ...result }, 'Crawl job complete');
       return result;

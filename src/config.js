@@ -20,11 +20,11 @@ module.exports = {
   // Queue settings
   DISCOVERY_INTERVAL_MS: 1000 * 60 * 60 * 24 * 7, // 7 days
   SYNC_INTERVAL_MS: 1000 * 60 * 60 * 2,           // 2 hours
-  DISCOVERY_RATE_LIMIT: { max: 5, duration: 60000 },
-  SYNC_RATE_LIMIT: { max: 80, duration: 60000 },
+  DISCOVERY_RATE_LIMIT: { max: 10, duration: 60000 },
+  SYNC_RATE_LIMIT: { max: 160, duration: 60000 },
 
   // Crawl settings
-  CRAWL_RATE_LIMIT: { max: 3, duration: 60000 },
+  CRAWL_RATE_LIMIT: { max: 6, duration: 60000 },
   CRAWL_INTERVAL_MS: 1000 * 60 * 60 * 24 * 3, // 3 days
   CRAWL_GOOGLE_MAX_PAGES: parseInt(process.env.CRAWL_GOOGLE_MAX_PAGES, 10) || 10,
   CRAWL_DICTIONARY_PATH: process.env.CRAWL_DICTIONARY_PATH || path.join(__dirname, '..', 'data', 'company-names.txt'),
