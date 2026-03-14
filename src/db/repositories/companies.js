@@ -83,6 +83,12 @@ const companiesRepo = {
       ashby: `https://jobs.ashbyhq.com/${atsSlug}`,
       workable: `https://apply.workable.com/${atsSlug}`,
       recruitee: `https://${atsSlug}.recruitee.com`,
+      smartrecruiters: `https://careers.smartrecruiters.com/${atsSlug}`,
+      rippling: `https://ats.rippling.com/${atsSlug}`,
+      personio: `https://${atsSlug}.jobs.personio.de`,
+      breezy: `https://${atsSlug}.breezy.hr`,
+      jazzhr: `https://app.jazz.co/widgets/basic/create/${atsSlug}`,
+      workday: `https://${atsSlug}.myworkdayjobs.com`,
     };
     const careerUrl = boardUrls[ats] || `https://${atsSlug}.com/careers`;
     const domain = `${atsSlug}.com`;
