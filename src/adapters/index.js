@@ -8,6 +8,7 @@ const rippling = require('./rippling');
 const personio = require('./personio');
 const breezy = require('./breezy');
 const jazzhr = require('./jazzhr');
+const workday = require('./workday');
 
 const adapters = {
   greenhouse,
@@ -20,6 +21,7 @@ const adapters = {
   personio,
   breezy,
   jazzhr,
+  workday,
 };
 
 function getAdapter(atsName) {

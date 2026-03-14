@@ -43,7 +43,7 @@ function formatJob(row) {
  *   location       - Free text location filter (e.g. "United States", "Remote", "London")
  *   posted         - 24h | 7d | 30d | 90d
  *   company_id     - Filter by company ID
- *   ats            - Filter by ATS (greenhouse, lever, ashby, workable, recruitee)
+ *   ats            - Filter by ATS (greenhouse, lever, ashby, workable, recruitee, smartrecruiters, rippling, personio, breezy, jazzhr, workday)
  *   limit          - Results per page (default 50, max 200)
  *   offset         - Pagination offset
  */

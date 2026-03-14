@@ -37,6 +37,7 @@ const LOGO_PATTERNS = {
   personio: [],
   breezy: [],
   jazzhr: [],
+  workday: [],
 };
 
 /**
@@ -65,6 +66,7 @@ async function fetchLogoUrl(ats, atsSlug, domain) {
     personio: `https://${atsSlug}.jobs.personio.de`,
     breezy: `https://${atsSlug}.breezy.hr`,
     jazzhr: `https://${atsSlug}.applytojob.com`,
+    workday: null, // Workday career pages are JS-rendered, can't scrape logo
   };
 
   const pageUrl = pageUrls[ats];

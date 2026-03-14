@@ -18,6 +18,7 @@ const HTML_PATTERNS = [
   { ats: 'breezy', regex: /([^/"'?#&\s]+)\.breezy\.hr/ },
   { ats: 'jazzhr', regex: /([^/"'?#&\s]+)\.applytojob\.com/ },
   { ats: 'jazzhr', regex: /app\.jazz\.co\/widgets\/basic\/create\/([^/"'?#&\s]+)/ },
+  { ats: 'workday', regex: /([^/"'?#&\s]+)\.wd\d+\.myworkdayjobs\.com/ },
 ];
 
 const FALSE_POSITIVES = new Set(['www', 'api', 'app', 'cdn', 'js', 'css', 'docs', 'support']);

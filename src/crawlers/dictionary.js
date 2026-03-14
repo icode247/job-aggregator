@@ -66,6 +66,26 @@ async function probeSlug(slug) {
     }
   });
 
+  // Workday needs special probing — try robots.txt across wd numbers
+  const workdayProbe = (async () => {
+    for (const wd of [1, 2, 3, 5, 12]) {
+      try {
+        const res = await fetch(
+          `https://${slug}.wd${wd}.myworkdayjobs.com/robots.txt`,
+          { signal: AbortSignal.timeout(5000) }
+        );
+        if (res.ok) {
+          const text = await res.text();
+          if (text.includes('Sitemap:')) {
+            results.push({ ats: 'workday', slug });
+            return;
+          }
+        }
+      } catch { /* skip */ }
+    }
+  })();
+  probes.push(workdayProbe);
+
   await Promise.allSettled(probes);
   return results;
 }
