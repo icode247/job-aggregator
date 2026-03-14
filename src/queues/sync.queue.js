@@ -71,6 +71,8 @@ function createSyncWorker() {
   worker.on('failed', async (job, err) => {
     logger.error({ jobId: job?.id, companyId: job?.data?.companyId, err: err.message }, 'Sync job failed');
     if (job?.data?.companyId && job.attemptsMade >= job.opts.attempts) {
+      // Don't permanently fail companies for rate limiting — they'll succeed next cycle
+      if (err.message.includes('429')) return;
       await companiesRepo.markFailed(job.data.companyId, err.message);
     }
   });
