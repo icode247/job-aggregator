@@ -6,6 +6,11 @@ const companiesRepo = {
     return rows;
   },
 
+  async findPending() {
+    const { rows } = await query("SELECT * FROM companies WHERE status = 'pending' AND ats IS NULL");
+    return rows;
+  },
+
   async findActive() {
     const { rows } = await query("SELECT * FROM companies WHERE status = 'active'");
     return rows;

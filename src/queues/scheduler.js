@@ -22,7 +22,7 @@ async function registerSchedules(discoveryQueue, syncQueue, crawlQueue) {
 }
 
 async function fanoutDiscovery(discoveryQueue) {
-  const companies = await companiesRepo.findAll();
+  const companies = await companiesRepo.findPending();
   logger.info({ count: companies.length }, 'Fanning out discovery jobs');
   for (const company of companies) {
     await discoveryQueue.add(`discover-${company.id}`, {
