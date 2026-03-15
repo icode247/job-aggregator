@@ -2,7 +2,7 @@ const logger = require('../logger');
 
 const WD_NUMBERS = [1, 2, 3, 5, 12];
 const PAGE_SIZE = 20;
-const DETAIL_BATCH_SIZE = 5;
+const DETAIL_BATCH_SIZE = 3;
 
 /**
  * Discover the Workday instance number (wd1-wd12) and site slug
@@ -110,7 +110,7 @@ async function fetchJobs(clientname) {
     if (page.length < PAGE_SIZE) break;
   }
 
-  // Step 2: Fetch details in batches
+  // Step 2: Fetch details in batches with delay to avoid 429s
   const jobs = [];
   let companyName = null;
 
@@ -119,6 +119,11 @@ async function fetchJobs(clientname) {
     const details = await Promise.all(
       batch.map(p => fetchJobDetail(baseUrl, p.externalPath))
     );
+
+    // Pause between batches to avoid Workday rate limiting
+    if (i + DETAIL_BATCH_SIZE < postings.length) {
+      await new Promise(r => setTimeout(r, 300));
+    }
 
     for (let j = 0; j < batch.length; j++) {
       const posting = batch[j];
