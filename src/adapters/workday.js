@@ -157,7 +157,9 @@ async function fetchJobs(clientname) {
 
   logger.info({ slug: clientname, wdNum, siteSlug, fetched: jobs.length }, 'Workday fetch complete');
 
-  return { jobs, meta: { companyName } };
+  const logoUrl = `https://${clientname}.wd${wdNum}.myworkdayjobs.com/${siteSlug}/assets/logo`;
+
+  return { jobs, meta: { companyName, logoUrl } };
 }
 
 module.exports = { fetchJobs, discoverConfig };
