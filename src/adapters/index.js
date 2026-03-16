@@ -9,6 +9,9 @@ const personio = require('./personio');
 const breezy = require('./breezy');
 const jazzhr = require('./jazzhr');
 const workday = require('./workday');
+const zoho = require('./zoho');
+const icims = require('./icims');
+const oracle = require('./oracle');
 
 const adapters = {
   greenhouse,
@@ -22,6 +25,9 @@ const adapters = {
   breezy,
   jazzhr,
   workday,
+  zoho,
+  icims,
+  oracle,
 };
 
 function getAdapter(atsName) {

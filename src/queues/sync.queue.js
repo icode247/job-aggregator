@@ -83,7 +83,10 @@ function createSyncWorker() {
         }
 
         if (!company?.logo_url || company.logo_url.includes('clearbit.com')) {
-          meta.logoUrl = await fetchLogoUrl(ats, atsSlug, domain);
+          // Use logo from adapter meta first, fall back to scraping career page
+          if (!meta.logoUrl) {
+            meta.logoUrl = await fetchLogoUrl(ats, atsSlug, domain);
+          }
         }
 
         await companiesRepo.updateMeta(companyId, meta);

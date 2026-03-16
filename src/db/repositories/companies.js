@@ -94,6 +94,9 @@ const companiesRepo = {
       breezy: `https://${atsSlug}.breezy.hr`,
       jazzhr: `https://app.jazz.co/widgets/basic/create/${atsSlug}`,
       workday: `https://${atsSlug}.myworkdayjobs.com`,
+      zoho: `https://${atsSlug}.zohorecruit.com/jobs/Careers`,
+      icims: `https://careers.${atsSlug}.com`,
+      oracle: `https://${atsSlug}.oraclecloud.com`,
     };
     const careerUrl = boardUrls[ats] || `https://${atsSlug}.com/careers`;
     const domain = `${atsSlug}.com`;

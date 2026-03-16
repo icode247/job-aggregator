@@ -14,6 +14,7 @@ const ATS_PROBE_URLS = {
   personio: (slug) => `https://${slug}.jobs.personio.de/search.json`,
   breezy: (slug) => `https://${slug}.breezy.hr/json`,
   jazzhr: (slug) => `https://app.jazz.co/widgets/basic/create/${slug}`,
+  zoho: (slug) => `https://${slug}.zohorecruit.com/jobs/Careers`,
 };
 
 /**
@@ -58,6 +59,11 @@ async function probeSlug(slug) {
         if (ats === 'jazzhr') {
           const html = await res.text();
           if (!html.includes('applytojob.com')) return;
+        }
+        // Zoho returns 200 for invalid slugs with error page
+        if (ats === 'zoho') {
+          const html = await res.text();
+          if (!html.includes('id="jobs"')) return;
         }
         results.push({ ats, slug });
       }
