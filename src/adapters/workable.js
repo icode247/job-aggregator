@@ -1,7 +1,5 @@
-const { fetchUnlockedHtml } = require('./brightdata');
-
 async function fetchJobs(clientname) {
-  // Use v3 API for listing — single POST, returns all jobs
+  // v3 API: single POST, returns all jobs
   const listRes = await fetch(
     `https://apply.workable.com/api/v3/accounts/${encodeURIComponent(clientname)}/jobs`,
     {
@@ -15,25 +13,27 @@ async function fetchJobs(clientname) {
   const listData = await listRes.json();
   const listings = listData.results || [];
 
-  // Fetch descriptions from v2 API one at a time
   const jobs = [];
 
   for (const listing of listings) {
+    const loc = listing.location || {};
     let description = null;
 
+    // v2 API for description — one at a time with timeout
     try {
       const detailRes = await fetch(
         `https://apply.workable.com/api/v2/accounts/${encodeURIComponent(clientname)}/jobs/${listing.shortcode}`,
-        { signal: AbortSignal.timeout(8000) }
+        { signal: AbortSignal.timeout(5000) }
       );
       if (detailRes.ok) {
         const detail = await detailRes.json();
         const parts = [detail.description, detail.requirements, detail.benefits].filter(Boolean);
         description = parts.join('\n') || null;
       }
-    } catch { /* skip description */ }
+    } catch {
+      // Timeout or blocked — continue without description
+    }
 
-    const loc = listing.location || {};
     jobs.push({
       external_id: `workable_${listing.shortcode}`,
       title: listing.title,
@@ -51,13 +51,13 @@ async function fetchJobs(clientname) {
       raw_data: listing,
     });
 
-    // Delay between detail requests
+    // 2 second delay between detail requests
     if (jobs.length < listings.length) {
-      await new Promise(r => setTimeout(r, 1500));
+      await new Promise(r => setTimeout(r, 2000));
     }
   }
 
-  // Get logo from the v1 widget API (single call)
+  // Logo from v1 widget
   let companyName = null;
   let logoUrl = null;
   try {
@@ -70,7 +70,7 @@ async function fetchJobs(clientname) {
       companyName = widget.name || null;
       logoUrl = widget.logo || null;
     }
-  } catch { /* skip */ }
+  } catch {}
 
   return { jobs, meta: { companyName, logoUrl } };
 }
