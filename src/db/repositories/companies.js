@@ -97,6 +97,8 @@ const companiesRepo = {
       zoho: `https://${atsSlug}.zohorecruit.com/jobs/Careers`,
       icims: `https://careers.${atsSlug}.com`,
       oracle: `https://${atsSlug}.oraclecloud.com`,
+      bamboohr: `https://${atsSlug}.bamboohr.com/careers`,
+      taleo: `https://${atsSlug}.taleo.net`,
     };
     const careerUrl = boardUrls[ats] || `https://${atsSlug}.com/careers`;
     const domain = `${atsSlug}.com`;

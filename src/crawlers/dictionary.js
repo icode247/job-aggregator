@@ -15,6 +15,7 @@ const ATS_PROBE_URLS = {
   breezy: (slug) => `https://${slug}.breezy.hr/json`,
   jazzhr: (slug) => `https://app.jazz.co/widgets/basic/create/${slug}`,
   zoho: (slug) => `https://${slug}.zohorecruit.com/jobs/Careers`,
+  bamboohr: (slug) => `https://${slug}.bamboohr.com/careers/list`,
 };
 
 /**
@@ -59,6 +60,11 @@ async function probeSlug(slug) {
         if (ats === 'jazzhr') {
           const html = await res.text();
           if (!html.includes('applytojob.com')) return;
+        }
+        // BambooHR returns 200 with empty results for inactive accounts
+        if (ats === 'bamboohr') {
+          const data = await res.json();
+          if (!data.result || data.result.length === 0) return;
         }
         // Zoho returns 200 for invalid slugs with error page
         if (ats === 'zoho') {

@@ -42,6 +42,8 @@ const LOGO_PATTERNS = {
   ],
   icims: [],
   oracle: [],
+  bamboohr: [],
+  taleo: [],
 };
 
 /**
@@ -77,7 +79,9 @@ async function fetchLogoUrl(ats, atsSlug, domain) {
     workday: null, // Logo comes from adapter meta
     zoho: `https://${atsSlug}.zohorecruit.com/jobs/Careers`,
     icims: null, // Logo comes from adapter meta
-    oracle: null, // Logo comes from Google favicon
+    oracle: null,
+    bamboohr: `https://${atsSlug}.bamboohr.com/careers`,
+    taleo: null,
   };
 
   const pageUrl = pageUrls[ats];

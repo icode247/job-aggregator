@@ -21,6 +21,8 @@ const HTML_PATTERNS = [
   { ats: 'workday', regex: /([^/"'?#&\s]+)\.wd\d+\.myworkdayjobs\.com/ },
   { ats: 'zoho', regex: /([^/"'?#&\s]+)\.zohorecruit\.(?:com|in|eu)/ },
   { ats: 'icims', regex: /careers\.([^/"'?#&\s]+)\.com\/api\/jobs/ },
+  { ats: 'bamboohr', regex: /([^/"'?#&\s]+)\.bamboohr\.com/ },
+  { ats: 'taleo', regex: /([^/"'?#&\s]+)\.taleo\.net/ },
 ];
 
 const FALSE_POSITIVES = new Set(['www', 'api', 'app', 'cdn', 'js', 'css', 'docs', 'support']);

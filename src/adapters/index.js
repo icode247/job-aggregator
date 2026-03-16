@@ -12,6 +12,8 @@ const workday = require('./workday');
 const zoho = require('./zoho');
 const icims = require('./icims');
 const oracle = require('./oracle');
+const bamboohr = require('./bamboohr');
+const taleo = require('./taleo');
 
 const adapters = {
   greenhouse,
@@ -28,6 +30,8 @@ const adapters = {
   zoho,
   icims,
   oracle,
+  bamboohr,
+  taleo,
 };
 
 function getAdapter(atsName) {
