@@ -1,5 +1,5 @@
 async function fetchJobs(clientname) {
-  // v3 API: single POST, returns all jobs
+  // v3 API: single POST, returns all jobs — no rate limit issues
   const listRes = await fetch(
     `https://apply.workable.com/api/v3/accounts/${encodeURIComponent(clientname)}/jobs`,
     {
@@ -13,28 +13,9 @@ async function fetchJobs(clientname) {
   const listData = await listRes.json();
   const listings = listData.results || [];
 
-  const jobs = [];
-
-  for (const listing of listings) {
+  const jobs = listings.map(listing => {
     const loc = listing.location || {};
-    let description = null;
-
-    // v2 API for description — one at a time with timeout
-    try {
-      const detailRes = await fetch(
-        `https://apply.workable.com/api/v2/accounts/${encodeURIComponent(clientname)}/jobs/${listing.shortcode}`,
-        { signal: AbortSignal.timeout(5000) }
-      );
-      if (detailRes.ok) {
-        const detail = await detailRes.json();
-        const parts = [detail.description, detail.requirements, detail.benefits].filter(Boolean);
-        description = parts.join('\n') || null;
-      }
-    } catch {
-      // Timeout or blocked — continue without description
-    }
-
-    jobs.push({
+    return {
       external_id: `workable_${listing.shortcode}`,
       title: listing.title,
       department: listing.department?.[0] || null,
@@ -45,15 +26,43 @@ async function fetchJobs(clientname) {
       salary_max: null,
       salary_currency: null,
       salary_interval: null,
-      description,
+      description: null,
       url: `https://apply.workable.com/${encodeURIComponent(clientname)}/j/${listing.shortcode}/`,
       posted_at: listing.published || null,
       raw_data: listing,
-    });
+    };
+  });
 
-    // 2 second delay between detail requests
-    if (jobs.length < listings.length) {
-      await new Promise(r => setTimeout(r, 2000));
+  // Try ONE detail fetch to get description format — if it works, fetch all
+  // If it fails, save jobs without descriptions (they'll get backfilled)
+  if (jobs.length > 0) {
+    try {
+      const testRes = await fetch(
+        `https://apply.workable.com/api/v2/accounts/${encodeURIComponent(clientname)}/jobs/${listings[0].shortcode}`,
+        { signal: AbortSignal.timeout(3000) }
+      );
+      if (testRes.ok) {
+        const testDetail = await testRes.json();
+        const parts = [testDetail.description, testDetail.requirements, testDetail.benefits].filter(Boolean);
+        jobs[0].description = parts.join('\n') || null;
+
+        // First one worked — fetch rest with short timeout
+        for (let i = 1; i < listings.length; i++) {
+          try {
+            const res = await fetch(
+              `https://apply.workable.com/api/v2/accounts/${encodeURIComponent(clientname)}/jobs/${listings[i].shortcode}`,
+              { signal: AbortSignal.timeout(3000) }
+            );
+            if (res.ok) {
+              const d = await res.json();
+              jobs[i].description = [d.description, d.requirements, d.benefits].filter(Boolean).join('\n') || null;
+            }
+          } catch { break; } // Stop on first failure
+          await new Promise(r => setTimeout(r, 1500));
+        }
+      }
+    } catch {
+      // v2 API blocked — save without descriptions
     }
   }
 
@@ -63,7 +72,7 @@ async function fetchJobs(clientname) {
   try {
     const widgetRes = await fetch(
       `https://apply.workable.com/api/v1/widget/accounts/${encodeURIComponent(clientname)}`,
-      { signal: AbortSignal.timeout(5000) }
+      { signal: AbortSignal.timeout(3000) }
     );
     if (widgetRes.ok) {
       const widget = await widgetRes.json();
