@@ -9,7 +9,7 @@ const config = require('../config');
 const QUEUE_NAME = 'sync';
 
 // Per-ATS concurrency limits for platforms with aggressive rate limiting
-const ATS_MAX_CONCURRENT = { workable: 3, recruitee: 3, workday: 2 };
+const ATS_MAX_CONCURRENT = { workable: 1, recruitee: 3, workday: 2 };
 const atsConcurrency = {};
 
 function acquireAtsSlot(ats) {

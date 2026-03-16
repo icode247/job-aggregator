@@ -1,4 +1,4 @@
-const DETAIL_BATCH_SIZE = 3;
+const DETAIL_BATCH_SIZE = 1;
 
 async function fetchJobDetail(clientname, shortcode) {
   try {
@@ -53,9 +53,9 @@ async function fetchJobs(clientname) {
       });
     }
 
-    // Pause between batches to avoid 429s
+    // Pause between batches — Workable rate limits aggressively
     if (i + DETAIL_BATCH_SIZE < listings.length) {
-      await new Promise(r => setTimeout(r, 300));
+      await new Promise(r => setTimeout(r, 1000));
     }
   }
 
