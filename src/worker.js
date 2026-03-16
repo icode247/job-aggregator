@@ -4,6 +4,7 @@ const { createDiscoveryQueue, createDiscoveryWorker } = require('./queues/discov
 const { createSyncQueue, createSyncWorker } = require('./queues/sync.queue');
 const { createCrawlQueue, createCrawlWorker } = require('./queues/crawl.queue');
 const { registerSchedules, fanoutDiscovery, fanoutSync, fanoutCrawl } = require('./queues/scheduler');
+const { backfillDescriptions } = require('./tasks/backfill-workable-descriptions');
 
 async function main() {
   await migrate();
@@ -35,6 +36,17 @@ async function main() {
   await fanoutCrawl(crawlQueue);
 
   logger.info('Worker started — processing discovery, sync, and crawl queues');
+
+  // Backfill Workable descriptions every 10 minutes
+  async function runBackfill() {
+    try {
+      await backfillDescriptions();
+    } catch (err) {
+      logger.error({ err: err.message }, 'Workable backfill error');
+    }
+    setTimeout(runBackfill, 10 * 60 * 1000);
+  }
+  setTimeout(runBackfill, 60 * 1000); // Start 1 minute after boot
 
   async function shutdown(signal) {
     logger.info({ signal }, 'Shutting down worker');
