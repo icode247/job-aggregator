@@ -1,71 +1,78 @@
-const DETAIL_BATCH_SIZE = 1;
-
-async function fetchJobDetail(clientname, shortcode) {
-  try {
-    const res = await fetch(
-      `https://apply.workable.com/api/v2/accounts/${encodeURIComponent(clientname)}/jobs/${shortcode}`,
-      { signal: AbortSignal.timeout(10000) }
-    );
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
+const { fetchUnlockedHtml } = require('./brightdata');
 
 async function fetchJobs(clientname) {
-  const res = await fetch(
-    `https://apply.workable.com/api/v1/widget/accounts/${encodeURIComponent(clientname)}`,
-    { signal: AbortSignal.timeout(10000) }
+  // Use v3 API for listing — single POST, returns all jobs
+  const listRes = await fetch(
+    `https://apply.workable.com/api/v3/accounts/${encodeURIComponent(clientname)}/jobs`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+      signal: AbortSignal.timeout(10000),
+    }
   );
-  if (!res.ok) throw new Error(`Workable HTTP ${res.status}`);
-  const data = await res.json();
-  const listings = data.jobs || [];
+  if (!listRes.ok) throw new Error(`Workable HTTP ${listRes.status}`);
+  const listData = await listRes.json();
+  const listings = listData.results || [];
 
-  // Fetch details in batches for descriptions
+  // Fetch descriptions from v2 API one at a time
   const jobs = [];
 
-  for (let i = 0; i < listings.length; i += DETAIL_BATCH_SIZE) {
-    const batch = listings.slice(i, i + DETAIL_BATCH_SIZE);
-    const details = await Promise.all(
-      batch.map(j => fetchJobDetail(clientname, j.shortcode))
-    );
+  for (const listing of listings) {
+    let description = null;
 
-    for (let k = 0; k < batch.length; k++) {
-      const job = batch[k];
-      const detail = details[k];
+    try {
+      const detailRes = await fetch(
+        `https://apply.workable.com/api/v2/accounts/${encodeURIComponent(clientname)}/jobs/${listing.shortcode}`,
+        { signal: AbortSignal.timeout(8000) }
+      );
+      if (detailRes.ok) {
+        const detail = await detailRes.json();
+        const parts = [detail.description, detail.requirements, detail.benefits].filter(Boolean);
+        description = parts.join('\n') || null;
+      }
+    } catch { /* skip description */ }
 
-      jobs.push({
-        external_id: `workable_${job.shortcode}`,
-        title: job.title,
-        department: job.department || null,
-        location: [job.city, job.state, job.country].filter(Boolean).join(', ') || 'Remote',
-        workplace_type: job.telecommuting ? 'Remote' : 'On-site',
-        employment_type: job.employment_type || null,
-        salary_min: null,
-        salary_max: null,
-        salary_currency: null,
-        salary_interval: null,
-        description: detail?.description || null,
-        url: job.url || job.shortlink,
-        posted_at: job.published_on || null,
-        raw_data: job,
-      });
-    }
+    const loc = listing.location || {};
+    jobs.push({
+      external_id: `workable_${listing.shortcode}`,
+      title: listing.title,
+      department: listing.department?.[0] || null,
+      location: [loc.city, loc.region, loc.country].filter(Boolean).join(', ') || 'Remote',
+      workplace_type: listing.remote ? 'Remote' : (listing.workplace || null),
+      employment_type: listing.type === 'full' ? 'Full-time' : listing.type === 'part' ? 'Part-time' : listing.type || null,
+      salary_min: null,
+      salary_max: null,
+      salary_currency: null,
+      salary_interval: null,
+      description,
+      url: `https://apply.workable.com/${encodeURIComponent(clientname)}/j/${listing.shortcode}/`,
+      posted_at: listing.published || null,
+      raw_data: listing,
+    });
 
-    // Pause between batches — Workable rate limits aggressively
-    if (i + DETAIL_BATCH_SIZE < listings.length) {
-      await new Promise(r => setTimeout(r, 1000));
+    // Delay between detail requests
+    if (jobs.length < listings.length) {
+      await new Promise(r => setTimeout(r, 1500));
     }
   }
 
-  return {
-    jobs,
-    meta: {
-      companyName: data.name || null,
-      logoUrl: data.logo || null,
-    },
-  };
+  // Get logo from the v1 widget API (single call)
+  let companyName = null;
+  let logoUrl = null;
+  try {
+    const widgetRes = await fetch(
+      `https://apply.workable.com/api/v1/widget/accounts/${encodeURIComponent(clientname)}`,
+      { signal: AbortSignal.timeout(5000) }
+    );
+    if (widgetRes.ok) {
+      const widget = await widgetRes.json();
+      companyName = widget.name || null;
+      logoUrl = widget.logo || null;
+    }
+  } catch { /* skip */ }
+
+  return { jobs, meta: { companyName, logoUrl } };
 }
 
 module.exports = { fetchJobs };
