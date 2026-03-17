@@ -107,12 +107,40 @@ function extractJsonLdDescription(html) {
   return null;
 }
 
-async function fetchHtmlDescription(job) {
+async function fetchJazzHRDescription(job) {
   if (!job.url) return null;
   const res = await fetch(job.url, { signal: AbortSignal.timeout(10000) });
   if (!res.ok) return null;
   const html = await res.text();
-  return extractJsonLdDescription(html);
+  // Try JSON-LD first
+  const ld = extractJsonLdDescription(html);
+  if (ld) return ld;
+  // JazzHR embeds description in the largest content div
+  const divs = html.match(/<div[^>]*>((?:(?!<div).)*?)<\/div>/gs) || [];
+  let best = null;
+  let bestLen = 0;
+  for (const div of divs) {
+    const clean = div.replace(/<[^>]+>/g, '').trim();
+    if (clean.length > bestLen && clean.length > 100) {
+      bestLen = clean.length;
+      best = div.replace(/^<div[^>]*>/, '').replace(/<\/div>$/, '').trim();
+    }
+  }
+  return best;
+}
+
+async function fetchBreezyDescription(job) {
+  if (!job.url) return null;
+  const res = await fetch(job.url, { signal: AbortSignal.timeout(10000) });
+  if (!res.ok) return null;
+  const html = await res.text();
+  // Try JSON-LD first
+  const ld = extractJsonLdDescription(html);
+  if (ld) return ld;
+  // Breezy has description in og:description meta tag
+  const ogMatch = html.match(/property="og:description"[^>]*content="([^"]*)"/i);
+  if (ogMatch?.[1] && ogMatch[1].length > 50) return ogMatch[1];
+  return null;
 }
 
 async function fetchDescription(job) {
@@ -126,8 +154,9 @@ async function fetchDescription(job) {
     case 'bamboohr':
       return fetchBambooHRDescription(job);
     case 'jazzhr':
+      return fetchJazzHRDescription(job);
     case 'breezy':
-      return fetchHtmlDescription(job);
+      return fetchBreezyDescription(job);
     default:
       return null;
   }
