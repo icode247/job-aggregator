@@ -29,6 +29,7 @@ module.exports = {
   CRAWL_GOOGLE_MAX_PAGES: parseInt(process.env.CRAWL_GOOGLE_MAX_PAGES, 10) || 10,
   CRAWL_DICTIONARY_PATH: process.env.CRAWL_DICTIONARY_PATH || path.join(__dirname, '..', 'data', 'company-names.txt'),
 
-  // Alerting
-  ALERT_WEBHOOK_URL: process.env.ALERT_WEBHOOK_URL || null,
+  // Alerting (Telegram)
+  TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || null,
+  TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || null,
 };

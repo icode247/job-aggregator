@@ -2,29 +2,30 @@ const config = require('../config');
 const logger = require('../logger');
 
 async function sendAlert(title, message, level = 'warning') {
-  const webhookUrl = config.ALERT_WEBHOOK_URL;
-  if (!webhookUrl) return;
+  const { TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID } = config;
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
 
-  const emoji = level === 'error' ? '\uD83D\uDD34' : level === 'warning' ? '\uD83D\uDFE1' : '\u2139\uFE0F';
-  const payload = {
-    text: `${emoji} *${title}*\n${message}`,
-    // Slack-compatible format
-    blocks: [
-      { type: 'header', text: { type: 'plain_text', text: `${emoji} ${title}` } },
-      { type: 'section', text: { type: 'mrkdwn', text: message } },
-    ],
-  };
+  const emoji = level === 'error' ? '🔴' : level === 'warning' ? '🟡' : 'ℹ️';
+  const text = `${emoji} *${escapeMarkdown(title)}*\n${escapeMarkdown(message)}`;
 
   try {
-    await fetch(webhookUrl, {
+    await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        chat_id: TELEGRAM_CHAT_ID,
+        text,
+        parse_mode: 'MarkdownV2',
+      }),
       signal: AbortSignal.timeout(5000),
     });
   } catch (err) {
-    logger.error({ err: err.message }, 'Failed to send alert webhook');
+    logger.error({ err: err.message }, 'Failed to send Telegram alert');
   }
+}
+
+function escapeMarkdown(text) {
+  return text.replace(/([_\[\]()~`>#+\-=|{}.!])/g, '\\$1');
 }
 
 module.exports = { sendAlert };
