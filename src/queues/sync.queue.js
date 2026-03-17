@@ -10,6 +10,8 @@ const QUEUE_NAME = 'sync';
 
 // Per-ATS concurrency limits for platforms with aggressive rate limiting
 const ATS_MAX_CONCURRENT = { workable: 1, recruitee: 3, workday: 2 };
+// Per-ATS delay (ms) between consecutive jobs to avoid rate limits
+const ATS_POST_DELAY = { workable: 3000 };
 const atsConcurrency = {};
 
 function acquireAtsSlot(ats) {
@@ -98,6 +100,10 @@ function createSyncWorker() {
         return diff;
       } finally {
         releaseAtsSlot(ats);
+        // Delay between consecutive jobs for rate-limited ATS platforms
+        if (ATS_POST_DELAY[ats]) {
+          await new Promise(r => setTimeout(r, ATS_POST_DELAY[ats]));
+        }
       }
     },
     {
