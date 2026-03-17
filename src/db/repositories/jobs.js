@@ -190,7 +190,7 @@ const jobsRepo = {
       const missingCount = [...existingMap.keys()].filter(id => !incomingIds.has(id)).length;
       const skipRemoval = existingCount > 0 && (
         freshJobs.length === 0 ||
-        missingCount / existingCount > 0.8
+        missingCount / existingCount > 0.5
       );
 
       if (skipRemoval) {
