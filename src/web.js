@@ -2,30 +2,45 @@ const config = require('./config');
 const logger = require('./logger');
 const { migrate, closeDb } = require('./db');
 const { createApp } = require('./api/server');
-const { createCrawlQueue } = require('./queues/crawl.queue');
-const { createSyncQueue } = require('./queues/sync.queue');
 
 async function main() {
   await migrate();
 
-  const crawlQueue = createCrawlQueue();
-  const syncQueue = createSyncQueue();
-
-  const app = createApp({ crawlQueue, syncQueue });
-
+  // Start listening FIRST to avoid Heroku H20 boot timeout
+  const app = createApp();
   const server = app.listen(config.PORT, () => {
     logger.info({ port: config.PORT }, 'API server listening');
   });
 
+  // Connect queues lazily AFTER port is bound (non-blocking)
+  let crawlQueue = null;
+  let syncQueue = null;
+  setImmediate(async () => {
+    try {
+      const { createCrawlQueue } = require('./queues/crawl.queue');
+      const { createSyncQueue } = require('./queues/sync.queue');
+      crawlQueue = createCrawlQueue();
+      syncQueue = createSyncQueue();
+      app.set('crawlQueue', crawlQueue);
+      app.set('syncQueue', syncQueue);
+      logger.info('Queue connections established');
+    } catch (err) {
+      logger.error({ err: err.message }, 'Failed to connect queues (non-fatal)');
+    }
+  });
+
   async function shutdown(signal) {
     logger.info({ signal }, 'Shutting down API server');
+    const forceTimer = setTimeout(() => process.exit(1), 10000);
+    forceTimer.unref();
     server.close(async () => {
-      await crawlQueue.close();
-      await syncQueue.close();
-      await closeDb();
+      try {
+        if (crawlQueue) await crawlQueue.close();
+        if (syncQueue) await syncQueue.close();
+        await closeDb();
+      } catch { /* ignore */ }
       process.exit(0);
     });
-    setTimeout(() => process.exit(1), 10000);
   }
 
   process.on('SIGTERM', () => shutdown('SIGTERM'));
