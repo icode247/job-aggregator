@@ -2,32 +2,68 @@
  * Backfill missing job descriptions across all ATS platforms.
  * Fetches individual job details for jobs with NULL descriptions.
  * Runs independently from the sync queue to avoid blocking.
+ * Processes each ATS separately with per-ATS rate limits.
  */
 const { query } = require('../db/connection');
 const { discoverConfig } = require('../adapters/workday');
 const logger = require('../logger');
 
-const BATCH_SIZE = 200;
-const DELAY_MS = 500;
+const ATS_CONFIG = {
+  workday:         { batchSize: 50, delayMs: 2000 },
+  smartrecruiters: { batchSize: 50, delayMs: 500 },
+  bamboohr:        { batchSize: 50, delayMs: 500 },
+  jazzhr:          { batchSize: 50, delayMs: 500 },
+  breezy:          { batchSize: 50, delayMs: 500 },
+};
 
-// Cache workday configs to avoid re-discovering per job
+// Cache workday configs per slug
 const wdConfigCache = new Map();
 
-async function fetchWorkdayDescription(job, rawData) {
-  if (!wdConfigCache.has(job.ats_slug)) {
-    const config = await discoverConfig(job.ats_slug);
-    wdConfigCache.set(job.ats_slug, config);
+/**
+ * Workday has multiple site slugs per company (e.g. VCA has Careers, BFCareers, etc.)
+ * Try all known site slugs if the first one fails with 422.
+ */
+async function discoverAllSiteSlugs(slug) {
+  for (const wd of [1, 2, 3, 5, 12]) {
+    try {
+      const res = await fetch(`https://${slug}.wd${wd}.myworkdayjobs.com/robots.txt`, { signal: AbortSignal.timeout(5000) });
+      if (!res.ok) continue;
+      const text = await res.text();
+      const matches = [...text.matchAll(/myworkdayjobs\.com\/([^/\s]+)/g)];
+      if (matches.length > 0) {
+        return { wdNum: wd, siteSlugs: matches.map(m => m[1]) };
+      }
+    } catch { /* try next */ }
   }
-  const config = wdConfigCache.get(job.ats_slug);
+  return null;
+}
+
+async function fetchWorkdayDescription(job, rawData) {
+  const cacheKey = job.ats_slug;
+  if (!wdConfigCache.has(cacheKey)) {
+    const config = await discoverAllSiteSlugs(job.ats_slug);
+    wdConfigCache.set(cacheKey, config);
+  }
+  const config = wdConfigCache.get(cacheKey);
   if (!config) return null;
-  const { wdNum, siteSlug } = config;
-  const baseUrl = `https://${job.ats_slug}.wd${wdNum}.myworkdayjobs.com/wday/cxs/${job.ats_slug}/${siteSlug}`;
+
+  const { wdNum, siteSlugs } = config;
   const externalPath = rawData?.externalPath;
   if (!externalPath) return null;
-  const res = await fetch(`${baseUrl}${externalPath}`, { signal: AbortSignal.timeout(10000) });
-  if (!res.ok) return null;
-  const detail = await res.json();
-  return detail?.jobPostingInfo?.jobDescription || null;
+
+  // Try each site slug until one works
+  for (const siteSlug of siteSlugs) {
+    try {
+      const url = `https://${job.ats_slug}.wd${wdNum}.myworkdayjobs.com/wday/cxs/${job.ats_slug}/${siteSlug}${externalPath}`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      if (res.status === 403) return null; // Rate limited — stop trying
+      if (!res.ok) continue; // 422 = wrong siteSlug, try next
+      const detail = await res.json();
+      const desc = detail?.jobPostingInfo?.jobDescription;
+      if (desc) return desc;
+    } catch { /* timeout — try next */ }
+  }
+  return null;
 }
 
 async function fetchSmartRecruitersDescription(job) {
@@ -97,27 +133,19 @@ async function fetchDescription(job) {
   }
 }
 
-async function backfillDescriptions() {
-  const supported = ['workday', 'smartrecruiters', 'bamboohr', 'jazzhr', 'breezy'];
-  const placeholders = supported.map(() => '?').join(',');
-
+async function backfillForAts(ats, batchSize, delayMs) {
   const { rows: jobs } = await query(
     `SELECT j.id, j.ats, j.external_id, j.url, j.raw_data, c.ats_slug
      FROM jobs j JOIN companies c ON j.company_id = c.id
      WHERE j.removed_at IS NULL
      AND (j.description IS NULL OR j.description = '')
-     AND j.ats IN (${placeholders})
+     AND j.ats = ?
      ORDER BY j.first_seen_at DESC
-     LIMIT ${BATCH_SIZE}`,
-    supported
+     LIMIT ?`,
+    [ats, batchSize]
   );
 
-  if (jobs.length === 0) {
-    logger.info('Description backfill: no jobs need descriptions');
-    return 0;
-  }
-
-  logger.info({ count: jobs.length }, 'Description backfill: starting');
+  if (jobs.length === 0) return { filled: 0, failed: 0 };
 
   let filled = 0;
   let failed = 0;
@@ -125,7 +153,6 @@ async function backfillDescriptions() {
   for (const job of jobs) {
     try {
       const description = await fetchDescription(job);
-
       if (description) {
         await query('UPDATE jobs SET description = ? WHERE id = ?', [description, job.id]);
         filled++;
@@ -134,14 +161,32 @@ async function backfillDescriptions() {
       }
     } catch (err) {
       failed++;
-      logger.warn({ jobId: job.id, ats: job.ats, err: err.message }, 'Backfill detail fetch failed');
+      logger.warn({ jobId: job.id, ats: job.ats, slug: job.ats_slug, err: err.message }, 'Backfill fetch failed');
     }
 
-    await new Promise(r => setTimeout(r, DELAY_MS));
+    await new Promise(r => setTimeout(r, delayMs));
   }
 
-  logger.info({ filled, failed, total: jobs.length }, 'Description backfill: complete');
-  return filled;
+  return { filled, failed };
+}
+
+async function backfillDescriptions() {
+  logger.info('Description backfill: starting');
+
+  let totalFilled = 0;
+  let totalFailed = 0;
+
+  for (const [ats, config] of Object.entries(ATS_CONFIG)) {
+    const { filled, failed } = await backfillForAts(ats, config.batchSize, config.delayMs);
+    if (filled > 0 || failed > 0) {
+      logger.info({ ats, filled, failed }, 'Description backfill: ATS batch done');
+    }
+    totalFilled += filled;
+    totalFailed += failed;
+  }
+
+  logger.info({ filled: totalFilled, failed: totalFailed }, 'Description backfill: complete');
+  return totalFilled;
 }
 
 module.exports = { backfillDescriptions };
