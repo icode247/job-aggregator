@@ -5,6 +5,9 @@ const { fetchLogoUrl } = require('../adapters/logo');
 const { companiesRepo, jobsRepo } = require('../db');
 const logger = require('../logger');
 const config = require('../config');
+const { extractSalary, extractWorkplaceType, extractEmploymentType } = require('../utils/extract');
+const { stripHtml } = require('../utils/html');
+const metrics = require('../utils/metrics');
 
 const QUEUE_NAME = 'sync';
 
@@ -93,8 +96,31 @@ function createSyncWorker() {
 
         await companiesRepo.updateMeta(companyId, meta);
 
+        for (const job of incomingJobs) {
+          const plainDesc = job.description ? stripHtml(job.description) : null;
+          if (!job.salary_min && plainDesc) {
+            const salary = extractSalary(plainDesc);
+            if (salary) {
+              job.salary_min = salary.min;
+              job.salary_max = salary.max;
+              job.salary_currency = salary.currency;
+              job.salary_interval = salary.interval;
+            }
+          }
+          if (!job.workplace_type) {
+            job.workplace_type = extractWorkplaceType(job.title, job.location, plainDesc);
+          }
+          if (!job.employment_type) {
+            job.employment_type = extractEmploymentType(job.title, plainDesc);
+          }
+        }
+
         const diff = await jobsRepo.syncForCompany(companyId, ats, incomingJobs);
         await companiesRepo.updateLastSynced(companyId);
+
+        metrics.increment(`sync.success.${ats}`);
+        metrics.increment('sync.jobs_added', diff.added);
+        metrics.increment('sync.jobs_removed', diff.removed);
 
         logger.info({ companyId, ats, ...diff }, 'Sync job complete');
         return diff;
@@ -114,6 +140,7 @@ function createSyncWorker() {
   );
 
   worker.on('failed', async (job, err) => {
+    metrics.increment(`sync.failure.${job?.data?.ats || 'unknown'}`);
     logger.error({ jobId: job?.id, companyId: job?.data?.companyId, err: err.message }, 'Sync job failed');
     if (job?.data?.companyId && job.attemptsMade >= job.opts.attempts) {
       // Don't permanently fail companies for rate limiting — they'll succeed next cycle

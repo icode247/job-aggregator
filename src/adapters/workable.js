@@ -1,3 +1,5 @@
+const logger = require('../logger');
+
 async function fetchJobs(clientname) {
   // v3 API: single POST, returns all jobs — no rate limit issues
   const listRes = await fetch(
@@ -57,7 +59,10 @@ async function fetchJobs(clientname) {
               const d = await res.json();
               jobs[i].description = [d.description, d.requirements, d.benefits].filter(Boolean).join('\n') || null;
             }
-          } catch { break; } // Stop on first failure
+          } catch (err) {
+            logger.warn({ slug: clientname, shortcode: listings[i].shortcode, err: err.message }, 'Workable v2 detail fetch failed');
+            break;
+          }
           await new Promise(r => setTimeout(r, 1500));
         }
       }

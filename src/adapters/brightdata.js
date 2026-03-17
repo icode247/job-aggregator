@@ -19,6 +19,7 @@ async function fetchUnlockedHtml(url) {
       url,
       format: 'raw',
     }),
+    signal: AbortSignal.timeout(30000),
   });
 
   if (!response.ok) {

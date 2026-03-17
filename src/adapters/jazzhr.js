@@ -116,9 +116,10 @@ async function fetchJobs(clientname) {
   const jobs = [];
   for (let i = 0; i < listings.length; i += DETAIL_BATCH_SIZE) {
     const batch = listings.slice(i, i + DETAIL_BATCH_SIZE);
-    const details = await Promise.all(
+    const settled = await Promise.allSettled(
       batch.map(l => fetchJobDetail(l.url))
     );
+    const details = settled.map(r => r.status === 'fulfilled' ? r.value : null);
 
     for (let j = 0; j < batch.length; j++) {
       const l = batch[j];

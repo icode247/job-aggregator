@@ -28,4 +28,7 @@ module.exports = {
   CRAWL_INTERVAL_MS: 1000 * 60 * 60 * 24 * 3, // 3 days
   CRAWL_GOOGLE_MAX_PAGES: parseInt(process.env.CRAWL_GOOGLE_MAX_PAGES, 10) || 10,
   CRAWL_DICTIONARY_PATH: process.env.CRAWL_DICTIONARY_PATH || path.join(__dirname, '..', 'data', 'company-names.txt'),
+
+  // Alerting
+  ALERT_WEBHOOK_URL: process.env.ALERT_WEBHOOK_URL || null,
 };

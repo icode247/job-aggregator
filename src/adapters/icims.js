@@ -31,7 +31,7 @@ async function fetchJobs(clientname) {
     } catch { /* try next */ }
   }
 
-  if (!data || !data.jobs) {
+  if (!data || !Array.isArray(data.jobs)) {
     throw new Error(`iCIMS: no working endpoint found for ${clientname}`);
   }
 

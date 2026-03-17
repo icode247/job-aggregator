@@ -16,6 +16,21 @@ const companiesRepo = {
     return rows;
   },
 
+  async findAllPaginated(limit = 100, offset = 0) {
+    const { rows } = await query('SELECT * FROM companies ORDER BY id LIMIT ? OFFSET ?', [limit, offset]);
+    return rows;
+  },
+
+  async countAll() {
+    const { rows } = await query('SELECT COUNT(*) as count FROM companies');
+    return parseInt(rows[0].count, 10);
+  },
+
+  async countActive() {
+    const { rows } = await query("SELECT COUNT(*) as count FROM companies WHERE status = 'active'");
+    return parseInt(rows[0].count, 10);
+  },
+
   async findById(id) {
     const { rows } = await query('SELECT * FROM companies WHERE id = ?', [id]);
     return rows[0] || null;
@@ -99,9 +114,18 @@ const companiesRepo = {
       oracle: `https://${atsSlug}.oraclecloud.com`,
       bamboohr: `https://${atsSlug}.bamboohr.com/careers`,
       taleo: `https://${atsSlug}.taleo.net`,
+      jobvite: `https://jobs.jobvite.com/${atsSlug}`,
+      pinpoint: `https://${atsSlug}.pinpointhq.com`,
+      successfactors: `https://career${atsSlug}.successfactors.eu/career`,
     };
     const careerUrl = boardUrls[ats] || `https://${atsSlug}.com/careers`;
-    const domain = `${atsSlug}.com`;
+    let domain;
+    try {
+      const parsed = new URL(careerUrl);
+      domain = parsed.hostname;
+    } catch {
+      domain = `${atsSlug}.com`;
+    }
 
     const { rowCount, lastId } = await query(
       `INSERT INTO companies (career_url, domain, ats, ats_slug, status, origin, last_discovered_at)

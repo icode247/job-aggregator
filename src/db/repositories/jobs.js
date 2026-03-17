@@ -12,12 +12,20 @@ function buildFilters(filters = {}) {
 
   // Role / Keywords — searches title, department, and company name
   if (filters.q) {
-    const terms = filters.q.trim().split(/\s+/).filter(Boolean);
-    for (const term of terms) {
-      clauses.push('(j.title ILIKE ? OR j.department ILIKE ? OR c.company_name ILIKE ?)');
-      const pattern = `%${term}%`;
-      params.push(pattern, pattern, pattern);
+    if (isPostgres) {
+      // Full-text search with ts_rank for relevance
+      clauses.push('(j.search_vector @@ plainto_tsquery(\'english\', ?) OR c.company_name ILIKE ?)');
+      params.push(filters.q, `%${filters.q}%`);
       needsJoin = true;
+    } else {
+      // SQLite fallback: LIKE-based search
+      const terms = filters.q.trim().split(/\s+/).filter(Boolean);
+      for (const term of terms) {
+        clauses.push('(j.title LIKE ? OR j.department LIKE ? OR c.company_name LIKE ?)');
+        const pattern = `%${term}%`;
+        params.push(pattern, pattern, pattern);
+        needsJoin = true;
+      }
     }
   }
 
@@ -190,7 +198,7 @@ const jobsRepo = {
       const missingCount = [...existingMap.keys()].filter(id => !incomingIds.has(id)).length;
       const skipRemoval = existingCount > 0 && (
         freshJobs.length === 0 ||
-        missingCount / existingCount > 0.5
+        (existingCount > 5 && missingCount / existingCount > 0.5)
       );
 
       if (skipRemoval) {

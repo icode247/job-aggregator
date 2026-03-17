@@ -1,14 +1,16 @@
 const logger = require('./logger');
 const { migrate, closeDb } = require('./db');
+const metrics = require('./utils/metrics');
+const { createRedisConnection } = require('./queues/connection');
 const { createDiscoveryQueue, createDiscoveryWorker } = require('./queues/discovery.queue');
 const { createSyncQueue, createSyncWorker } = require('./queues/sync.queue');
 const { createCrawlQueue, createCrawlWorker } = require('./queues/crawl.queue');
 const { registerSchedules, fanoutDiscovery, fanoutSync, fanoutCrawl } = require('./queues/scheduler');
-const { backfillDescriptions } = require('./tasks/backfill-workable-descriptions');
-const { backfillDescriptions: backfillAllDescriptions } = require('./tasks/backfill-descriptions');
+const { backfillDescriptions } = require('./tasks/backfill-descriptions');
 
 async function main() {
   await migrate();
+  metrics.setRedis(createRedisConnection());
 
   const discoveryQueue = createDiscoveryQueue();
   const syncQueue = createSyncQueue();
@@ -32,31 +34,27 @@ async function main() {
 
   await registerSchedules(discoveryQueue, syncQueue, crawlQueue);
 
-  await fanoutDiscovery(discoveryQueue);
-  await fanoutSync(syncQueue);
-  await fanoutCrawl(crawlQueue);
+  // Stagger fanout to avoid boot-time spike
+  setTimeout(() => fanoutDiscovery(discoveryQueue).catch(e => logger.error({ err: e.message }, 'Discovery fanout error')), 30000);
+  setTimeout(() => fanoutSync(syncQueue).catch(e => logger.error({ err: e.message }, 'Sync fanout error')), 60000);
+  setTimeout(() => fanoutCrawl(crawlQueue).catch(e => logger.error({ err: e.message }, 'Crawl fanout error')), 90000);
 
   logger.info('Worker started — processing discovery, sync, and crawl queues');
 
-  // Backfill Workable descriptions every 10 minutes
-  async function runBackfill() {
+  // Backfill descriptions for all ATS platforms every 10 minutes (with overlap guard)
+  let allBackfillRunning = false;
+  async function runAllBackfill() {
+    if (allBackfillRunning) { logger.warn('All-ATS backfill still running, skipping'); return; }
+    allBackfillRunning = true;
     try {
       await backfillDescriptions();
     } catch (err) {
-      logger.error({ err: err.message }, 'Workable backfill error');
-    }
-    setTimeout(runBackfill, 10 * 60 * 1000);
-  }
-  setTimeout(runBackfill, 60 * 1000); // Start 1 minute after boot
-
-  // Backfill descriptions for all ATS platforms every 10 minutes
-  async function runAllBackfill() {
-    try {
-      await backfillAllDescriptions();
-    } catch (err) {
       logger.error({ err: err.message }, 'Description backfill error');
+    } finally {
+      allBackfillRunning = false;
     }
-    setTimeout(runAllBackfill, 10 * 60 * 1000);
+    const jitter = Math.floor(Math.random() * 120000);
+    setTimeout(runAllBackfill, 10 * 60 * 1000 + jitter);
   }
   setTimeout(runAllBackfill, 3 * 60 * 1000); // Start 3 minutes after boot
 

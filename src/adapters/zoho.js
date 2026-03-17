@@ -127,12 +127,13 @@ async function fetchJobs(clientname) {
     for (let i = 0; i < missingDesc.length; i += DETAIL_BATCH_SIZE) {
       if (i > 0) await new Promise(r => setTimeout(r, 300));
       const batch = missingDesc.slice(i, i + DETAIL_BATCH_SIZE);
-      const results = await Promise.all(
+      const settled = await Promise.allSettled(
         batch.map(j => {
           const slug = titleSlug(j.raw_data.Posting_Title || j.raw_data.Job_Opening_Name || '');
           return fetchJobDetail(workingDomain, clientname, j.raw_data.id, slug);
         })
       );
+      const results = settled.map(r => r.status === 'fulfilled' ? r.value : null);
       results.forEach((desc, idx) => {
         if (desc) batch[idx].description = desc;
       });

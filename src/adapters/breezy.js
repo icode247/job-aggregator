@@ -49,12 +49,13 @@ async function fetchJobs(clientname) {
   // Fetch details in batches
   for (let i = 0; i < listings.length; i += DETAIL_BATCH_SIZE) {
     const batch = listings.slice(i, i + DETAIL_BATCH_SIZE);
-    const details = await Promise.all(
+    const settled = await Promise.allSettled(
       batch.map(job => {
         const url = job.url || `https://${encodeURIComponent(clientname)}.breezy.hr/p/${job.friendly_id}`;
         return fetchJobDetail(url);
       })
     );
+    const details = settled.map(r => r.status === 'fulfilled' ? r.value : null);
 
     for (let j = 0; j < batch.length; j++) {
       const job = batch[j];

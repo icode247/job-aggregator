@@ -23,6 +23,9 @@ const HTML_PATTERNS = [
   { ats: 'icims', regex: /careers\.([^/"'?#&\s]+)\.com\/api\/jobs/ },
   { ats: 'bamboohr', regex: /([^/"'?#&\s]+)\.bamboohr\.com/ },
   { ats: 'taleo', regex: /([^/"'?#&\s]+)\.taleo\.net/ },
+  { ats: 'jobvite', regex: /jobs\.jobvite\.com\/([^/"'?#&\s]+)/ },
+  { ats: 'pinpoint', regex: /([^/"'?#&\s]+)\.pinpointhq\.com/ },
+  { ats: 'successfactors', regex: /career([^/"'?#&\s]+)\.successfactors\.(?:eu|com)/ },
 ];
 
 const FALSE_POSITIVES = new Set(['www', 'api', 'app', 'cdn', 'js', 'css', 'docs', 'support']);
@@ -48,14 +51,20 @@ async function probeAtsApis(domain) {
   const baseName = domain.replace(/\.com$|\.io$|\.co$|\.org$|\.net$/, '').replace(/\./g, '-');
   const slugs = [baseName, baseName.replace(/-/g, ''), domain.replace(/\./g, '-')];
 
+  const timeout = { signal: AbortSignal.timeout(8000) };
   const probes = [
-    { ats: 'greenhouse', test: (slug) => fetch(`https://api.greenhouse.io/v1/boards/${slug}/jobs`).then(r => r.ok) },
-    { ats: 'ashby', test: (slug) => fetch(`https://api.ashbyhq.com/posting-api/job-board/${slug}`).then(r => r.ok) },
-    { ats: 'lever', test: (slug) => fetch(`https://api.lever.co/v0/postings/${slug}`).then(r => r.ok) },
-    { ats: 'workable', test: (slug) => fetch(`https://apply.workable.com/api/v1/widget/accounts/${slug}`).then(r => r.ok) },
-    { ats: 'recruitee', test: (slug) => fetch(`https://${slug}.recruitee.com/api/offers`).then(r => r.ok) },
-    { ats: 'personio', test: (slug) => fetch(`https://${slug}.jobs.personio.de/search.json`).then(r => r.ok) },
-    { ats: 'breezy', test: (slug) => fetch(`https://${slug}.breezy.hr/json`).then(r => r.ok) },
+    { ats: 'greenhouse', test: (slug) => fetch(`https://api.greenhouse.io/v1/boards/${slug}/jobs`, timeout).then(r => r.ok) },
+    { ats: 'ashby', test: (slug) => fetch(`https://api.ashbyhq.com/posting-api/job-board/${slug}`, timeout).then(r => r.ok) },
+    { ats: 'lever', test: (slug) => fetch(`https://api.lever.co/v0/postings/${slug}`, timeout).then(r => r.ok) },
+    { ats: 'workable', test: (slug) => fetch(`https://apply.workable.com/api/v1/widget/accounts/${slug}`, timeout).then(r => r.ok) },
+    { ats: 'recruitee', test: (slug) => fetch(`https://${slug}.recruitee.com/api/offers`, timeout).then(r => r.ok) },
+    { ats: 'personio', test: (slug) => fetch(`https://${slug}.jobs.personio.de/search.json`, timeout).then(r => r.ok) },
+    { ats: 'breezy', test: (slug) => fetch(`https://${slug}.breezy.hr/json`, timeout).then(r => r.ok) },
+    { ats: 'smartrecruiters', test: (slug) => fetch(`https://api.smartrecruiters.com/v1/companies/${slug}/postings?limit=1`, timeout).then(async r => { if (!r.ok) return false; const d = await r.json(); return d.totalFound > 0; }) },
+    { ats: 'rippling', test: (slug) => fetch(`https://api.rippling.com/platform/api/ats/v1/board/${slug}/jobs`, timeout).then(r => r.ok) },
+    { ats: 'bamboohr', test: (slug) => fetch(`https://${slug}.bamboohr.com/careers/list`, timeout).then(async r => { if (!r.ok) return false; const d = await r.json(); return d.result?.length > 0; }) },
+    { ats: 'zoho', test: (slug) => fetch(`https://${slug}.zohorecruit.com/jobs/Careers`, timeout).then(async r => { if (!r.ok) return false; const h = await r.text(); return h.includes('id="jobs"'); }) },
+    { ats: 'jazzhr', test: (slug) => fetch(`https://app.jazz.co/widgets/basic/create/${slug}`, timeout).then(async r => { if (!r.ok) return false; const h = await r.text(); return h.includes('applytojob.com'); }) },
   ];
 
   for (const slug of slugs) {

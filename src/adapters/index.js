@@ -14,6 +14,9 @@ const icims = require('./icims');
 const oracle = require('./oracle');
 const bamboohr = require('./bamboohr');
 const taleo = require('./taleo');
+const jobvite = require('./jobvite');
+const pinpoint = require('./pinpoint');
+const successfactors = require('./successfactors');
 
 const adapters = {
   greenhouse,
@@ -32,6 +35,9 @@ const adapters = {
   oracle,
   bamboohr,
   taleo,
+  jobvite,
+  pinpoint,
+  successfactors,
 };
 
 function getAdapter(atsName) {

@@ -86,6 +86,23 @@ async function migrate() {
     await exec('CREATE INDEX IF NOT EXISTS idx_companies_name ON companies(company_name)');
   }
 
+  // Full-text search (PostgreSQL only)
+  if (isPostgres) {
+    await exec(`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS search_vector tsvector`);
+    await exec(`CREATE INDEX IF NOT EXISTS idx_jobs_search ON jobs USING GIN(search_vector)`);
+    await exec(`
+      CREATE OR REPLACE FUNCTION jobs_search_update() RETURNS trigger AS $$
+      BEGIN
+        NEW.search_vector := to_tsvector('english', coalesce(NEW.title, '') || ' ' || coalesce(NEW.department, '') || ' ' || coalesce(NEW.location, ''));
+        RETURN NEW;
+      END $$ LANGUAGE plpgsql
+    `);
+    await exec(`DROP TRIGGER IF EXISTS trig_jobs_search ON jobs`);
+    await exec(`CREATE TRIGGER trig_jobs_search BEFORE INSERT OR UPDATE ON jobs FOR EACH ROW EXECUTE FUNCTION jobs_search_update()`);
+    // Backfill existing rows
+    await exec(`UPDATE jobs SET search_vector = to_tsvector('english', coalesce(title, '') || ' ' || coalesce(department, '') || ' ' || coalesce(location, '')) WHERE search_vector IS NULL`);
+  }
+
   logger.info({ engine: isPostgres ? 'postgresql' : 'sqlite' }, 'Database schema migrated');
 }
 

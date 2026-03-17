@@ -40,6 +40,7 @@ async function discoverSiteNumber(tenant, region) {
       }
     } catch { /* try next */ }
   }
+  logger.warn({ tenant, region, triedSites: COMMON_SITE_NUMBERS }, 'Oracle: no working siteNumber found');
   return null;
 }
 
@@ -104,9 +105,10 @@ async function fetchJobs(clientname) {
 
   for (let i = 0; i < postings.length; i += DETAIL_BATCH_SIZE) {
     const batch = postings.slice(i, i + DETAIL_BATCH_SIZE);
-    const details = await Promise.all(
+    const settled = await Promise.allSettled(
       batch.map(job => fetchJobDetail(baseUrl, siteNumber, job.Id))
     );
+    const details = settled.map(r => r.status === 'fulfilled' ? r.value : null);
 
     if (i + DETAIL_BATCH_SIZE < postings.length) {
       await new Promise(r => setTimeout(r, 300));
