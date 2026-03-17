@@ -10,11 +10,18 @@ function getRedis() {
   return redis;
 }
 
-function cacheMiddleware(ttlSeconds = 300) {
+function cacheMiddleware(ttlSeconds = 60) {
   return async (req, res, next) => {
     if (req.method !== 'GET') return next();
     const client = getRedis();
     if (!client) return next();
+
+    // Only cache simple routes, skip high-cardinality search queries
+    const path = req.path;
+    if (path.startsWith('/api/jobs') && req.query.q) {
+      // Don't cache search queries — too many unique combinations fill Redis
+      return next();
+    }
 
     const key = `cache:${req.originalUrl}`;
     try {

@@ -60,13 +60,27 @@ async function main() {
 
   async function shutdown(signal) {
     logger.info({ signal }, 'Shutting down worker');
-    await crawlWorker.close();
-    await discoveryWorker.close();
-    await syncWorker.close();
-    await crawlQueue.close();
-    await discoveryQueue.close();
-    await syncQueue.close();
-    await closeDb();
+    // Force exit after 20s to stay within Heroku's 30s SIGTERM window
+    const forceTimer = setTimeout(() => {
+      logger.warn('Forcing exit after 20s shutdown timeout');
+      process.exit(1);
+    }, 20000);
+    forceTimer.unref();
+    try {
+      await Promise.allSettled([
+        crawlWorker.close(),
+        discoveryWorker.close(),
+        syncWorker.close(),
+      ]);
+      await Promise.allSettled([
+        crawlQueue.close(),
+        discoveryQueue.close(),
+        syncQueue.close(),
+      ]);
+      await closeDb();
+    } catch (err) {
+      logger.error({ err: err.message }, 'Error during shutdown');
+    }
     process.exit(0);
   }
 
