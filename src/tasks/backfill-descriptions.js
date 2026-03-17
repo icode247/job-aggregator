@@ -10,10 +10,12 @@ const logger = require('../logger');
 
 const ATS_CONFIG = {
   workday:         { batchSize: 50, delayMs: 2000 },
+  taleo:           { batchSize: 20, delayMs: 500 },
   smartrecruiters: { batchSize: 50, delayMs: 500 },
   bamboohr:        { batchSize: 50, delayMs: 500 },
   jazzhr:          { batchSize: 50, delayMs: 500 },
   breezy:          { batchSize: 50, delayMs: 500 },
+  oracle:          { batchSize: 30, delayMs: 300 },
 };
 
 // Cache workday configs per slug
@@ -143,12 +145,68 @@ async function fetchBreezyDescription(job) {
   return null;
 }
 
+async function fetchTaleoDescription(job) {
+  if (!job.url) return null;
+  const res = await fetch(job.url, { signal: AbortSignal.timeout(15000) });
+  if (!res.ok) return null;
+  const html = await res.text();
+  // Try JSON-LD first
+  const ld = extractJsonLdDescription(html);
+  if (ld) return ld;
+  // Extract from !*! delimited URL-encoded HTML in pipe data
+  const PIPE_SEP = '!|!';
+  if (html.includes('!*!') && html.includes(PIPE_SEP)) {
+    const pipeStart = html.indexOf(PIPE_SEP);
+    const pipeEnd = html.lastIndexOf(PIPE_SEP) + PIPE_SEP.length + 5000;
+    const pipeSection = html.substring(pipeStart, Math.min(html.length, pipeEnd));
+    const starParts = pipeSection.split('!*!');
+    const descSegments = [];
+    for (let i = 1; i < starParts.length; i++) {
+      let raw = starParts[i];
+      const pipeIdx = raw.indexOf(PIPE_SEP);
+      if (pipeIdx !== -1) raw = raw.substring(0, pipeIdx);
+      if (raw.length < 30) continue;
+      try {
+        const decoded = decodeURIComponent(raw);
+        if (decoded.length > 50 && /<(p|li|br|ul|ol|div|span|h[1-6]|table|tr|td|strong|em|b|i)\b/i.test(decoded)) {
+          descSegments.push(decoded);
+        }
+      } catch { /* skip */ }
+    }
+    if (descSegments.length > 0) return descSegments.join('\n');
+  }
+  return null;
+}
+
+async function fetchOracleDescription(job) {
+  // Parse tenant.region.siteNumber from ats_slug
+  const parts = job.ats_slug.split('.');
+  if (parts.length < 2) return null;
+  const tenant = parts[0];
+  const region = parts[1];
+  const siteNumber = parts.slice(2).join('.') || null;
+  if (!siteNumber) return null;
+  const jobId = job.external_id.replace('oracle_', '');
+  const url = `https://${tenant}.fa.${region}.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitionDetails?onlyData=true&expand=all&finder=ById;Id=${jobId},siteNumber=${siteNumber}`;
+  const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const item = data.items?.[0];
+  if (!item) return null;
+  const descParts = [item.ExternalDescriptionStr, item.ExternalQualificationsStr, item.ExternalResponsibilitiesStr].filter(Boolean);
+  return descParts.length > 0 ? descParts.join('\n') : null;
+}
+
 async function fetchDescription(job) {
   const rawData = typeof job.raw_data === 'string' ? JSON.parse(job.raw_data) : job.raw_data;
 
   switch (job.ats) {
     case 'workday':
       return fetchWorkdayDescription(job, rawData);
+    case 'taleo':
+      return fetchTaleoDescription(job);
+    case 'oracle':
+      return fetchOracleDescription(job);
     case 'smartrecruiters':
       return fetchSmartRecruitersDescription(job);
     case 'bamboohr':
