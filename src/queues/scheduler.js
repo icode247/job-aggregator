@@ -34,14 +34,15 @@ async function fanoutDiscovery(discoveryQueue) {
 }
 
 async function fanoutSync(syncQueue) {
-  const companies = await companiesRepo.findActive();
+  // Prioritize: never-synced first, then oldest-synced
+  const companies = await companiesRepo.findDueForSync();
   logger.info({ count: companies.length }, 'Fanning out sync jobs');
   for (const company of companies) {
     await syncQueue.add(`sync-${company.id}`, {
       companyId: company.id,
       ats: company.ats,
       atsSlug: company.ats_slug,
-    });
+    }, { jobId: `sync-${company.id}` });
   }
 }
 

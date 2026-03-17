@@ -16,6 +16,19 @@ const companiesRepo = {
     return rows;
   },
 
+  async findDueForSync() {
+    // Prioritize: never-synced first, then oldest-synced (stale > 2h)
+    const { rows } = await query(`
+      SELECT * FROM companies
+      WHERE status = 'active'
+        AND ats IS NOT NULL
+        AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '2 hours')
+      ORDER BY last_synced_at ASC NULLS FIRST
+      LIMIT 10000
+    `);
+    return rows;
+  },
+
   async findAllPaginated(limit = 100, offset = 0) {
     const { rows } = await query('SELECT * FROM companies ORDER BY id LIMIT ? OFFSET ?', [limit, offset]);
     return rows;
