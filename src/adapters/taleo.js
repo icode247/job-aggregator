@@ -143,9 +143,40 @@ async function fetchJobDetail(company, portal, jobId) {
     }
 
     if (pipeData) {
-      // No JSON-LD — use pipe data + og:description
-      const ogDesc = html.match(/og:description[^>]*content="([^"]*)"/i);
-      const description = ogDesc?.[1] && !ogDesc[1].includes('Click the link') ? ogDesc[1] : null;
+      // Extract description from !*! delimited URL-encoded HTML sections within pipe data
+      let description = null;
+      if (html.includes('!*!') && html.includes(PIPE_SEP)) {
+        // Scope to the pipe data section only
+        const pipeStart = html.indexOf(PIPE_SEP);
+        const pipeEnd = html.lastIndexOf(PIPE_SEP) + PIPE_SEP.length + 5000;
+        const pipeSection = html.substring(pipeStart, Math.min(html.length, pipeEnd));
+        const starParts = pipeSection.split('!*!');
+        const descSegments = [];
+        for (let i = 1; i < starParts.length; i++) {
+          let raw = starParts[i];
+          // Trim at next pipe separator if present
+          const pipeIdx = raw.indexOf(PIPE_SEP);
+          if (pipeIdx !== -1) raw = raw.substring(0, pipeIdx);
+          if (raw.length < 30) continue;
+          try {
+            const decoded = decodeURIComponent(raw);
+            if (decoded.length > 50 && /<(p|li|br|ul|ol|div|span|h[1-6]|table|tr|td|strong|em|b|i)\b/i.test(decoded)) {
+              descSegments.push(decoded);
+            }
+          } catch { /* malformed URI sequence — skip */ }
+        }
+        if (descSegments.length > 0) {
+          description = descSegments.join('\n');
+        }
+      }
+
+      // Fall back to og:description if pipe data yielded nothing
+      if (!description) {
+        const ogDesc = html.match(/og:description[^>]*content="([^"]*)"/i);
+        if (ogDesc?.[1] && !ogDesc[1].includes('Click the link')) {
+          description = ogDesc[1];
+        }
+      }
 
       return {
         title: pipeData.title,

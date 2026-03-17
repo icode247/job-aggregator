@@ -5,6 +5,7 @@ const { createSyncQueue, createSyncWorker } = require('./queues/sync.queue');
 const { createCrawlQueue, createCrawlWorker } = require('./queues/crawl.queue');
 const { registerSchedules, fanoutDiscovery, fanoutSync, fanoutCrawl } = require('./queues/scheduler');
 const { backfillDescriptions } = require('./tasks/backfill-workable-descriptions');
+const { backfillDescriptions: backfillAllDescriptions } = require('./tasks/backfill-descriptions');
 
 async function main() {
   await migrate();
@@ -47,6 +48,17 @@ async function main() {
     setTimeout(runBackfill, 10 * 60 * 1000);
   }
   setTimeout(runBackfill, 60 * 1000); // Start 1 minute after boot
+
+  // Backfill descriptions for all ATS platforms every 10 minutes
+  async function runAllBackfill() {
+    try {
+      await backfillAllDescriptions();
+    } catch (err) {
+      logger.error({ err: err.message }, 'Description backfill error');
+    }
+    setTimeout(runAllBackfill, 10 * 60 * 1000);
+  }
+  setTimeout(runAllBackfill, 3 * 60 * 1000); // Start 3 minutes after boot
 
   async function shutdown(signal) {
     logger.info({ signal }, 'Shutting down worker');

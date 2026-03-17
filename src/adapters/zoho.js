@@ -10,8 +10,43 @@ const ZOHO_DOMAINS = [
   'zohorecruit.com.au',
 ];
 
+const DETAIL_BATCH_SIZE = 3;
+
+function titleSlug(title) {
+  return (title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+async function fetchJobDetail(domain, clientname, jobId, slug) {
+  try {
+    const url = `https://${clientname}.${domain}/jobs/Careers/${jobId}/${slug}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    if (!res.ok) return null;
+    const html = await res.text();
+    const match = html.match(/var\s+jobs\s*=\s*JSON\.parse\('(.+?)'\)/);
+    if (!match) return null;
+    // Decode \x22 → " and \x27 → ', then fix escaped inner quotes
+    let raw = match[1].replace(/\\x22/g, '"').replace(/\\x27/g, "'");
+    // The JSON contains \\" (escaped quotes inside string values) — convert to escaped form JSON expects
+    raw = raw.replace(/\\\\"/g, '\\"');
+    // Also handle escaped colons and other Zoho quirks
+    raw = raw.replace(/\\\\:/g, ':').replace(/\\\\\//g, '/');
+    try {
+      const parsed = JSON.parse(raw);
+      const job = Array.isArray(parsed) ? parsed[0] : parsed;
+      return job?.Job_Description || null;
+    } catch {
+      // If JSON parse fails, try regex extraction as fallback
+      const descMatch = raw.match(/"Job_Description"\s*:\s*"([\s\S]*?)"\s*,\s*"/);
+      return descMatch ? descMatch[1].replace(/\\"/g, '"') : null;
+    }
+  } catch {
+    return null;
+  }
+}
+
 async function fetchJobs(clientname) {
   let html = null;
+  let workingDomain = null;
 
   for (const domain of ZOHO_DOMAINS) {
     try {
@@ -23,6 +58,7 @@ async function fetchJobs(clientname) {
         const text = await res.text();
         if (text.includes('id="jobs"')) {
           html = text;
+          workingDomain = domain;
           break;
         }
       }
@@ -84,6 +120,24 @@ async function fetchJobs(clientname) {
       posted_at: job.Date_Opened || null,
       raw_data: job,
     }));
+
+  // Fetch descriptions from detail pages for jobs missing them
+  const missingDesc = jobs.filter(j => !j.description);
+  if (missingDesc.length > 0 && workingDomain) {
+    for (let i = 0; i < missingDesc.length; i += DETAIL_BATCH_SIZE) {
+      if (i > 0) await new Promise(r => setTimeout(r, 300));
+      const batch = missingDesc.slice(i, i + DETAIL_BATCH_SIZE);
+      const results = await Promise.all(
+        batch.map(j => {
+          const slug = titleSlug(j.raw_data.Posting_Title || j.raw_data.Job_Opening_Name || '');
+          return fetchJobDetail(workingDomain, clientname, j.raw_data.id, slug);
+        })
+      );
+      results.forEach((desc, idx) => {
+        if (desc) batch[idx].description = desc;
+      });
+    }
+  }
 
   return {
     jobs,

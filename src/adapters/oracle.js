@@ -7,6 +7,7 @@
 const logger = require('../logger');
 
 const PAGE_SIZE = 25;
+const DETAIL_BATCH_SIZE = 3;
 const COMMON_SITE_NUMBERS = ['CX', 'CX_1', 'CX_1001', 'CX_45001', 'CX_1003'];
 
 /**
@@ -42,6 +43,28 @@ async function discoverSiteNumber(tenant, region) {
   return null;
 }
 
+/**
+ * Fetch full job details (description, qualifications, responsibilities).
+ */
+async function fetchJobDetail(baseUrl, siteNumber, jobId) {
+  try {
+    const url = `${baseUrl}/recruitingCEJobRequisitionDetails?onlyData=true&expand=all&finder=ById;Id=${jobId},siteNumber=${siteNumber}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const item = data.items?.[0];
+    if (!item) return null;
+    const parts = [
+      item.ExternalDescriptionStr,
+      item.ExternalQualificationsStr,
+      item.ExternalResponsibilitiesStr,
+    ].filter(Boolean);
+    return parts.length > 0 ? parts.join('\n') : null;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchJobs(clientname) {
   const parsed = parseSlug(clientname);
   if (!parsed) throw new Error(`Oracle: invalid slug format "${clientname}", expected "tenant.region" or "tenant.region.siteNumber"`);
@@ -56,8 +79,8 @@ async function fetchJobs(clientname) {
 
   const baseUrl = `https://${tenant}.fa.${region}.oraclecloud.com/hcmRestApi/resources/latest`;
 
-  // Paginate through all jobs
-  const jobs = [];
+  // Step 1: Paginate through all job listings
+  const postings = [];
   let offset = 0;
   let hasMore = true;
 
@@ -71,7 +94,26 @@ async function fetchJobs(clientname) {
     const requisitions = data.items?.[0]?.requisitionList || [];
     if (requisitions.length === 0) break;
 
-    for (const job of requisitions) {
+    postings.push(...requisitions);
+    hasMore = requisitions.length === PAGE_SIZE;
+    offset += PAGE_SIZE;
+  }
+
+  // Step 2: Fetch details in batches for full descriptions
+  const jobs = [];
+
+  for (let i = 0; i < postings.length; i += DETAIL_BATCH_SIZE) {
+    const batch = postings.slice(i, i + DETAIL_BATCH_SIZE);
+    const details = await Promise.all(
+      batch.map(job => fetchJobDetail(baseUrl, siteNumber, job.Id))
+    );
+
+    if (i + DETAIL_BATCH_SIZE < postings.length) {
+      await new Promise(r => setTimeout(r, 300));
+    }
+
+    for (let j = 0; j < batch.length; j++) {
+      const job = batch[j];
       const locations = [job.PrimaryLocation];
       if (job.secondaryLocations) {
         for (const sec of job.secondaryLocations) {
@@ -90,15 +132,12 @@ async function fetchJobs(clientname) {
         salary_max: null,
         salary_currency: null,
         salary_interval: null,
-        description: job.ShortDescriptionStr || null,
+        description: details[j] || job.ShortDescriptionStr || null,
         url: `https://${tenant}.fa.${region}.oraclecloud.com/hcmUI/CandidateExperience/en/sites/${siteNumber}/job/${job.Id}`,
         posted_at: job.PostedDate || null,
         raw_data: job,
       });
     }
-
-    hasMore = requisitions.length === PAGE_SIZE;
-    offset += PAGE_SIZE;
   }
 
   logger.info({ tenant, region, siteNumber, fetched: jobs.length }, 'Oracle Cloud HCM fetch complete');
