@@ -123,6 +123,7 @@ const jobsRepo = {
     let added = 0;
     let updated = 0;
     let removed = 0;
+    let skippedRemoval = false;
 
     // Filter out jobs older than 3 months if they have a posted date
     const THREE_MONTHS_AGO = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
@@ -184,15 +185,31 @@ const jobsRepo = {
         }
       }
 
-      for (const [externalId, dbId] of existingMap) {
-        if (!incomingIds.has(externalId)) {
-          await tx.query("UPDATE jobs SET removed_at = datetime('now') WHERE id = ?", [dbId]);
-          removed++;
+      // Guard against partial API responses wiping out jobs
+      const existingCount = existingMap.size;
+      const missingCount = [...existingMap.keys()].filter(id => !incomingIds.has(id)).length;
+      const skipRemoval = existingCount > 0 && (
+        freshJobs.length === 0 ||
+        missingCount / existingCount > 0.8
+      );
+
+      if (skipRemoval) {
+        skippedRemoval = true;
+        logger.warn(
+          { companyId, ats, existingCount, incomingCount: freshJobs.length, missingCount },
+          'Skipping job removal — incoming count dropped too much, likely partial API response'
+        );
+      } else {
+        for (const [externalId, dbId] of existingMap) {
+          if (!incomingIds.has(externalId)) {
+            await tx.query("UPDATE jobs SET removed_at = datetime('now') WHERE id = ?", [dbId]);
+            removed++;
+          }
         }
       }
     });
 
-    logger.info({ companyId, added, updated, removed }, 'Job sync diff complete');
+    logger.info({ companyId, added, updated, removed, skippedRemoval }, 'Job sync diff complete');
     return { added, updated, removed };
   },
 };
