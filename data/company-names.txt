@@ -661,3 +661,1869 @@ Postman
 BrowserStack
 Hasura
 Razorpay
+# LinkedIn companies (batch import)
+[24]7.ai
+❤️ Positive thought ☀️ Daily Good News
+📍Think Positive always.com📌
+1 Clean Air
+100 Women In Finance
+24 Seven Talent
+2K
+3M
+500 Global
+54 Collective
+60 Decibels
+AAM - American Axle & Manufacturing
+AB InBev
+Abbott
+AbbVie
+Absa Bank Kenya
+Absorb Software
+Academy for Educational Development
+Accel
+Accenture
+Accenture in India
+Accor
+Aceli Africa
+Aché Laboratórios
+Achyutam International - Consulting in HR & Finance
+ACI Worldwide
+ACL Airshop
+ACL Digital
+Acolad group
+Acoustic
+Acquia
+ACROW FORMWORK TECHNOLOGY
+Activision
+Acumatica
+AD Ports Group
+Adani Group
+ADEC Innovations
+Adecco
+Adeso
+adidas
+Aditi Consulting
+Aditya Birla Group
+ADM
+Adobe Marketo
+AECOM
+Aerotek
+Africa Tech Summit
+African Institute for Development Policy (AFIDEP)
+African Labour Solutions (ALS)
+African Population and Health Research Center (APHRC)
+African Wildlife Foundation
+AFRY
+AGCO Corporation
+Agibank
+AgileEngine
+Agilent Technologies
+Agoda
+AGRA
+AI at Meta
+AI Automation Newsletter
+AI For Leaders
+AIG
+Air Liquide
+Airbus
+Airbus Aircraft
+Airswift
+airtel
+Airtel Africa
+Airtel Kenya
+Akamai Technologies
+AKQA
+Albemarle Corporation
+Aldelia
+Alexander Chapman
+Alexander Hughes
+Alibaba Group
+Alicorp
+Align Technology
+AlixPartners
+AllAfrica Global Media
+Allbirds
+Allegis Group
+AllianceBernstein
+Allianz
+ALLSTARSIT
+ALN Kenya | Anjarwalla & Khanna
+Alnylam Pharmaceuticals
+Alstom
+Altair
+ALTEN
+Alternate Doors Consulting
+Alteryx
+AltGen South Africa
+Altimetrik
+Alvaria CX
+alx_africa
+Amazon Business
+Amazon Web Services (AWS)
+Ambev
+Amdocs
+American Bureau of Shipping (ABS)
+American Tower
+americanas s.a.
+Amgen
+Amicus
+Amiran Kenya Ltd
+AMPATH Kenya
+Ampstek
+AMREF Flying Doctors
+AMSCO
+Anaplan
+Andreessen Horowitz
+Angaza
+Anglo American
+Ankura
+Annapurna
+Anomaly
+Anson McCade
+Antarctica
+Antler
+Aon
+APCO
+Apex Systems
+Apexon
+APL Logistics
+Apollo Global Management, Inc.
+Appen
+Appian
+Applus+ Asia Middle East and Africa
+AppsFlyer
+Aptar
+Aptean
+Aptiv
+Aquent
+aramco
+Aramex
+Arcadia
+Arcadis
+Arcesium
+ArchDaily
+Archetype
+Arcserve
+Ares Management
+Arista Networks
+ARK Solutions, Inc.
+Arkema
+Arm
+Armada Human Capital
+Arrow Electronics
+Arrows
+Arup
+Asante Africa Foundation
+Ascendion
+Ascentech Services Ltd
+Aspen Technology
+ASQ - World Headquarters
+Assaí Atacadista
+Assembly Global
+Assent
+Astek
+Astroscale
+ASUS
+Atacadão
+Atento
+athenahealth
+Atlas Copco
+Atlas Tower Group
+ATMC
+Atos
+ATPI
+Auchan Retail
+Australian Trade and Investment Commission (Austrade)
+Automation Anywhere
+Avalara
+Avanade
+Avenue Code
+AvePoint
+Avesta Computer Services
+AVI-SPL
+Aviat Networks
+Aviation Services Management
+Avient Corporation
+Awaken a Dream Society (ADS)
+AXA
+Axalta
+Axis Bank
+Axtria - Ingenious Insights
+AZA Finance
+Azentio
+Azul Linhas Aéreas Brasileiras
+B. Braun Group
+BairesDev
+Bajaj Finserv
+Baker Hughes
+Bamburi Cement PLC
+Banco Bradesco
+Banco do Brasil
+Bandwidth Inc.
+Bank of America
+BAPS Swaminarayan Sanstha
+Barclays
+Barclays Investment Bank
+Barilla Group
+BASF
+BAT
+Bausch + Lomb
+Bayer
+Bayobab
+BayOne Solutions
+Bazaarvoice
+BBC
+BBC News
+Bboxx
+BBVA
+BCG Digital Ventures
+BD
+Beckman Coulter Life Sciences
+Beiersdorf
+BeiGene
+Beinex
+Belden Inc.
+Benchmark
+Benchmark Gensuite®
+Benefit Cosmetics
+Bentley Systems
+BeOne Medicines
+betPawa
+BFM Business
+BHP
+Bidco Africa
+BIG - Bjarke Ingels Group
+Billionaire
+Bimbo do Brasil
+Bio Food Products Ltd | Certified B Corp 🌍
+Bio-Rad Laboratories
+BioLite
+BioMarin Pharmaceutical Inc.
+bioMérieux
+BIPO
+Birlasoft
+BITZER
+Black Box
+BlackLine
+BlackRock
+Blizzard Entertainment
+Blood:Water
+Bloomberg
+Bloomreach
+Blue Yonder
+Blueground
+BlueOrchard Finance Ltd
+BlueVoyant
+BMC Software
+BMW Group
+BNP Paribas
+Board
+Boehringer Ingelheim
+Boeing
+Boomitra
+Bosch Brasil
+Boston Consulting Group (BCG)
+Boston Scientific
+Bottomline
+Bounteous
+Bowmans (Law Firm)
+Boyden
+bp
+BRAC International
+Bradesco Seguros
+Branch International
+Breakthrough ACTION
+Bridge Academies Foundation Kenya & Uganda
+Bridgewater Associates
+BrighterMonday Kenya
+Brightstar Corp.
+Brillio
+Brink’s Inc
+Bristol Myers Squibb
+Britam
+BroadReach
+Brookfield
+Brookfield Properties
+Brookside Dairy
+Brooksource
+Brothers Gas
+Brown Brothers Harriman
+Brunel
+BT Group
+BTG Pactual
+BUI
+Bunge
+Bureau Veritas
+BURN
+Burness
+Burns & McDonnell
+Busara
+Business Daily Africa
+Businessclaud - Online Shopping
+BuzzClan
+C&A Brasil
+C3 AI
+C6 Bank
+CABI
+Cabot Corporation
+Cacau Show
+Cactus Communications
+CAIXA
+Calix
+Cameron Products
+Capgemini
+Capgemini Engineering
+Capgemini Invent
+Cardno International Development
+Career Connections
+Careerpoint solutions
+Cargill
+Carlsberg Group
+Carrefour
+Carta
+Cartier
+Catalent
+CBTS
+CCI Global
+CCS Global Tech
+Celanese
+Cellulant
+Cemex
+Cencosud S.A.
+Center for Creative Leadership
+Central Bank of Kenya
+Centric Software
+Centum Investment Company Plc.
+Cepheid
+Cerberus Capital Management
+Cerner Corporation
+Certi-Trust
+CertPro
+CEVA Logistics
+CFA Institute
+CFK Africa
+CGAP
+CGI
+CGIAR
+CGIAR Climate Action
+Chandaria Industries
+Check Point Software
+checker
+Cheil Worldwide
+Chevron
+ChildFund Africa
+ChildFund Kenya
+Children's Investment Fund Foundation (CIFF)
+China Life Insurance Co.Ltd
+CHINA STATE CONSTRUCTION (CSCEC)
+ChinaDaily.com.cn
+CHINT PVSTAR
+Chipper Cash
+Christian Dior Couture
+Chui Ventures
+CI&T
+CIC Insurance Company
+CIEE - Centro de Integração Empresa-Escola
+Cielo Talent
+CIFOR - Center for International Forestry Research
+CIFOR-ICRAF
+Cinemark
+Cinntra
+CIO Africa by dx5
+Circular Supply Chain Network
+Cisco
+Cisco Meraki
+Citadel Securities
+Citi
+Civil Engineer
+Clario
+Clarity Recruiting
+Clark Schaefer Hackett
+Claro Brasil
+CLASP
+ClassPass
+Clay
+Clear.
+Clearwater Analytics
+Cliffe Dekker Hofmeyr Inc
+Climate Impact Partners | B Corp™
+Cloudbeds
+Cloudera
+CloudFactory
+CloudHire
+CloudVital
+Club Med
+Clyde & Co
+CM.com
+CMA CGM
+cmmb
+CNBC
+Co-Impact
+Co-operative Bank of Kenya
+Coach
+Coalition, Inc.
+Coca-Cola Beverages Africa - Kenya
+CodeLn
+Coforge
+Cognite
+Cognizant
+Cohere Health
+Coherent Corp.
+Colgate-Palmolive
+Comcast
+Compass UOL
+Compunnel Inc.
+Computer Futures
+Comrise
+Comviva
+Conduent
+Confidential
+Confidential Careers
+CONMED Corporation
+Continental
+Converse
+Conviva
+Cooper Standard
+Cornerstone OnDemand
+Corporate Staffing Services Kenya
+CoStar Group
+Costco Wholesale
+Coupa
+Coupang
+Cowater International
+CPU - Close Protection Unit
+Crayon
+Creative Circle
+Credit Suisse
+CRG
+Crocs, Inc.
+Crop Nutrition Laboratory Services (Cropnuts)
+CrossBoundary Group
+Crossover
+Crowe
+Crown Worldwide Group
+Crunchyroll
+Crypto.com
+CSG
+CSM Technologies
+CTG
+CTO ROBOTICS Media
+Cubiq Recruitment
+Curacel (YC 22)
+Curate Partners
+CURE International
+Cushman & Wakefield
+Cutting Edge Search
+Cvent
+CWT
+CYBER RANGES
+CyberCoders
+Cybereason, A LevelBlue Company
+Cytonn Investments
+d.light
+DAMAC Properties
+Danone
+Darwix AI
+Dasa
+Dassault Systèmes
+Dastgyr
+data.ai (by Sensor Tower)
+Datacultr
+Dataiku
+Datamatics
+Davis & Shirtliff
+DBS Bank
+DDN
+Decathlon
+Dell Technologies
+Deloitte
+Deloitte Corporate Finance
+Deloitte Digital
+Delta Air Lines
+Deltek
+Denodo
+Dentons
+dentsu
+Designer Group
+Deutsche Bank
+Developer Communities | Remote | Freelance | Outsource
+Dew Software
+Dexian
+Diamond Offshore
+Diamond Trust Bank
+Dice
+Diebold Nixdorf
+Digital Divide Data (DDD)
+Digital Gurus
+Diksha Technologies
+Dimension Data
+Discord
+Discover
+Disney+ Hotstar
+DISYS
+Docker, Inc
+Doctors Explain Digital Health Co. LTD.
+Donaldson
+DP World
+DPO Pay by Network
+Dr. Reddy's Laboratories
+Draper Richards Kaplan Foundation
+Droisys
+Drugs for Neglected Diseases initiative (DNDi)
+DRW
+Dun & Bradstreet
+DuPont
+Durlston Partners
+DVT
+E-Solutions
+e2open
+East African Breweries PLC (EABL)
+Eastern Software Solutions
+Eastman Kodak Company
+Eaton
+ECB Engineering Firm
+Ecolab
+Ecolog International
+ECS Fin Inc.
+Edelman
+EDF
+edt
+Edwards Lifesciences
+EFL
+Egger & Co
+Egis
+Egnyte
+Einstein Hospital Israelita
+eJAmerica
+Electronic Arts (EA)
+Elephant Ventures
+Eliassen Group
+Ello
+Embraer
+EMC (Expanding Mobile Connectivity)
+Employment Hero
+Empregos.com.br
+Empresa Confidencial
+Encareer Ventures Kenya
+Energizer Holdings
+Enfusion (Now CWAN)
+ENGIE
+ENGIE Energy Access (Africa)
+Enphase Energy
+ENS
+Entegris
+Entrepreneurs First
+Entrust
+Envirofit International
+Environmental Defense Fund
+Enviu
+EPAM Systems
+Epicor
+Epiq
+Epsilon
+Equality Now
+Equalize Health
+Equity Bank Limited
+eRecruiter
+Eskimi
+Essence
+EssilorLuxottica
+ESTADÃO
+eStaffing Inc.
+eTeam
+ETS
+EUROCERT
+Eurofarma
+European Space Agency - ESA
+European Tech Recruit
+Eventbrite
+Everbridge
+Evernex
+EVERSANA
+Evertec
+Exact Sciences
+Exadel
+EXAME
+Excis Compliance
+Execo
+Exinity
+Expedia Group
+Expeditors
+Experian
+Experis
+Explore Group
+ExxonMobil
+EY
+F5
+Factor E
+FactSet
+Family Bank Ltd
+Fanatics
+FARFETCH
+Farmer's Choice Limited
+Faxoc
+FCA Fiat Chrysler Automobiles
+FedEx
+Fever
+FICO
+Finance in Motion
+Financial Times
+FIND
+FINERGREEN
+Fintech Association Of Kenya
+First Abu Dhabi Bank (FAB)
+First Point Group
+First Recruitment Group
+Firstsource
+FIS
+Fiserv
+Fisher Investments
+Fitch Ratings
+Fiverr
+FLEETCOR
+Flexera
+Flexton Inc.
+FlexTrade
+Flywire
+FMC Corporation
+Focus Softnet
+Folha de S.Paulo
+Food Nature Climate Dialogue
+Forbes Advisor
+Forbes Brasil
+Forbes Marshall
+Ford Foundation
+Ford Motor Company
+Forest Stewardship Council
+Formlabs
+Formula Recruitment
+Forrester
+Fosroc
+Foster + Partners
+Foxconn
+Fractal
+France Culture
+France Travail
+Franklin Fitch
+Franklin Templeton
+Freelance Insider
+Freyr Solutions
+Frost & Sullivan
+FSD Africa
+FTI Consulting
+ftx
+FUJIFILM Biotechnologies
+Fujitsu
+Fusion CX
+Future Africa
+Fuze HR Solutions
+Fuzu Ltd
+G-P
+G4S
+Gallagher
+GameStop
+Gap Recruitment Services Kenya
+Gartner
+Gates Corporation
+Gates Foundation
+GE
+GE Digital
+GE Vernova's Grid Software
+Gebeya Inc.
+GeeksforGeeks
+GEELY
+General Atlantic
+General Motors
+Genesis Analytics
+Genesys
+Genpact
+Gensler
+GEODIS
+GeoPoll
+Geothermal Development Company
+GEP Worldwide
+Gerdau
+German Chambers of Commerce Abroad (AHK)
+Gi Group
+Gibson Dunn
+GIDEON®
+Gigamon
+Giift
+Gilead Sciences
+Gini Talent
+GiveDirectly
+GIZ Kenya
+Giza Systems
+Glencore
+Global Edge Group
+Global Good x Amani
+Global Health Strategies (GHS)
+Global Partnerships
+Global Software Solutions Group
+Global Technical Talent, an Inc. 5000 Company
+GlobalLogic
+Globant
+Globo
+Glocomms
+GM Financial
+GOL Linhas Aéreas
+Golin
+Google Cloud
+Google for Startups
+GoPro
+Gorilla Corporation
+Graco
+GrainPro
+Gravitas Recruitment Group (Global) Ltd
+Green Planet Initiative 2050™ 🌳
+Green.Earth
+Greenlight Planet
+Gro Intelligence
+Groupe BPCE
+Groupe Crédit Agricole
+Groupe SNCF
+GroupM
+Groupon
+GrowthAfrica
+GRUNDFOS
+Grupo Boticário
+Grupo Carrefour Brasil
+Grupo Casas Bahia
+Gruppo ICM
+GSK
+GSM Systems
+GSMA
+Guala Closures
+Guaranty Trust
+Guardant Health
+Guidehouse
+Guidepoint
+Guidewheel
+Guidewire Software
+Gupy
+GyanSys Inc.
+Gympass
+H.B. Fuller
+Haas Automation, Inc.
+Habib Bank AG Zurich
+Habitat for Humanity International
+hackajob
+HackerEarth
+HackerOne
+HackerRank
+HackerSploit
+Hapag-Lloyd AG
+HARMAN International
+Harnham
+Harvard Business Review
+Harvey Nash
+Havas Media Network
+Havells India Ltd
+Hays
+HCA Healthcare
+HCLTech
+HDFC Bank
+Helios Investment Partners
+Hello Tractor
+Henkel
+Henner Group
+Henson Group
+Herbalife
+Hermès
+HGS
+HID
+HighRadius
+Hill & Knowlton
+Hill International, Inc.
+Hilton
+Hitachi
+Hivos
+HMH
+Hogan Lovells
+HOK
+Home Office - Vagas Remotas
+Honda Brasil
+HonestAI - Manufacturing AI Leaders (US and Canada)
+Honeywell
+Honeywell Process Technology
+HONOR
+Houlihan Lokey
+HSBC
+Huawei
+Hudson River Trading
+Hudson Talent Solutions
+HuffPost
+Hugo
+HUGO BOSS
+Hulu
+Hunter Bond
+Huntsman Corporation
+Huron
+HVAX Technologies Ltd.
+Hyland
+Hyster-Yale Materials Handling
+I&M Bank Ltd
+IC Resources
+ICE
+ICEA LION Group
+ICICI Bank
+ICIPE - International Centre of Insect Physiology and Ecology
+ICON plc
+ICPAK (Institute of Certified Public Accountants of Kenya)
+ICRISAT
+ICT Authority
+IDEO
+IDEO.org
+IDinsight
+IDR, Inc.
+IFC - International Finance Corporation
+IFC Africa
+IFF
+IFFCO Group
+IGT
+IGT Solutions
+IHG Hotels & Resorts
+IIRR
+Illumina
+Imaging Endpoints
+impact.com
+Impetus
+IMSM
+In4Velocity Systems
+Inc. Magazine
+Incedo Inc.
+Incofin Investment Management
+Indeed
+Indegene
+Indsafri
+Industrial and Commercial Bank of China
+Inetum
+Infineon Technologies
+Infinera
+Infinite Computer Solutions
+Infinity Quest
+Infobahn Softworld Inc
+InfoBeans
+Infobip
+Infogain
+Infojini Inc
+InfoJobs
+InfoMoney
+Infor
+Infosys
+Infosys BPM
+InfoVision Inc.
+InfyStrat Software Services
+Ingram Micro
+Initiate International
+Inkomoko
+Innova Solutions
+Innovo Group
+Insight Global
+Insights Success Media
+insightsoftware
+Inspectorio
+Inspira Enterprise
+INSPYR Solutions
+Instaleap
+Institute for Economics & Peace
+Institute for Security Studies
+Integration International Inc.
+Inteleos
+Intellecap
+Intellect Design Arena Ltd
+Intelletec
+Intellias
+IntelliPro
+Intelliswift - An LTTS Company
+IntePros
+Inter
+Inter-American Development Bank
+Interesting Engineering
+InterEx Group
+Intergovernmental Oceanographic Commission (IOC) of UNESCO
+International Development Research Centre (IDRC)
+International Humanity Foundation
+International NGO Safety Organisation (INSO)
+International Potato Center (CIP)
+International Rescue Committee
+International Schools Teaching Jobs Hub
+International Vaccine Institute (IVI)
+Internshala
+Interswitch Group
+InterSystems
+Intetics
+INTOO
+Intuit
+Investigo
+Inworld AI
+iO Associates
+Ion Interactive
+IOTA GROUP
+Ipas
+IPE Global Limited
+IPG Health
+Iris Software Inc.
+ISACA Kenya Chapter
+iSON Xperiences - Smarter Empathic AI
+ISRO - Indian Space Research Organisation
+italki
+Itaú Unibanco
+ITC Infotech
+ITC Limited
+ITT Inc.
+ITW
+Ivanti
+IxDF - Interaction Design Foundation
+J.P. Morgan
+Jabil
+Jade Global
+JAGGAER
+Jambojet
+JavaScript Works
+JBC
+JBS
+JD.COM
+Jefferies
+Jenga Websites and Tech
+Jio
+JLL
+JMR Infotech
+Job in Kenya
+Job Vacancies in Kenya
+Job Vacancy Kenya
+JobKonnecta.com
+Jobot
+Jobs In Kenya - JOB BASE (Kenya)
+John Deere
+Johnson & Johnson
+Johnson Controls
+Jones Day
+Journalism and Media Opportunities
+Joveo
+JPMorganChase
+Jubilee Insurance
+Jumeirah
+JUMO
+Jump Trading
+Juniper Networks
+Justdiggit
+K&L Gates
+KAL
+Kantar
+Kaspersky
+KCB Bank Group
+Kearney
+Keka HR
+Kellogg Company
+Kelly
+KEMRI - Wellcome Trust
+KenGen Kenya
+Kenya Airports Authority
+Kenya Airways
+Kenya Association of Manufacturers
+Kenya Breweries Limited (KBL)
+Kenya Bureau of Standards
+Kenya Electricity Transmission Company Limited (KETRACO)
+Kenya Medical Research Institute (KEMRI)
+Kenya Power
+Kenya Private Sector Alliance (KEPSA)
+Kenya Red Cross
+Kenya Red Cross Youth
+Kenya Tourism Board
+Kenya Wine Agencies Limited - KWAL
+Kenyans.co.ke
+Kering
+Kerridge Commercial Systems
+Ketchum
+Kforce Inc
+Kimberly Ryan Limited
+Kimberly-Clark
+Kirkland & Ellis
+Kiva
+Klabin
+Kleiner Perkins
+Kohler Africa
+KOKO Networks
+Kontoor Brands, Inc.
+Konza Technopolis
+Kora
+Korn Ferry
+KPF
+KPIT
+KPMG
+KPMG East Africa
+KPMG India
+KRA(KENYA REVENUE AUTHORITY)
+Kraft Heinz
+Kroger
+Kroll
+Krones
+Kronos Incorporated
+KUKA
+Kuramo Capital Management
+L.E.K. Consulting
+L'Oréal
+L&T Technology Services
+LanceSoft, Inc.
+Larsen & Toubro
+Larson Maddox
+LaSalle Investment Management
+Lateral Frontiers VC
+Launchmaps
+Lazard
+Le Monde
+Leadership Circle
+Lear Corporation
+Ledgent Technology
+LeetCode
+Legend Biotech
+Leidos
+Lenovo
+Leroy Merlin
+Les Echos
+Letshego
+LevelUP HCS
+LexisNexis Risk Solutions
+Lexmark
+LG Electronics
+LHH
+Lincoln Electric
+LinkedIn
+LinkedIn China 领英中国
+LinkedIn Learning
+LinkedIn Life
+LinkedIn News
+Liquid Intelligent Technologies
+Living Goods
+LIVOLTEK
+Localiza&Co
+Lockheed Martin
+Lockton
+LOGCAP Openings and Other Related
+LoginRadius
+Logitech
+Lojas Renner S.A.
+Lorien
+Lorven Technologies Inc.
+LotusFlare
+Louis Vuitton
+Lowe's Companies, Inc.
+LTIMindtree
+LTK
+Lupin
+Lutron Electronics
+Luxoft
+LVI Associates
+LVMH
+Lwala Community Alliance
+LyondellBasell
+M-KOPA
+M. Dias Branco
+M.P. Shah Hospital
+Mabati Rolling Mills Ltd - Member of the SAFAL Group
+MAD
+Magalu
+Magna International
+Magnit Global
+Magnum Photos
+Mane Contract Services
+Manhattan Associates
+ManpowerGroup
+MapleLMS
+Mappa
+Mara Elephant Project
+Marriott International
+Marvell Technology
+Mastech Digital
+Mastercard Foundation
+MathWorks
+MBRF
+MCC Label
+McCormick & Company
+McDonald's
+McKesson
+Medallia
+Médecins Sans Frontières/Doctors Without Borders (MSF) Eastern Africa
+Media, Comms & PR Jobs
+Medic
+Medidata Solutions
+Medline
+Medtronic
+Meet Life Sciences
+Meinhardt Group
+Meltwater
+Mendix
+Mentor Graphics
+Mercado Livre Brasil
+Mercer
+Merck Group
+Mercy Corps
+MetLife
+Micato Safaris
+Michael Kors
+Michael Page
+Michelin
+Microchip Technology Inc.
+Micron Technology
+Microsoft Research
+Midwest Food Bank
+Milestone Technologies, Inc.
+Millar Cameron
+Millennium
+Milliman
+Mindlance
+Minitab
+Mitchell Martin Inc.
+Mobile Programming
+moCal
+Modis
+Momentive
+Mondelēz International
+Mondrian Alpha
+Money, Inc.
+Moody's Analytics
+Moove
+Morae
+Morgan McKinley
+Moris Media
+Morningstar
+Motion Recruitment
+Motivational Lines
+Motive
+Motorola Mobility (a Lenovo Company)
+Motorola Solutions
+Mouser Electronics
+Mozilla
+MPA Recruitment
+MSC Cruises
+MSD
+MSX International
+MuleSoft
+Mulk Holdings FZC
+Multiplier
+My Jobs In Kenya
+My3Tech
+MyJobMag Kenya
+NABU
+Naivas Limited
+NALA
+Namati
+NASA - National Aeronautics and Space Administration
+Nasco Insurance Group
+Nasdaq
+Nasdaq Calypso Technology
+Nation Media Group
+Natura
+NATURAL STATE
+Navan
+NBCUniversal
+NCBA Group
+Nemko
+NEORIS
+NES Fircroft
+Nestlé
+Net2Source (N2S)
+NetApp
+NETIS Group
+NETSOL Technologies Inc.
+Netvagas
+Neuberger Berman
+Neumann Kaffee Gruppe (NKG)
+Neusoft Medical
+Newfold Digital
+Nexleaf Analytics
+Next Step Foundation
+Nexteer Automotive
+NextGen | GTA: A Kelly Telecom Company
+Nextiva
+Nextpower
+Nextracker Inc.
+NFT Consult
+Nielsen
+Nike
+NIPRO Corporation - Global
+Nissan Motor Corporation
+Nityo Infotech
+NLB Services
+Noir
+Non Profit Consult Group
+Norfund
+Northern Trust
+Northrop Grumman
+Norton Rose Fulbright
+Novartis
+Novartis Science
+Novo Nordisk
+Nozomi Networks
+NTT DATA
+NTT DATA Middle East and Africa
+NTT DATA North America
+NTU International A/S
+Nutanix
+NXP Semiconductors
+o9 Solutions, Inc.
+Octopus Deploy
+Odoo
+Odyssey Energy Solutions
+Ogilvy
+Oho Group
+Olaro International
+Old Mutual Kenya
+Oliver Bernard
+Oliver Wyman
+Omega Healthcare Management Services
+OMICRON electronics MEA
+Onafriq
+One Acre Fund
+OneTrust
+OnQ Global, Inc.
+OP Technology
+Open Capital
+OpenText
+OptimHire
+Optimus Search
+Optiver
+Optomi
+Opus Recruitment Solutions
+Oracle Cloud
+Orange
+Orange Business
+Orange Logic
+Orange Quarter
+Orbis Group
+Orion Innovation
+OSM Thome
+Otis Elevator Co.
+Otto International
+Outright International
+Oxfam International
+Oxford Policy Management
+OYO
+Pacifica Continental
+Palantir Technologies
+Palladium: Make It Possible
+PalmPay
+PAR Technology
+Paramount
+Parker Hannifin
+Parsons Corporation
+Pedersen & Partners
+Pegasystems
+Penta Consulting
+Peoplelink Consultants LTD
+Peopletree Group
+Pepperstone
+PepsiCo
+Pequenas Empresas & Grandes Negócios
+Perfetti Van Melle
+Perficient
+Persistent Systems
+Pesapal
+Petrobras
+PETRONAS
+Peugeot
+Pfizer
+Pharmathen
+Phastar
+Phaxis
+Philip Morris International
+PicPay
+Pidilite Industries Limited
+Pigment
+PING AN
+Pinterest
+Pipefy
+Pirelli
+Pitney Bowes
+Pivotal Solutions
+PKF in Eastern Africa
+Plan International Kenya
+Planate Management Group
+Planet Pharma
+PlayStation
+Plexus Corp.
+Plug and Play Tech Center
+Pngme
+Point. Your Marketing Investment Partner
+PointClickCare
+Pontoon Solutions
+Portal Vagas
+Porticus
+Portland
+Porto
+Power Financial Wellness, Inc.
+PPD
+PPG
+PRA Health Sciences
+PRB
+Precisely
+Precision Medicine Group
+Precision Recruitment International
+Prestige Staffing
+Prialto
+Prime Video & Amazon MGM Studios
+ProArch
+Procore Technologies
+Procter & Gamble
+Prodapt
+Programming.com
+Project Management
+Prolific
+Prologis
+Prometheus Group
+PROS
+Protiviti
+Prudent Technologies and Consulting, Inc.
+PTW
+Public Service Commission - Kenya
+Publicis Groupe
+PubMatic
+PULA
+PUMA Group
+PVH Corp.
+Pwani Oil Group
+PwC
+PwC India
+PwC Kenya
+Pyramid Consulting, Inc
+PZ Cussons
+Q-Sourcing Servtec Group
+QAD
+Qatar Airways
+Qlik
+Quaker Houghton
+Qualtrics
+Qualys
+Quantiphi
+Quantum World Technologies Inc.
+Quartic
+Quest Global
+QuillBot
+R Systems
+R/GA
+R1 RCM
+Rabobank
+Rackspace Technology
+Radiant Systems Inc
+Raffles Hotels & Resorts
+Raízen
+Ralph Lauren
+Ratehub.ca
+Razer Inc.
+Real Python
+RealPage, Inc.
+Reckitt
+Recours Global HR
+Recruitment Junction Kenya
+Recruitment Room
+Red Hat
+REDA Chemicals
+Rede D'Or
+Redis
+Reflect on God's Word
+RefugePoint
+Regen Organics
+Regeneron
+Regional Leadership Center East Africa
+Reliance Industries Limited
+Reliance Infosystems
+Relief International
+ReliefWeb
+Remote Tasks
+Remotive
+Renault Group
+Renewvia Energy
+repsol
+Resmed
+ReSource Pro
+responsAbility Investments AG
+Revature
+Revlon
+RevTech
+Riachuelo
+Ricoh Canada Inc.
+Right Resource Kenya Ltd, KNCCI Member, NEA Licensed Recruiter.
+Riskified
+Riverbed Technology
+Rivian
+RMI
+RMJM
+RMS
+Robert Half
+Robert Walters
+Roche
+Rockstar Games
+Rockwell Automation
+RÖDL
+Roku
+Root Capital
+Route Mobile Limited
+RSK Group
+RTS Intercom Systems
+Rubrik
+Russell Reynolds Associates
+Russell Tobin
+S&P Global Market Intelligence
+Sabre
+Safaricom PLC
+Safeguard Global
+Safra
+Safran
+Sahara Group
+SailPoint
+Saint-Gobain
+Salt
+Sama
+Samsung Electronics
+Sanderson
+Sanku
+Sanofi
+Santa Fe Relocation
+Santander
+Santander Brasil
+SapientRazorfish
+Sarova Hotels
+SAS
+Save the Children Kenya & Madagascar
+Saviynt
+SBM Bank Mauritius
+SBM Offshore
+SC Johnson
+Scalian
+Schneider Electric
+Schweitzer Engineering Laboratories (SEL)
+Scotiabank
+Scrums.com
+Seadrill
+Sealed Air Corporation
+SeamlessHR
+SeaOwl Group
+Searchability®
+SEBRAE
+Sedgwick
+Segal Family Foundation
+SEGULA Technologies
+SEI – Stockholm Environment Institute
+SEIDOR
+Seismic
+Selby Jennings
+Self Employed
+Semrush
+Seneca Resources
+Sensata Technologies
+SEPHORA
+Sequoia Capital
+Serena Hotels
+SGF Global
+SGK
+SGS & Co
+Shaker Consultancy Group
+Shalina Healthcare
+Shamiri
+Shangri-La Group
+Sharaf Shipping Agency
+Shell
+Shell Catalysts & Technologies
+Sherwin-Williams
+SHI International Corp.
+Shiseido
+SHOFCO
+Shortlist Professionals
+Shure
+Sicoob
+SICPA
+Sicredi
+Sidley Austin LLP
+Siemens Healthineers
+Sigma Software Group
+Silicon Labs
+Silverpush
+Sírio-Libanês
+Sirion
+Sitecore
+Skadden, Arps, Slate, Meagher & Flom LLP and Affiliates
+Skidmore, Owings & Merrill (SOM)
+Skillsearch
+SLR Consulting
+Smart IT Frame LLC
+SMEC (an SJ Group company)
+Smile ID
+Smith & Associates
+Smith+Nephew
+Snap Inc.
+Societe Generale
+Sodexo
+SoftExpert - Software for Excellence
+SoftServe
+Softtek
+Software Group
+Softype, Inc
+SOKO
+SolarAfrica Energy
+Solenis
+SONDA
+Sony Music Entertainment
+Sony Pictures Entertainment
+Sopra Steria
+Sotheby's
+Soul AI
+SoundHound AI
+SparkMeter
+SPECTRAFORCE
+Spectrum IT Recruitment
+Spectrum Search
+Spencer Stuart
+Spirit AeroSystems
+SPIRO
+Sportserve
+Sprinto
+SPX FLOW, Inc.
+SRAM
+SS&C Blue Prism
+SS&C Intralinks
+SS&C Technologies
+Stack Overflow
+Stanbic Bank Kenya
+Stand8 Technology Consulting
+Stanford Seed
+Stanton Chase: Executive Search & Leadership Consultants
+Starbucks
+StarLink - an Infinigate Group company
+State Bank of India
+State Street
+Steelcase
+Stellar HR Solutions
+Stima Sacco Society Ltd
+Stone
+StoneX Group Inc.
+Stott and May
+Straive
+Strategy&
+Stryker
+StudyIn
+Summit Recruitment & Search
+Sun King
+SUN PHARMA
+SunCulture
+Sungrow
+Supermicro
+Sustainable Square
+Sutherland
+Suzano
+Swedfund International
+Swift
+Swiss Re
+Swisscontact
+Swoon
+SYKES
+Syncfusion
+Synchro
+Syndigo
+Synechron
+Synergis
+Syngenta
+System One
+System Soft Technologies
+Taboola
+Takeda
+talent match africa.
+Talentify.io
+Talkdesk
+Talogy
+Tapestry
+Target
+Tata Chemicals
+Tata Consultancy Services
+Tata Group
+Tata Motors
+Tata Projects
+Tata Steel
+Tata Technologies
+Tatu City
+TD
+TDA
+TE Connectivity
+Teachers Updates
+Teads
+Tealium
+Team for the Planet
+TECEZE
+Tech Mahindra
+techjays
+Technicolor Group
+Techno Brain Group
+techolution
+Techstars
+TED Conferences
+TEEMA
+Tejas Networks
+Tek Experts
+Tekgence Inc
+Tekskills Inc.
+TEKsystems
+TekWissen ®
+Teladoc Health
+Telkom Kenya
+Teltonika Networks
+Teltonika Telematics
+TELUS Digital AI Data Solutions
+Temenos
+Teneo
+Tenneco
+Teradata
+Teradyne
+Tereos
+Terra Global Capital
+Tesco
+Tesla
+Tetra Pak
+Teva Pharmaceuticals
+Tezza Business Solutions Ltd
+Thales
+thco - we are hiring!
+The Adecco Group
+The AES Corporation
+The Chemours Company
+The Clorox Company
+The Coca-Cola Company
+The Duracell Company
+The Economic Times
+The Economist
+The Fountain Group
+The Goodyear Tire & Rubber Company
+The HEINEKEN Company
+The Hershey Company
+The Institution of Engineers of Kenya
+The Judge Group
+The Kenya Times
+The Kenyan Wall Street
+The Nairobi Hospital
+The Nature Conservancy
+The New York Times
+The North Face
+The Planet Group
+The Reynolds and Reynolds Company
+The Rockefeller Foundation
+The Statesman Digital
+The Trade Desk
+The Walt Disney Company
+The World Bank
+Themesoft Inc.
+Thermax Limited
+thinkbridge
+ThinkWell
+THOMPSON
+Thomson Reuters
+Thoughtworks
+THRYVE
+Thunes
+Thycotic
+thyssenkrupp
+TIAA
+TIBCO
+Ticketmaster
+Tiger Analytics
+TikTok
+tms
+Toast
+TotalEnergies
+TOTVS
+Toyota by CFAO Mobility Kenya
+Toyota do Brasil
+TP
+TPG
+Trade and Development Bank Group - TDB Group
+TradeMark Africa
+Tradeshift
+Tradeweb
+Tradition
+Trafigura
+Transformation Leader
+TransPerfect
+Transportation, Shipping, & Logistics at Amazon
+TransUnion
+Travelopia
+Tredence Inc.
+Trexquant Investment LP
+trg.recruitment
+Tricentis
+Tricog Health
+Trilyon, Inc.
+Trimble Inc.
+trivago
+TRS Staffing Solutions
+Trust In SODA
+TSC
+TSMC
+TTEC
+Tubi
+TUI
+Tundra Technical Solutions
+Turner (Turner Broadcasting System, Inc)
+Turner Construction Company
+Twiga Foods
+Twitch
+Twitter
+U.S. Committee for Refugees and Immigrants (USCRI)
+U.S. Department of Veterans Affairs
+Uber Engineering
+UL Solutions
+Umba
+UN Environment Programme
+UN-Habitat (United Nations Human Settlements Programme)
+Under Armour
+Understanding Recruitment
+UNESCO
+UNFCU
+Unga Group PLC
+UNICEF
+Unilever
+Unimed
+Unimed do Brasil
+Unimed Nacional
+UNIQLO
+Unisys
+United Nations
+United Nations Conference & Language Careers
+United Nations Office at Nairobi
+United States Department of War
+UnitedHealth Group
+Universal Creative
+Unlimit
+Untapped Global
+UOL
+upGrad
+Uplers
+UPS
+Upwork
+US Pharmacopeia
+US Tech Solutions
+UST
+V-Soft Consulting Group, Inc.
+Vaco
+Vaco by Highspring
+VAGAS DE EMPREGOS
+VAGAS DE EMPREGOS OC 🇧🇷
+Vagas Empregos
+Vagas Remotas
+Vagas.com
+Valaris Limited
+Vale
+Valeo
+ValGenesis
+Valnet
+Valor Econômico S/A
+Van Cleef & Arpels
+Varonis
+VaynerMedia
+VDart
+Veeam Software
+Ventula Consulting
+Veolia
+Verizon
+Vertiv
+VestedWorld
+Viasat
+Viatris
+Victaulic
+Victoria’s Secret & Co.
+Village Capital
+Village Enterprise
+VINCI
+Virtusa
+VisionSpring
+Visteon Corporation
+Vivo (Telefônica Brasil)
+VLink Inc
+VML
+Vocator (Formerly Source Coders)
+Vodafone
+Volkswagen do Brasil
+Volvo Cars
+Volvo Group
+Votorantim Cimentos
+Vuori
+VXI Global Solutions
+W. L. Gore & Associates
+Walmart
+Warner Bros. Entertainment
+Water.org
+Watts Water Technologies
+Watu Credit
+Wavetec
+Way2freshers
+We Don't Have Time
+Weatherford
+WebEngage
+WEG
+Wellington Management
+Wells Fargo
+Western Union
+WeWork
+WEX
+Whatfix
+White & Case LLP
+Wieden + Kennedy
+Wiley
+Wilson
+Wipro
+Wiser Solutions, Inc.
+WNS
+Wolfspeed
+Wolverine Worldwide
+Women Shaping Futures
+WomenTech Network
+Workforce Africa
+Workiva
+Workplace Options
+World Agroforestry
+World Economic Forum
+World Food Programme Eastern and Southern Africa
+World Organization of the Scout Movement (WOSM)
+World Vision
+World Vision East Africa
+World Vision Kenya
+World Youth Alliance
+Worldwide Clinical Trials
+wowJobs
+WPP
+WSO2
+WTS Energy
+WWF-Kenya
+Wyser
+XCMG Group
+Xebia
+XEBO.ai
+Xerox
+Xiaomi Technology
+Xoriant
+XPO
+Xylem
+Yalo
+Yara Brasil
+Yara International
+YASH Technologies
+YETI
+Yext
+Yolk Recruitment Ltd
+YouGov
+Young Living Essential Oils
+YouTube
+Ypê
+Zamara Kenya
+Zartis
+ZDF
+Zemoso Technologies
+Zenex Partners
+Zepto
+Zeta
+ZF Group
+Zinnia
+Zoho Africa
+ZS
+ZTE Corporation
+Zurich Insurance
+Zutari
+Zycus
+哈佛商业评论中文版 | Harvard Business Review China
