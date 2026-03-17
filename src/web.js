@@ -4,15 +4,16 @@ const { migrate, closeDb } = require('./db');
 const { createApp } = require('./api/server');
 
 async function main() {
-  await migrate();
-
-  // Start listening FIRST to avoid Heroku H20 boot timeout
+  // Bind port IMMEDIATELY to avoid Heroku H20 boot timeout
   const app = createApp();
   const server = app.listen(config.PORT, () => {
     logger.info({ port: config.PORT }, 'API server listening');
   });
 
-  // Connect queues lazily AFTER port is bound (non-blocking)
+  // Run migrations after port is bound (non-blocking)
+  migrate().catch(err => logger.error({ err: err.message }, 'Migration error'));
+
+  // Connect queues lazily (non-blocking)
   let crawlQueue = null;
   let syncQueue = null;
   setImmediate(async () => {

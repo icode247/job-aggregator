@@ -99,8 +99,10 @@ async function migrate() {
     `);
     await exec(`DROP TRIGGER IF EXISTS trig_jobs_search ON jobs`);
     await exec(`CREATE TRIGGER trig_jobs_search BEFORE INSERT OR UPDATE ON jobs FOR EACH ROW EXECUTE FUNCTION jobs_search_update()`);
-    // Backfill existing rows
-    await exec(`UPDATE jobs SET search_vector = to_tsvector('english', coalesce(title, '') || ' ' || coalesce(department, '') || ' ' || coalesce(location, '')) WHERE search_vector IS NULL`);
+    // Backfill existing rows (run in background, don't block startup)
+    exec(`UPDATE jobs SET search_vector = to_tsvector('english', coalesce(title, '') || ' ' || coalesce(department, '') || ' ' || coalesce(location, '')) WHERE search_vector IS NULL`)
+      .then(r => { if (r?.rowCount) logger.info({ rows: r.rowCount }, 'Backfilled search_vector'); })
+      .catch(() => {});
   }
 
   logger.info({ engine: isPostgres ? 'postgresql' : 'sqlite' }, 'Database schema migrated');
