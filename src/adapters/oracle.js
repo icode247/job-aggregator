@@ -55,12 +55,33 @@ async function fetchJobDetail(baseUrl, siteNumber, jobId) {
     const data = await res.json();
     const item = data.items?.[0];
     if (!item) return null;
-    const parts = [
+
+    const descParts = [
       item.ExternalDescriptionStr,
       item.ExternalQualificationsStr,
       item.ExternalResponsibilitiesStr,
     ].filter(Boolean);
-    return parts.length > 0 ? parts.join('\n') : null;
+
+    // Extract structured data from flex fields
+    const flexFields = {};
+    for (const ff of (item.requisitionFlexFields || [])) {
+      if (ff.Prompt && ff.Value) {
+        flexFields[ff.Prompt.toLowerCase().trim()] = ff.Value;
+      }
+    }
+
+    return {
+      description: descParts.length > 0 ? descParts.join('\n') : null,
+      category: item.Category || null,
+      jobFunction: item.JobFunction || null,
+      department: item.Department || item.Organization || item.BusinessUnit || null,
+      workplaceType: item.WorkplaceTypeCode || item.WorkplaceType || null,
+      jobType: flexFields['job type'] || item.JobType || null,
+      workerType: item.WorkerType || null,
+      jobSchedule: item.JobSchedule || null,
+      role: flexFields['role'] || null,
+      yearsExperience: flexFields['years'] || null,
+    };
   } catch {
     return null;
   }
@@ -116,6 +137,7 @@ async function fetchJobs(clientname) {
 
     for (let j = 0; j < batch.length; j++) {
       const job = batch[j];
+      const detail = details[j];
       const locations = [job.PrimaryLocation];
       if (job.secondaryLocations) {
         for (const sec of job.secondaryLocations) {
@@ -123,18 +145,39 @@ async function fetchJobs(clientname) {
         }
       }
 
+      // Resolve department: detail has richer data (Category, Organization, etc.)
+      const department = detail?.category
+        || detail?.department
+        || job.Department
+        || job.JobFunction
+        || null;
+
+      // Resolve workplace type from detail or listing
+      const wpCode = detail?.workplaceType || job.WorkplaceTypeCode || '';
+      const workplaceType = wpCode.toLowerCase().includes('remote') ? 'remote'
+        : wpCode.toLowerCase().includes('hybrid') ? 'hybrid'
+        : wpCode.toLowerCase().includes('on') ? 'onsite'
+        : null;
+
+      // Resolve employment type: flex field "Job Type" > listing fields
+      const employmentType = detail?.jobType
+        || job.JobType
+        || job.JobSchedule
+        || detail?.workerType
+        || null;
+
       jobs.push({
         external_id: `oracle_${job.Id}`,
         title: job.Title,
-        department: job.Department || job.JobFunction || null,
+        department,
         location: locations.filter(Boolean).join('; ') || null,
-        workplace_type: job.WorkplaceTypeCode === 'Remote' ? 'remote' : null,
-        employment_type: job.JobType || job.JobSchedule || null,
+        workplace_type: workplaceType,
+        employment_type: employmentType,
         salary_min: null,
         salary_max: null,
         salary_currency: null,
         salary_interval: null,
-        description: details[j] || job.ShortDescriptionStr || null,
+        description: detail?.description || job.ShortDescriptionStr || null,
         url: `https://${tenant}.fa.${region}.oraclecloud.com/hcmUI/CandidateExperience/en/sites/${siteNumber}/job/${job.Id}`,
         posted_at: job.PostedDate || null,
         raw_data: job,
