@@ -20,6 +20,21 @@ function extractDescription(jobAd) {
   return parts.length > 0 ? parts.join('\n') : null;
 }
 
+function extractSalary(description) {
+  if (!description) return {};
+  const match = description.match(
+    /\$([\d,]+(?:\.\d{2})?)\s*[-–]\s*\$([\d,]+(?:\.\d{2})?)/
+  );
+  if (match) {
+    const min = parseInt(match[1].replace(/,/g, ''), 10);
+    const max = parseInt(match[2].replace(/,/g, ''), 10);
+    if (min >= 10000 && max >= 10000 && max < 10000000) {
+      return { salary_min: String(min), salary_max: String(max), salary_currency: 'USD' };
+    }
+  }
+  return {};
+}
+
 async function fetchJobs(clientname) {
   const allJobs = [];
   let offset = 0;
@@ -46,6 +61,9 @@ async function fetchJobs(clientname) {
         const job = batch[j];
         const detail = details[j];
 
+        const desc = extractDescription(detail?.jobAd) || null;
+        const salary = extractSalary(desc);
+
         allJobs.push({
           external_id: `smartrecruiters_${job.id}`,
           title: job.name,
@@ -53,11 +71,11 @@ async function fetchJobs(clientname) {
           location: job.location?.fullLocation || job.location?.city || 'Remote',
           workplace_type: job.location?.remote ? 'remote' : (job.location?.hybrid ? 'hybrid' : null),
           employment_type: job.typeOfEmployment?.label || null,
-          salary_min: null,
-          salary_max: null,
-          salary_currency: null,
+          salary_min: salary.salary_min || null,
+          salary_max: salary.salary_max || null,
+          salary_currency: salary.salary_currency || null,
           salary_interval: null,
-          description: extractDescription(detail?.jobAd) || null,
+          description: desc,
           url: detail?.postingUrl || `https://jobs.smartrecruiters.com/${encodeURIComponent(clientname)}/${job.id}`,
           posted_at: job.releasedDate || null,
           raw_data: job,

@@ -5,9 +5,7 @@ const PAGE_SIZE = 20;
 const DETAIL_BATCH_SIZE = 3;
 
 /**
- * Discover the Workday instance number (wd1-wd12) and site slug
- * by checking robots.txt for each wd number.
- * Returns { wdNum, siteSlug } or null.
+ * Discover the Workday instance number (wd1-wd12) and site slug.
  */
 async function discoverConfig(slug) {
   for (const wd of WD_NUMBERS) {
@@ -49,8 +47,6 @@ async function fetchJobDetail(baseUrl, externalPath) {
  */
 function extractSalary(description) {
   if (!description) return {};
-  // Match patterns like "$120,000 - $180,000" or "152,000 USD - 241,500 USD"
-  // Require dollar sign or currency code to avoid matching random numbers
   const match = description.match(
     /\$([\d,]+(?:\.\d{2})?)\s*[-–]\s*\$([\d,]+(?:\.\d{2})?)|(?:base[^.]*?)([\d,]+(?:\.\d{2})?)\s*(USD|CAD|GBP|EUR)\s*[-–]\s*([\d,]+(?:\.\d{2})?)\s*(USD|CAD|GBP|EUR)/i
   );
@@ -74,6 +70,42 @@ function extractSalary(description) {
 }
 
 /**
+ * Build department map by querying each jobFamilyGroup facet.
+ * Returns Map<externalPath, departmentName>.
+ */
+async function buildDeptMap(baseUrl, facets) {
+  const deptMap = new Map();
+  const catFacet = (facets || []).find(f => f.facetParameter === 'jobFamilyGroup');
+  if (!catFacet || !catFacet.values || catFacet.values.length === 0) return deptMap;
+
+  for (const cat of catFacet.values) {
+    let catOffset = 0;
+    while (catOffset < cat.count + PAGE_SIZE) {
+      try {
+        const res = await fetch(`${baseUrl}/jobs`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            appliedFacets: { jobFamilyGroup: [cat.id] },
+            limit: PAGE_SIZE, offset: catOffset, searchText: '',
+          }),
+          signal: AbortSignal.timeout(10000),
+        });
+        if (!res.ok) break;
+        const data = await res.json();
+        const jobs = data.jobPostings || [];
+        if (jobs.length === 0) break;
+        for (const p of jobs) deptMap.set(p.externalPath, cat.descriptor);
+        catOffset += PAGE_SIZE;
+        if (jobs.length < PAGE_SIZE) break;
+      } catch { break; }
+    }
+  }
+
+  return deptMap;
+}
+
+/**
  * Fetch all jobs from a Workday career site with full details.
  */
 async function fetchJobs(clientname) {
@@ -83,34 +115,45 @@ async function fetchJobs(clientname) {
   const { wdNum, siteSlug } = config;
   const baseUrl = `https://${clientname}.wd${wdNum}.myworkdayjobs.com/wday/cxs/${clientname}/${siteSlug}`;
 
-  // Step 1: Collect all postings from listing endpoint
-  const postings = [];
-  let offset = 0;
+  // Step 1: First request — get postings + facets
+  const firstRes = await fetch(`${baseUrl}/jobs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ appliedFacets: {}, limit: PAGE_SIZE, offset: 0, searchText: '' }),
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!firstRes.ok) throw new Error(`Workday HTTP ${firstRes.status}`);
+  const firstData = await firstRes.json();
 
-  while (offset < 5000) {
-    const res = await fetch(`${baseUrl}/jobs`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        appliedFacets: {},
-        limit: PAGE_SIZE,
-        offset,
-        searchText: '',
-      }),
-      signal: AbortSignal.timeout(15000),
-    });
-
-    if (!res.ok) throw new Error(`Workday HTTP ${res.status}`);
-    const data = await res.json();
-    const page = data.jobPostings || [];
-
-    if (page.length === 0) break;
-    postings.push(...page);
-    offset += PAGE_SIZE;
-    if (page.length < PAGE_SIZE) break;
+  // Step 2: Build department map from facets
+  const deptMap = await buildDeptMap(baseUrl, firstData.facets);
+  if (deptMap.size > 0) {
+    logger.debug({ slug: clientname, mapped: deptMap.size }, 'Workday dept map built');
   }
 
-  // Step 2: Fetch details in batches with delay to avoid 429s
+  // Step 3: Collect all postings
+  const postings = [...(firstData.jobPostings || [])];
+
+  if (postings.length >= PAGE_SIZE) {
+    let offset = PAGE_SIZE;
+    while (offset < 5000) {
+      const res = await fetch(`${baseUrl}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appliedFacets: {}, limit: PAGE_SIZE, offset, searchText: '' }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) throw new Error(`Workday HTTP ${res.status}`);
+      const data = await res.json();
+      const page = data.jobPostings || [];
+      if (page.length === 0) break;
+      postings.push(...page);
+      offset += PAGE_SIZE;
+      if (page.length < PAGE_SIZE) break;
+    }
+  }
+
+  // Step 4: Fetch details in batches
   const jobs = [];
   let companyName = null;
 
@@ -120,7 +163,6 @@ async function fetchJobs(clientname) {
       batch.map(p => fetchJobDetail(baseUrl, p.externalPath))
     );
 
-    // Pause between batches to avoid Workday rate limiting
     if (i + DETAIL_BATCH_SIZE < postings.length) {
       await new Promise(r => setTimeout(r, 300));
     }
@@ -139,7 +181,7 @@ async function fetchJobs(clientname) {
       jobs.push({
         external_id: `workday_${jobReqId || posting.externalPath}`,
         title: posting.title,
-        department: null,
+        department: deptMap.get(posting.externalPath) || null,
         location: detail?.location || posting.locationsText || null,
         workplace_type: null,
         employment_type: detail?.timeType || null,
@@ -155,7 +197,7 @@ async function fetchJobs(clientname) {
     }
   }
 
-  logger.info({ slug: clientname, wdNum, siteSlug, fetched: jobs.length }, 'Workday fetch complete');
+  logger.info({ slug: clientname, wdNum, siteSlug, fetched: jobs.length, depts: deptMap.size }, 'Workday fetch complete');
 
   const logoUrl = `https://${clientname}.wd${wdNum}.myworkdayjobs.com/${siteSlug}/assets/logo`;
 
