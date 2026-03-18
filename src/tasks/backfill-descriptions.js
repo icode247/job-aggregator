@@ -25,7 +25,7 @@ const ATS_CONFIG = {
   recruitee:       { batchSize: 50, delayMs: 300 },
   rippling:        { batchSize: 30, delayMs: 500 },
   zoho:            { batchSize: 20, delayMs: 800 },
-  workable:        { batchSize: 10, delayMs: 2000 },
+  workable:        { batchSize: 1, delayMs: 1500 },
   jobvite:         { batchSize: 50, delayMs: 500 },
   pinpoint:        { batchSize: 50, delayMs: 300 },
   successfactors:  { batchSize: 30, delayMs: 1000 },
