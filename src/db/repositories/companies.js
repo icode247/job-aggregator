@@ -17,14 +17,15 @@ const companiesRepo = {
   },
 
   async findDueForSync() {
-    // Prioritize: never-synced first, then oldest-synced (stale > 2h)
+    // Prioritize: never-synced first, then oldest-synced (stale > 30min)
+    // Keep batch small to fit in Redis memory
     const { rows } = await query(`
-      SELECT * FROM companies
+      SELECT id, ats, ats_slug FROM companies
       WHERE status = 'active'
         AND ats IS NOT NULL
-        AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '2 hours')
+        AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '30 minutes')
       ORDER BY last_synced_at ASC NULLS FIRST
-      LIMIT 10000
+      LIMIT 2000
     `);
     return rows;
   },

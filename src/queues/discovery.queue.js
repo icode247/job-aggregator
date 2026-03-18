@@ -14,8 +14,8 @@ function createDiscoveryQueue() {
     defaultJobOptions: {
       attempts: 3,
       backoff: { type: 'exponential', delay: 60000 },
-      removeOnComplete: 10,
-      removeOnFail: 50,
+      removeOnComplete: 3,
+      removeOnFail: 5,
     },
   });
 }

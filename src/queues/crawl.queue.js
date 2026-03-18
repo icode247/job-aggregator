@@ -13,8 +13,8 @@ function createCrawlQueue() {
     defaultJobOptions: {
       attempts: 2,
       backoff: { type: 'exponential', delay: 120000 },
-      removeOnComplete: 10,
-      removeOnFail: 50,
+      removeOnComplete: 3,
+      removeOnFail: 5,
     },
   });
 }

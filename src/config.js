@@ -19,7 +19,7 @@ module.exports = {
 
   // Queue settings
   DISCOVERY_INTERVAL_MS: 1000 * 60 * 60 * 24 * 7, // 7 days
-  SYNC_INTERVAL_MS: 1000 * 60 * 30,                // 30 minutes
+  SYNC_INTERVAL_MS: 1000 * 60 * 15,                // 15 minutes
   DISCOVERY_RATE_LIMIT: { max: 10, duration: 60000 },
   SYNC_RATE_LIMIT: { max: 300, duration: 60000 },
 

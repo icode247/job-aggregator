@@ -32,6 +32,18 @@ async function main() {
     if (job.data.fanout) await fanoutCrawl(crawlQueue);
   });
 
+  // Clean stale jobs to free Redis memory
+  await Promise.allSettled([
+    syncQueue.drain().catch(() => {}),
+    syncQueue.clean(0, 1000, 'completed'),
+    syncQueue.clean(0, 1000, 'failed'),
+    discoveryQueue.clean(0, 500, 'completed'),
+    discoveryQueue.clean(0, 500, 'failed'),
+    crawlQueue.clean(0, 500, 'completed'),
+    crawlQueue.clean(0, 500, 'failed'),
+  ]);
+  logger.info('Cleaned stale queue jobs to free Redis memory');
+
   await registerSchedules(discoveryQueue, syncQueue, crawlQueue);
 
   // Stagger fanout to avoid boot-time spike
