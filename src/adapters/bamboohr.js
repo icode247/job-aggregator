@@ -38,15 +38,33 @@ async function fetchJobs(clientname) {
     for (let k = 0; k < batch.length; k++) {
       const listing = batch[k];
       const detail = details[k];
-      const loc = listing.location || {};
+
+      // Use detail location (has country/postalCode) with fallback to listing
+      const loc = detail?.location || listing.location || {};
+      const locationParts = [loc.city, loc.state, loc.addressCountry].filter(Boolean);
+      const locationStr = locationParts.join(', ') || null;
+
+      // Determine workplace type from locationType, isRemote flag, or department name
+      const locType = detail?.locationType || listing.locationType;
+      const isRemote = listing.isRemote
+        || locType === '3'
+        || (listing.departmentLabel || '').toLowerCase().includes('remote');
+      const isHybrid = locType === '2';
+      const workplaceType = isRemote ? 'remote' : isHybrid ? 'hybrid' : null;
+
+      // Filter out non-employment-type values like "Active", "Inactive"
+      const rawEmpType = detail?.employmentStatusLabel || listing.employmentStatusLabel || '';
+      const invalidEmpTypes = ['active', 'inactive', 'open', 'closed'];
+      const employmentType = invalidEmpTypes.includes(rawEmpType.toLowerCase())
+        ? null : (rawEmpType || null);
 
       jobs.push({
         external_id: `bamboohr_${listing.id}`,
         title: listing.jobOpeningName,
         department: listing.departmentLabel || null,
-        location: [loc.city, loc.state].filter(Boolean).join(', ') || null,
-        workplace_type: listing.isRemote ? 'remote' : null,
-        employment_type: listing.employmentStatusLabel || null,
+        location: locationStr,
+        workplace_type: workplaceType,
+        employment_type: employmentType,
         salary_min: null,
         salary_max: null,
         salary_currency: null,

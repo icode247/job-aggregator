@@ -60,8 +60,16 @@ const GENERIC_PATTERNS = [
 ];
 
 /**
- * Google's favicon API — reliable fallback for any domain.
- * Returns a 128px favicon/logo for any website.
+ * Clearbit Logo API — returns high-quality company logos.
+ * Free, no API key needed, returns proper logos (not favicons).
+ */
+function clearbitLogoUrl(domain) {
+  return `https://logo.clearbit.com/${domain}`;
+}
+
+/**
+ * Google's favicon API — last-resort fallback.
+ * Returns a 128px favicon (not ideal but always works).
  */
 function googleFaviconUrl(domain) {
   return `https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain}&size=128`;
@@ -70,7 +78,7 @@ function googleFaviconUrl(domain) {
 async function fetchLogoUrl(ats, atsSlug, domain) {
   const pageUrls = {
     lever: `https://jobs.lever.co/${atsSlug}`,
-    greenhouse: `https://boards.greenhouse.io/${atsSlug}`,
+    greenhouse: `https://job-boards.greenhouse.io/${atsSlug}`,
     ashby: `https://jobs.ashbyhq.com/${atsSlug}`,
     workable: `https://apply.workable.com/${atsSlug}`,
     recruitee: `https://${atsSlug}.recruitee.com`,
@@ -127,19 +135,19 @@ async function fetchLogoUrl(ats, atsSlug, domain) {
     }
   }
 
-  // 3. Google favicon as reliable fallback — works for any domain
+  // 3. Clearbit Logo API — high-quality company logos
   if (domain) {
-    const faviconUrl = googleFaviconUrl(domain);
+    const logoUrl = clearbitLogoUrl(domain);
     try {
-      const res = await fetch(faviconUrl, { method: 'HEAD', signal: AbortSignal.timeout(5000) });
+      const res = await fetch(logoUrl, { method: 'HEAD', signal: AbortSignal.timeout(5000) });
       if (res.ok) {
-        logger.info({ ats, atsSlug, logoUrl: faviconUrl }, 'Logo found via Google favicon');
-        return faviconUrl;
+        logger.info({ ats, atsSlug, logoUrl }, 'Logo found via Clearbit');
+        return logoUrl;
       }
-    } catch { /* favicon failed */ }
+    } catch { /* clearbit failed */ }
   }
 
-  // 4. Last resort — construct a Google favicon URL anyway (it handles 404 gracefully)
+  // 4. Google favicon as last-resort fallback
   if (domain) {
     return googleFaviconUrl(domain);
   }
