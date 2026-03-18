@@ -4,18 +4,22 @@
  * 1. Jibe-powered sites with /api/jobs JSON endpoint
  * 2. Classic iCIMS portals at {slug}.icims.com with HTML scraping
  *
- * Slug formats from crawlers:
- * - "careers-{company}" → tries {slug}.icims.com, careers.{company}.com
- * - "{company}" → tries careers.{company}.com, {company}.icims.com
+ * Classic portals use consistent CSS classes:
+ * - .iCIMS_JobsTable container
+ * - .iCIMS_Anchor links with title="ID - Job Title"
+ * - Pagination via ?pr=N (0-indexed)
+ * - Detail pages have .iCIMS_Header, .iCIMS_JobHeaderData, .iCIMS_Expandable_Text
  */
 const logger = require('../logger');
+
+const DETAIL_BATCH_SIZE = 5;
+const MAX_PAGES = 50;
 
 async function fetchJobs(clientname) {
   // Build URL candidates based on slug format
   const urls = [];
 
   if (clientname.includes('-')) {
-    // e.g. "careers-nasco" → careers-nasco.icims.com first
     urls.push(`https://${clientname}.icims.com/api/jobs`);
     const parts = clientname.split('-');
     if (['careers', 'jobs', 'globalcareers'].includes(parts[0])) {
@@ -30,9 +34,6 @@ async function fetchJobs(clientname) {
   }
 
   // Try Jibe-powered JSON endpoints first
-  let data = null;
-  let baseUrl = null;
-
   for (const url of urls) {
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
@@ -41,26 +42,19 @@ async function fetchJobs(clientname) {
       if (!contentType.includes('json')) continue;
       const text = await res.text();
       if (text.startsWith('{') || text.startsWith('[')) {
-        data = JSON.parse(text);
-        baseUrl = url.replace('/api/jobs', '');
-        break;
+        const data = JSON.parse(text);
+        if (data.jobs && Array.isArray(data.jobs)) {
+          return parseJibeResponse(data, url.replace('/api/jobs', ''));
+        }
       }
     } catch { /* try next */ }
   }
 
-  if (data && Array.isArray(data.jobs)) {
-    return parseJibeResponse(data, baseUrl);
-  }
-
-  // Fallback: try classic iCIMS HTML portal
+  // Fallback: scrape classic iCIMS HTML portal
   const portalUrl = `https://${clientname}.icims.com`;
-  try {
-    const jobs = await scrapeClassicPortal(portalUrl, clientname);
-    if (jobs.length > 0) {
-      return { jobs, meta: { companyName: null, logoUrl: null } };
-    }
-  } catch (err) {
-    logger.debug({ err: err.message, clientname }, 'iCIMS classic portal failed');
+  const jobs = await scrapeClassicPortal(portalUrl, clientname);
+  if (jobs.length > 0) {
+    return { jobs, meta: { companyName: null, logoUrl: null } };
   }
 
   throw new Error(`iCIMS: no working endpoint found for ${clientname}`);
@@ -95,51 +89,202 @@ function parseJibeResponse(data, baseUrl) {
 }
 
 /**
- * Scrape classic iCIMS portal HTML for job listings.
+ * Scrape classic iCIMS portal. Uses consistent CSS class patterns:
+ * - Links: <a class="iCIMS_Anchor" title="ID - Title" href="/jobs/ID/...">
+ * - Pagination: ?pr=0, ?pr=1, etc.
  */
 async function scrapeClassicPortal(portalUrl, clientname) {
-  const searchUrl = `${portalUrl}/jobs/search?ss=1&searchKeyword=&searchLocation=&mobile=false&listFilterMode=1`;
-  const res = await fetch(searchUrl, { signal: AbortSignal.timeout(15000) });
-  if (!res.ok) throw new Error(`iCIMS classic HTTP ${res.status}`);
-
-  const html = await res.text();
-  if (!html.includes('icims') && !html.includes('iCIMS')) {
-    throw new Error('Not an iCIMS portal');
-  }
-
-  const jobs = [];
-  const linkRegex = /href="([^"]*\/jobs\/(\d+)[^"]*)"/gi;
+  const allJobs = [];
   const seen = new Set();
 
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const searchUrl = `${portalUrl}/jobs/search?ss=1&searchKeyword=&searchLocation=&mobile=false&listFilterMode=1&in_iframe=1&pr=${page}`;
+
+    let html;
+    try {
+      const res = await fetch(searchUrl, { signal: AbortSignal.timeout(15000) });
+      if (!res.ok) {
+        if (page === 0) throw new Error(`iCIMS classic HTTP ${res.status}`);
+        break;
+      }
+      html = await res.text();
+    } catch (err) {
+      if (page === 0) throw err;
+      break;
+    }
+
+    // Verify it's an iCIMS portal (page 0 only)
+    if (page === 0 && !html.includes('iCIMS') && !html.includes('icims')) {
+      throw new Error('Not an iCIMS portal');
+    }
+
+    // Extract jobs using iCIMS_Anchor pattern: title="ID - Job Title"
+    const jobs = extractJobsFromPage(html, portalUrl);
+    if (jobs.length === 0) break;
+
+    let newOnPage = 0;
+    for (const job of jobs) {
+      if (!seen.has(job.external_id)) {
+        seen.add(job.external_id);
+        allJobs.push(job);
+        newOnPage++;
+      }
+    }
+
+    // If no new jobs found, we've exhausted pagination
+    if (newOnPage === 0) break;
+
+    // Rate limit between pages
+    if (page < MAX_PAGES - 1) {
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
+
+  // Fetch details in batches for descriptions
+  if (allJobs.length > 0) {
+    await enrichWithDetails(allJobs, portalUrl);
+  }
+
+  logger.info({ clientname, jobs: allJobs.length, source: 'classic' }, 'iCIMS classic portal scraped');
+  return allJobs;
+}
+
+/**
+ * Extract jobs from a single iCIMS search results page.
+ */
+function extractJobsFromPage(html, portalUrl) {
+  const jobs = [];
+
+  // Pattern 1: iCIMS_Anchor with title="ID - Job Title"
+  const anchorRegex = /<a[^>]*class="[^"]*iCIMS_Anchor[^"]*"[^>]*title="(\d+)\s*-\s*([^"]+)"[^>]*href="([^"]+)"/gi;
   let match;
-  while ((match = linkRegex.exec(html)) !== null) {
-    const jobUrl = match[1];
-    const jobId = match[2];
-    if (seen.has(jobId)) continue;
-    seen.add(jobId);
+  while ((match = anchorRegex.exec(html)) !== null) {
+    const jobId = match[1];
+    const title = match[2].trim();
+    const href = match[3];
+    const fullUrl = href.startsWith('http') ? href : `${portalUrl}${href}`;
 
-    // Extract title near the link
-    let title = `Job ${jobId}`;
-    const ctx = html.substring(Math.max(0, match.index - 300), match.index + 300);
-    const titleMatch = ctx.match(/<(?:a|span|div)[^>]*class="[^"]*title[^"]*"[^>]*>([^<]{3,100})/i)
-      || ctx.match(/>([A-Z][^<]{5,80})<\/a>/);
-    if (titleMatch) title = titleMatch[1].trim();
-
-    const fullUrl = jobUrl.startsWith('http') ? jobUrl : `${portalUrl}${jobUrl}`;
     jobs.push({
       external_id: `icims_${jobId}`,
       title,
       department: null, location: null, workplace_type: null, employment_type: null,
       salary_min: null, salary_max: null, salary_currency: null, salary_interval: null,
-      description: null,
-      url: fullUrl,
-      posted_at: null,
-      raw_data: { id: jobId },
+      description: null, url: fullUrl.split('?')[0],
+      posted_at: null, raw_data: { id: jobId },
     });
   }
 
-  logger.info({ clientname, jobs: jobs.length, source: 'classic' }, 'iCIMS classic portal scraped');
+  // Pattern 2: Fallback — any link to /jobs/{id}/
+  if (jobs.length === 0) {
+    const linkRegex = /href="([^"]*\/jobs\/(\d+)[^"]*)"/gi;
+    const titleRegex = /title="([^"]+)"/i;
+    while ((match = linkRegex.exec(html)) !== null) {
+      const href = match[1];
+      const jobId = match[2];
+
+      // Try to find title from the same anchor tag
+      let title = `Job ${jobId}`;
+      const tagStart = html.lastIndexOf('<a', match.index);
+      if (tagStart >= 0) {
+        const tag = html.substring(tagStart, match.index + match[0].length + 200);
+        const tm = tag.match(titleRegex);
+        if (tm) {
+          const t = tm[1].replace(/^\d+\s*-\s*/, '').trim();
+          if (t.length > 2) title = t;
+        }
+      }
+
+      const fullUrl = href.startsWith('http') ? href : `${portalUrl}${href}`;
+      jobs.push({
+        external_id: `icims_${jobId}`,
+        title,
+        department: null, location: null, workplace_type: null, employment_type: null,
+        salary_min: null, salary_max: null, salary_currency: null, salary_interval: null,
+        description: null, url: fullUrl.split('?')[0],
+        posted_at: null, raw_data: { id: jobId },
+      });
+    }
+  }
+
   return jobs;
+}
+
+/**
+ * Fetch job detail pages to extract descriptions, departments, locations.
+ * Detail pages have structured HTML with iCIMS CSS classes.
+ */
+async function enrichWithDetails(jobs, portalUrl) {
+  for (let i = 0; i < jobs.length; i += DETAIL_BATCH_SIZE) {
+    const batch = jobs.slice(i, i + DETAIL_BATCH_SIZE);
+    const settled = await Promise.allSettled(
+      batch.map(job => fetchJobDetail(job.url))
+    );
+
+    for (let j = 0; j < batch.length; j++) {
+      const detail = settled[j].status === 'fulfilled' ? settled[j].value : null;
+      if (!detail) continue;
+
+      if (detail.title) batch[j].title = detail.title;
+      if (detail.description) batch[j].description = detail.description;
+      if (detail.department) batch[j].department = detail.department;
+      if (detail.location) batch[j].location = detail.location;
+      if (detail.employment_type) batch[j].employment_type = detail.employment_type;
+    }
+
+    if (i + DETAIL_BATCH_SIZE < jobs.length) {
+      await new Promise(r => setTimeout(r, 300));
+    }
+  }
+}
+
+async function fetchJobDetail(url) {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) return null;
+    const html = await res.text();
+
+    // Title from <h1 class="iCIMS_Header">
+    let title = null;
+    const titleMatch = html.match(/<h1[^>]*class="[^"]*iCIMS_Header[^"]*"[^>]*>([^<]+)/i);
+    if (titleMatch) title = titleMatch[1].trim();
+
+    // Metadata from <dd class="iCIMS_JobHeaderData"> pairs
+    const meta = {};
+    const metaRegex = /<dt[^>]*>([^<]+)<\/dt>\s*<dd[^>]*class="[^"]*iCIMS_JobHeaderData[^"]*"[^>]*>([^<]+)/gi;
+    let m;
+    while ((m = metaRegex.exec(html)) !== null) {
+      meta[m[1].trim().toLowerCase()] = m[2].trim();
+    }
+
+    // Description from .iCIMS_Expandable_Text sections
+    const descParts = [];
+    const sectionRegex = /<div[^>]*class="[^"]*iCIMS_Expandable_Text[^"]*"[^>]*>([\s\S]*?)<\/div>/gi;
+    while ((m = sectionRegex.exec(html)) !== null) {
+      const text = m[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (text.length > 10) descParts.push(text);
+    }
+
+    // Fallback: try JSON-LD
+    if (descParts.length === 0) {
+      const ldMatch = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/i);
+      if (ldMatch) {
+        try {
+          const ld = JSON.parse(ldMatch[1]);
+          if (ld.description) descParts.push(ld.description.replace(/<[^>]+>/g, ' ').trim());
+        } catch { /* invalid JSON-LD */ }
+      }
+    }
+
+    return {
+      title,
+      description: descParts.length > 0 ? descParts.join('\n\n') : null,
+      department: meta['category'] || meta['department'] || null,
+      location: meta['location'] || meta['locations'] || null,
+      employment_type: meta['type'] || meta['job type'] || meta['schedule'] || null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 module.exports = { fetchJobs };
