@@ -1,41 +1,52 @@
 const { Router } = require('express');
 const { companiesRepo, jobsRepo } = require('../../db');
-const { getAll } = require('../../utils/metrics');
+const { Queue } = require('bullmq');
+const { createRedisConnection } = require('../../queues/connection');
 
 const router = Router();
 
+// Lazy-init read-only queue instances for health checks
+let queues;
+function getQueues() {
+  if (!queues) {
+    queues = {
+      discovery: new Queue('discovery', { connection: createRedisConnection() }),
+      sync: new Queue('sync', { connection: createRedisConnection() }),
+      crawl: new Queue('crawl', { connection: createRedisConnection() }),
+    };
+  }
+  return queues;
+}
+
+async function getQueueCounts(queue) {
+  try {
+    const counts = await queue.getJobCounts('waiting', 'active', 'failed', 'delayed');
+    return counts;
+  } catch {
+    return { waiting: 0, active: 0, failed: 0, delayed: 0 };
+  }
+}
+
 router.get('/health', async (req, res) => {
-  const [activeCount, totalJobs, metricsData] = await Promise.all([
+  const q = getQueues();
+
+  const [activeCount, totalJobs, discovery, sync, crawl] = await Promise.all([
     companiesRepo.countActive(),
     jobsRepo.countActive(),
-    getAll(),
+    getQueueCounts(q.discovery),
+    getQueueCounts(q.sync),
+    getQueueCounts(q.crawl),
   ]);
-
-  const gauges = metricsData.gauges || {};
-
-  const queueHealth = {
-    discovery: {
-      waiting: parseInt(gauges['queue.discovery.waiting'] || '0', 10),
-      active: parseInt(gauges['queue.discovery.active'] || '0', 10),
-      failed: parseInt(gauges['queue.discovery.failed'] || '0', 10),
-    },
-    sync: {
-      waiting: parseInt(gauges['queue.sync.waiting'] || '0', 10),
-      active: parseInt(gauges['queue.sync.active'] || '0', 10),
-      failed: parseInt(gauges['queue.sync.failed'] || '0', 10),
-    },
-    crawl: {
-      waiting: parseInt(gauges['queue.crawl.waiting'] || '0', 10),
-      active: parseInt(gauges['queue.crawl.active'] || '0', 10),
-      failed: parseInt(gauges['queue.crawl.failed'] || '0', 10),
-    },
-  };
 
   res.json({
     status: 'ok',
     companies_tracked: activeCount,
     total_active_jobs: totalJobs,
-    queue_health: queueHealth,
+    queue_health: {
+      discovery: { waiting: discovery.waiting, active: discovery.active, failed: discovery.failed, delayed: discovery.delayed },
+      sync: { waiting: sync.waiting, active: sync.active, failed: sync.failed, delayed: sync.delayed },
+      crawl: { waiting: crawl.waiting, active: crawl.active, failed: crawl.failed, delayed: crawl.delayed },
+    },
   });
 });
 
