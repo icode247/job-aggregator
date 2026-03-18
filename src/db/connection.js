@@ -13,8 +13,8 @@ function getDb() {
       pool = new Pool({
         connectionString: process.env.DATABASE_URL,
         ssl: config.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-        max: 20,
-        idleTimeoutMillis: 30000,
+        max: 8,
+        idleTimeoutMillis: 10000,
         connectionTimeoutMillis: 5000,
       });
       logger.info('PostgreSQL pool connected');
