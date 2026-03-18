@@ -135,7 +135,7 @@ function createSyncWorker() {
     {
       connection: createRedisConnection(),
       limiter: config.SYNC_RATE_LIMIT,
-      concurrency: 24,
+      concurrency: 40,
     }
   );
 
