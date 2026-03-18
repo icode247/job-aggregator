@@ -37,9 +37,20 @@ async function fetchJobDetail(url) {
 async function fetchJobs(clientname) {
   const res = await fetch(
     `https://${encodeURIComponent(clientname)}.breezy.hr/json`,
-    { signal: AbortSignal.timeout(10000) }
+    { signal: AbortSignal.timeout(10000), redirect: 'manual' }
   );
+
+  // Breezy returns 302 redirect to marketing page for inactive companies
+  if (res.status >= 300 && res.status < 400) {
+    throw new Error(`Breezy: company "${clientname}" no longer exists (redirect)`);
+  }
   if (!res.ok) throw new Error(`Breezy HTTP ${res.status}`);
+
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('json')) {
+    throw new Error(`Breezy: company "${clientname}" returned HTML instead of JSON`);
+  }
+
   const data = await res.json();
   const listings = Array.isArray(data) ? data : [];
 
