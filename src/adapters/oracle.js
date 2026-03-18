@@ -47,6 +47,36 @@ async function discoverSiteNumber(tenant, region) {
 /**
  * Fetch full job details (description, qualifications, responsibilities).
  */
+/**
+ * Parse salary from Oracle flex fields.
+ * Common patterns: "53,000 USD", "80000", "120,000.00 CAD"
+ */
+function parseSalaryFromFlex(flexFields) {
+  const minRaw = flexFields['minimum salary'] || flexFields['min salary'] || flexFields['salary minimum'] || null;
+  const maxRaw = flexFields['maximum salary'] || flexFields['max salary'] || flexFields['salary maximum'] || null;
+
+  if (!minRaw && !maxRaw) return null;
+
+  const parse = (str) => {
+    if (!str) return null;
+    // Extract number: "53,000 USD" → 53000, "80000" → 80000
+    const numMatch = str.replace(/,/g, '').match(/([\d.]+)/);
+    return numMatch ? parseFloat(numMatch[1]) : null;
+  };
+
+  const parseCurrency = (str) => {
+    if (!str) return null;
+    const m = str.match(/[A-Z]{3}/);
+    return m ? m[0] : null;
+  };
+
+  return {
+    min: parse(minRaw),
+    max: parse(maxRaw),
+    currency: parseCurrency(minRaw) || parseCurrency(maxRaw) || null,
+  };
+}
+
 async function fetchJobDetail(baseUrl, siteNumber, jobId) {
   try {
     const url = `${baseUrl}/recruitingCEJobRequisitionDetails?onlyData=true&expand=all&finder=ById;Id=${jobId},siteNumber=${siteNumber}`;
@@ -70,17 +100,21 @@ async function fetchJobDetail(baseUrl, siteNumber, jobId) {
       }
     }
 
+    // Extract salary from flex fields (e.g. "Minimum Salary": "53,000 USD")
+    const salary = parseSalaryFromFlex(flexFields);
+
     return {
       description: descParts.length > 0 ? descParts.join('\n') : null,
       category: item.Category || null,
       jobFunction: item.JobFunction || null,
       department: item.Department || item.Organization || item.BusinessUnit || null,
       workplaceType: item.WorkplaceTypeCode || item.WorkplaceType || null,
-      jobType: flexFields['job type'] || item.JobType || null,
+      jobType: flexFields['job type'] || flexFields['employment category'] || item.JobType || null,
       workerType: item.WorkerType || null,
-      jobSchedule: item.JobSchedule || null,
+      jobSchedule: item.JobSchedule || flexFields['job schedule'] || null,
       role: flexFields['role'] || null,
       yearsExperience: flexFields['years'] || null,
+      salary,
     };
   } catch {
     return null;
@@ -166,6 +200,8 @@ async function fetchJobs(clientname) {
         || detail?.workerType
         || null;
 
+      const salary = detail?.salary || {};
+
       jobs.push({
         external_id: `oracle_${job.Id}`,
         title: job.Title,
@@ -173,10 +209,10 @@ async function fetchJobs(clientname) {
         location: locations.filter(Boolean).join('; ') || null,
         workplace_type: workplaceType,
         employment_type: employmentType,
-        salary_min: null,
-        salary_max: null,
-        salary_currency: null,
-        salary_interval: null,
+        salary_min: salary.min || null,
+        salary_max: salary.max || null,
+        salary_currency: salary.currency || null,
+        salary_interval: salary.min ? 'yearly' : null,
         description: detail?.description || job.ShortDescriptionStr || null,
         url: `https://${tenant}.fa.${region}.oraclecloud.com/hcmUI/CandidateExperience/en/sites/${siteNumber}/job/${job.Id}`,
         posted_at: job.PostedDate || null,
