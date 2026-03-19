@@ -63,10 +63,12 @@ function buildFilters(filters = {}) {
 
   // Visa sponsorship filter — strict: only return classified jobs
   if (filters.visa) {
+    const logger = require('../../logger');
+    logger.info({ visa: filters.visa }, 'VISA FILTER APPLIED');
     if (filters.visa === 'yes') {
-      clauses.push("j.visa_sponsorship IS NOT NULL AND j.visa_sponsorship = 'yes'");
+      clauses.push("j.visa_sponsorship = 'yes'");
     } else if (filters.visa === 'no') {
-      clauses.push("j.visa_sponsorship IS NOT NULL AND j.visa_sponsorship = 'no'");
+      clauses.push("j.visa_sponsorship = 'no'");
     }
   }
 
