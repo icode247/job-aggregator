@@ -8,6 +8,7 @@ const config = require('../config');
 const { extractSalary, extractWorkplaceType, extractEmploymentType } = require('../utils/extract');
 const { stripHtml } = require('../utils/html');
 const metrics = require('../utils/metrics');
+const { classifyJob } = require('../utils/classify');
 
 const QUEUE_NAME = 'sync';
 
@@ -113,6 +114,12 @@ function createSyncWorker() {
           if (!job.employment_type) {
             job.employment_type = extractEmploymentType(job.title, plainDesc);
           }
+
+          // Classify: remote, visa, experience level
+          const tags = classifyJob(job);
+          job.is_remote = tags.is_remote;
+          job.visa_sponsorship = tags.visa_sponsorship;
+          job.experience_level = tags.experience_level;
         }
 
         const diff = await jobsRepo.syncForCompany(companyId, ats, incomingJobs);

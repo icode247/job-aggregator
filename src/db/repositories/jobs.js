@@ -32,7 +32,8 @@ function buildFilters(filters = {}) {
   // Work mode: remote, hybrid, onsite
   if (filters.workMode && filters.workMode !== 'any') {
     if (filters.workMode === 'remote') {
-      clauses.push("(j.workplace_type ILIKE ? OR j.location ILIKE ? OR j.title ILIKE ?)");
+      // Use indexed is_remote boolean when available, fallback to text search
+      clauses.push("(j.is_remote = TRUE OR j.workplace_type ILIKE ? OR j.location ILIKE ? OR j.title ILIKE ?)");
       params.push('%remote%', '%remote%', '%remote%');
     } else if (filters.workMode === 'hybrid') {
       clauses.push("(j.workplace_type ILIKE ? OR j.location ILIKE ?)");
@@ -41,6 +42,11 @@ function buildFilters(filters = {}) {
       clauses.push("(j.workplace_type ILIKE ? OR j.workplace_type ILIKE ?)");
       params.push('%on-site%', '%onsite%');
     }
+  }
+
+  // Remote-only filter (fast, indexed boolean)
+  if (filters.remote === 'true' || filters.remote === true) {
+    clauses.push('j.is_remote = TRUE');
   }
 
   // Employment type: full-time, part-time, contract, internship
@@ -55,9 +61,24 @@ function buildFilters(filters = {}) {
     params.push(`%${filters.location}%`);
   }
 
-  // Posted — time window: 24h, 7d, 30d, 90d
+  // Visa sponsorship filter
+  if (filters.visa) {
+    if (filters.visa === 'yes') {
+      clauses.push("j.visa_sponsorship = 'yes'");
+    } else if (filters.visa === 'no') {
+      clauses.push("j.visa_sponsorship = 'no'");
+    }
+  }
+
+  // Experience level filter
+  if (filters.experienceLevel && filters.experienceLevel !== 'any') {
+    clauses.push('j.experience_level = ?');
+    params.push(filters.experienceLevel);
+  }
+
+  // Posted — time window: 24h, 7d, 30d, 90d, 6m
   if (filters.posted) {
-    const intervals = { '24h': 1, '7d': 7, '30d': 30, '90d': 90 };
+    const intervals = { '24h': 1, '7d': 7, '30d': 30, '90d': 90, '3m': 90 };
     const days = intervals[filters.posted];
     if (days) {
       if (isPostgres) {
@@ -157,9 +178,10 @@ const jobsRepo = {
             workplace_type, employment_type,
             salary_min, salary_max, salary_currency, salary_interval,
             description, url, posted_at, raw_data,
+            is_remote, visa_sponsorship, experience_level,
             first_seen_at, last_seen_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
           ON CONFLICT(external_id, company_id) DO UPDATE SET
             title = EXCLUDED.title,
             department = EXCLUDED.department,
@@ -174,6 +196,9 @@ const jobsRepo = {
             url = EXCLUDED.url,
             posted_at = EXCLUDED.posted_at,
             raw_data = EXCLUDED.raw_data,
+            is_remote = EXCLUDED.is_remote,
+            visa_sponsorship = EXCLUDED.visa_sponsorship,
+            experience_level = EXCLUDED.experience_level,
             last_seen_at = datetime('now'),
             removed_at = NULL`,
           [
@@ -184,6 +209,7 @@ const jobsRepo = {
             job.salary_currency || null, job.salary_interval || null,
             job.description || null, job.url, job.posted_at || null,
             JSON.stringify(job.raw_data || null),
+            job.is_remote || false, job.visa_sponsorship || null, job.experience_level || null,
           ]
         );
         if (existingMap.has(job.external_id)) {

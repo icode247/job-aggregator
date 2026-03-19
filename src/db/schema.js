@@ -86,6 +86,16 @@ async function migrate() {
     await exec('CREATE INDEX IF NOT EXISTS idx_companies_name ON companies(company_name)');
   }
 
+  // Job classification columns for persona targeting (H1B, remote, entry-level)
+  if (isPostgres) {
+    await exec('ALTER TABLE jobs ADD COLUMN IF NOT EXISTS visa_sponsorship TEXT');
+    await exec('ALTER TABLE jobs ADD COLUMN IF NOT EXISTS experience_level TEXT');
+    await exec('ALTER TABLE jobs ADD COLUMN IF NOT EXISTS is_remote BOOLEAN DEFAULT FALSE');
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_is_remote ON jobs(is_remote) WHERE removed_at IS NULL AND is_remote = TRUE');
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_visa ON jobs(visa_sponsorship) WHERE removed_at IS NULL');
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_experience ON jobs(experience_level) WHERE removed_at IS NULL');
+  }
+
   // Full-text search (PostgreSQL only)
   if (isPostgres) {
     await exec(`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS search_vector tsvector`);

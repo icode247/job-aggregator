@@ -13,6 +13,9 @@ function formatJob(row) {
     location: row.location,
     workplace_type: row.workplace_type,
     employment_type: row.employment_type,
+    is_remote: row.is_remote || false,
+    visa_sponsorship: row.visa_sponsorship || null,
+    experience_level: row.experience_level || null,
     description: row.description ? stripHtml(row.description) : null,
     url: row.url,
     posted_at: row.posted_at,
@@ -41,12 +44,15 @@ function formatJob(row) {
  *   work_mode      - any | remote | hybrid | onsite
  *   employment_type - any | full-time | part-time | contract | internship
  *   location       - Free text location filter (e.g. "United States", "Remote", "London")
- *   posted         - 24h | 7d | 30d | 90d
- *   company_id     - Filter by company ID
- *   ats            - Filter by ATS (greenhouse, lever, ashby, workable, recruitee, smartrecruiters, rippling, personio, breezy, jazzhr, workday, zoho, icims, oracle, bamboohr, taleo)
- *   limit          - Results per page (default 50, max 200)
- *   page           - Page number (1-based, alternative to offset)
- *   offset         - Pagination offset (use page instead for simpler pagination)
+ *   posted           - 24h | 7d | 30d | 90d | 3m
+ *   remote           - true (only fully remote jobs, indexed)
+ *   visa             - yes | no (H1B/visa sponsorship filter)
+ *   experience_level - internship | entry | mid | senior | lead | executive
+ *   company_id       - Filter by company ID
+ *   ats              - Filter by ATS
+ *   limit            - Results per page (default 50, max 200)
+ *   page             - Page number (1-based, alternative to offset)
+ *   offset           - Pagination offset
  */
 router.get('/api/jobs', async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
@@ -60,6 +66,9 @@ router.get('/api/jobs', async (req, res) => {
   if (req.query.employment_type) filters.employmentType = req.query.employment_type;
   if (req.query.location) filters.location = req.query.location;
   if (req.query.posted) filters.posted = req.query.posted;
+  if (req.query.remote) filters.remote = req.query.remote;
+  if (req.query.visa) filters.visa = req.query.visa;
+  if (req.query.experience_level) filters.experienceLevel = req.query.experience_level;
   if (req.query.company_id) filters.companyId = parseInt(req.query.company_id, 10);
   if (req.query.ats) filters.ats = req.query.ats;
 
