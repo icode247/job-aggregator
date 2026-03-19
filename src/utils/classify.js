@@ -83,7 +83,7 @@ const WORLDWIDE_LOCATION = [
   /\bworldwide\b/i,
   /\bglobal\b/i,
   /\bworld\b/i,
-  /^remote$/i,
+  // NOT: /^remote$/i — "Remote" alone doesn't mean worldwide
 ];
 
 // Country/region signals in LOCATION field that indicate NOT worldwide
@@ -114,6 +114,13 @@ function classifyRemoteWorldwide(title, location, description, isRemote) {
 
   const loc = (location || '').trim();
   const desc = description || '';
+  const titleStr = title || '';
+
+  // Step 0: Check TITLE for country/region signals
+  // e.g. "Remote - United States", "Remote US - EST", "Remote - Western Region"
+  for (const cs of COUNTRY_SPECIFIC_LOCATION) {
+    if (cs.test(titleStr)) return false;
+  }
 
   // Step 1: Check if location is country/region-specific → NOT worldwide
   if (loc.length > 2) {
@@ -134,7 +141,7 @@ function classifyRemoteWorldwide(title, location, description, isRemote) {
     for (const cs of DESC_COUNTRY_RESTRICTION) {
       if (cs.test(desc)) return false;
     }
-    // Then check for positive worldwide signals
+    // Then check for positive worldwide signals in description
     for (const re of WORLDWIDE_POSITIVE) {
       if (re.test(desc)) return true;
     }
@@ -142,14 +149,23 @@ function classifyRemoteWorldwide(title, location, description, isRemote) {
     return false;
   }
 
-  // Step 4: Has a location (not country-specific) — check description for worldwide signals
-  // First check if description has country restrictions
-  for (const cs of DESC_COUNTRY_RESTRICTION) {
-    if (cs.test(desc)) return false;
-  }
-  // Then check positive signals
-  for (const re of WORLDWIDE_POSITIVE) {
-    if (re.test(desc)) return true;
+  // Step 4: Has a specific location (not matched as country but still a place name)
+  // If location is set and non-trivial, it's a specific place → NOT worldwide
+  // Only override if description has STRONG worldwide signals
+  if (loc.length > 3) {
+    // Location is a specific place (city, office, etc.) — not worldwide
+    // unless description EXPLICITLY says "anywhere in the world" etc.
+    for (const cs of DESC_COUNTRY_RESTRICTION) {
+      if (cs.test(desc)) return false;
+    }
+    for (const re of WORLDWIDE_POSITIVE) {
+      if (re.test(desc)) {
+        // Even with worldwide in desc, a specific location wins
+        // "QUETZALTENANGO" + "globally distributed" → still Guatemala-specific
+        return false;
+      }
+    }
+    return false;
   }
 
   return false;
