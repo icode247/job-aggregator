@@ -64,7 +64,7 @@ function classifyRemote(title, location, workplaceType, description) {
 const VISA_NO_PATTERNS = [
   /\bunable\s*to\s*sponsor\b/i,
   /\bcannot\s*(?:offer\s*|provide\s*)?sponsor/i,
-  /\bwill\s*not\s*(?:offer\s*|provide\s*)?sponsor/i,
+  /\bwill\s*not\s*(?:offer\s*|provide\s*)?(?:have\s*)?sponsor/i,
   /\bdoes\s*not\s*(?:offer\s*|provide\s*)?sponsor/i,
   /\bdo\s*not\s*(?:offer|provide)\s*(?:[\w\s-]*)?sponsor/i,
   /\bcannot\s*(?:offer|provide)\s*(?:[\w\s-]*)?sponsor/i,
@@ -82,6 +82,8 @@ const VISA_NO_PATTERNS = [
   /\brequir(?:e|ing)\s*(?:visa\s*)?sponsorship\s*will\s*not\b/i,
   /\bnot\s*(?:require|need)\s*(?:visa\s*)?sponsorship\b/i,
   /\bdo\s*not\s*apply\b.*\b(?:h[\s-]?1b|visa)\b/i,
+  // "will not have sponsorship available" — future tense negation
+  /\bwill\s*not\s*have\s*sponsorship\b/i,
   // Immigration/relocation negations
   /\bnot\s*(?:eligible|available)\s*(?:for\s*)?(?:relocation|immigration)/i,
   /\bisn'?t\s*eligible\s*(?:for\s*)?(?:relocation|immigration)/i,
@@ -91,6 +93,17 @@ const VISA_NO_PATTERNS = [
   /\bwithout\s*(?:relocation|immigration)\s*(?:support|assistance)/i,
   /\bcannot\s*(?:offer|provide)\s*(?:[\w\s-]*)?(?:immigration|relocation)\s*(?:support|assistance)/i,
   /\bnot\s*(?:offer|provide)\s*(?:[\w\s-]*)?(?:immigration|relocation)\s*(?:support|assistance)/i,
+  // "No Relocation and Visa Support" — combined negation
+  /\bno\s*relocation\s*(?:and|&)\s*visa\s*(?:support|assistance)\b/i,
+  /\bno\s*visa\s*(?:and|&)\s*relocation\s*(?:support|assistance)\b/i,
+  // "does not engage in ... sponsorship"
+  /\bdoes\s*not\s*engage\s*in\s*(?:[\w\s-]*)?(?:sponsor|immigration)/i,
+  // "Visa / Sponsorship Available: Not Available" or "Not Available" after sponsorship
+  /\b(?:visa|sponsorship)\s*(?:\/\s*(?:visa|sponsorship)\s*)?available\s*:\s*not\s*available\b/i,
+  /\bsponsorship\s*available\s*:\s*(?:no|not|none|unavailable)\b/i,
+  // US citizenship required
+  /\b(?:us|u\.?s\.?)\s*citizenship\s*(?:is\s*)?required\b/i,
+  /\bcitizenship\s*(?:is\s*)?required\b/i,
 ];
 
 const VISA_YES_PATTERNS = [
@@ -102,12 +115,12 @@ const VISA_YES_PATTERNS = [
   /\bvisa\s*(?:support|assistance)\s*(?:available|offered|provided|included)\b/i,
   /\bimmigration\s*(?:support|assistance|sponsorship)\s*(?:available|offered|provided|included|is\s*available)\b/i,
   /\b(?:offer|provide)s?\s*(?:visa|immigration)\s*(?:support|assistance|sponsorship)\b/i,
-  /\bsponsorship\s*(?:is\s*)?available\b/i,
   /\bh[\s-]?1b\s*transfer/i,
-  /\brelocation\s*(?:and|&)\s*visa\s*(?:support|assistance|sponsorship|package)\b/i,
   /\bh[\s-]?1b\s*(?:visa\s*)?sponsor(?:ship)?\s*(?:available|offered|provided|included|supported)\b/i,
   /\bvisa\s*arrangements\b/i,
-  /\brelocation\s*package\b/i,
+  // Note: "sponsorship available" alone is ambiguous — only match with explicit positive context
+  // Removed: /\bsponsorship\s*(?:is\s*)?available\b/i — too many false positives
+  // Removed: /\brelocation\s*package\b/i — relocation != visa
 ];
 
 function classifyVisa(description) {
