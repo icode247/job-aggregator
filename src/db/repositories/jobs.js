@@ -48,6 +48,11 @@ function buildFilters(filters = {}) {
     clauses.push('j.is_remote = TRUE');
   }
 
+  // Remote worldwide filter — location-agnostic remote jobs
+  if (filters.remoteWorldwide === 'true' || filters.remoteWorldwide === true) {
+    clauses.push('j.remote_worldwide = TRUE');
+  }
+
   // Employment type: full-time, part-time, contract, internship
   if (filters.employmentType && filters.employmentType !== 'any') {
     clauses.push("(j.employment_type ILIKE ? OR j.title ILIKE ?)");
@@ -177,10 +182,10 @@ const jobsRepo = {
             workplace_type, employment_type,
             salary_min, salary_max, salary_currency, salary_interval,
             description, url, posted_at, raw_data,
-            is_remote, visa_sponsorship, experience_level,
+            is_remote, remote_worldwide, visa_sponsorship, experience_level,
             first_seen_at, last_seen_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+          Values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
           ON CONFLICT(external_id, company_id) DO UPDATE SET
             title = EXCLUDED.title,
             department = EXCLUDED.department,
@@ -196,6 +201,7 @@ const jobsRepo = {
             posted_at = EXCLUDED.posted_at,
             raw_data = EXCLUDED.raw_data,
             is_remote = EXCLUDED.is_remote,
+            remote_worldwide = EXCLUDED.remote_worldwide,
             visa_sponsorship = EXCLUDED.visa_sponsorship,
             experience_level = EXCLUDED.experience_level,
             last_seen_at = datetime('now'),
@@ -208,7 +214,7 @@ const jobsRepo = {
             job.salary_currency || null, job.salary_interval || null,
             job.description || null, job.url, job.posted_at || null,
             JSON.stringify(job.raw_data || null),
-            job.is_remote || false, job.visa_sponsorship || null, job.experience_level || null,
+            job.is_remote || false, job.remote_worldwide || false, job.visa_sponsorship || null, job.experience_level || null,
           ]
         );
         if (existingMap.has(job.external_id)) {

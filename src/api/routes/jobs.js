@@ -14,6 +14,7 @@ function formatJob(row) {
     workplace_type: row.workplace_type,
     employment_type: row.employment_type,
     is_remote: row.is_remote || false,
+    remote_worldwide: row.remote_worldwide || false,
     visa_sponsorship: row.visa_sponsorship || null,
     experience_level: row.experience_level || null,
     description: row.description ? stripHtml(row.description) : null,
@@ -46,6 +47,7 @@ function formatJob(row) {
  *   location       - Free text location filter (e.g. "United States", "Remote", "London")
  *   posted           - 24h | 7d | 30d | 90d | 3m
  *   remote           - true (only fully remote jobs, indexed)
+ *   remote_worldwide - true (remote jobs open to any location globally)
  *   visa             - yes | no (H1B/visa sponsorship filter)
  *   experience_level - internship | entry | mid | senior | lead | executive
  *   company_id       - Filter by company ID
@@ -67,6 +69,7 @@ router.get('/api/jobs', async (req, res) => {
   if (req.query.location) filters.location = req.query.location;
   if (req.query.posted) filters.posted = req.query.posted;
   if (req.query.remote) filters.remote = req.query.remote;
+  if (req.query.remote_worldwide) filters.remoteWorldwide = req.query.remote_worldwide;
   if (req.query.visa) filters.visa = req.query.visa;
   if (req.query.experience_level) filters.experienceLevel = req.query.experience_level;
   if (req.query.company_id) filters.companyId = parseInt(req.query.company_id, 10);

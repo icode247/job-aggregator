@@ -59,6 +59,77 @@ function classifyRemote(title, location, workplaceType, description) {
   return false;
 }
 
+// ── Remote Worldwide Detection ───────────────────────────────────
+
+const WORLDWIDE_POSITIVE = [
+  /\banywhere\s*in\s*the\s*world\b/i,
+  /\bwork\s*from\s*anywhere\b/i,
+  /\blocation\s*agnostic\b/i,
+  /\bglobally\s*distributed\b/i,
+  /\bfully\s*distributed\b/i,
+  /\bremote\s*worldwide\b/i,
+  /\bworldwide\s*remote\b/i,
+  /\bglobal\s*remote\b/i,
+  /\bremote\s*[\-–—]\s*global\b/i,
+  /\bno\s*location\s*requirement\b/i,
+  /\bopen\s*to\s*(?:all|any)\s*(?:location|countr)/i,
+  /\bremote\s*[\-–—]\s*anywhere\b/i,
+  /\bremote\s*first\b/i,
+];
+
+const WORLDWIDE_LOCATION = [
+  /\banywhere\b/i,
+  /\bworldwide\b/i,
+  /\bglobal\b/i,
+  /\bworld\b/i,
+  /^remote$/i,
+];
+
+// Country-specific signals that indicate NOT worldwide
+const COUNTRY_SPECIFIC = [
+  /\b(?:united\s*states|usa|u\.?s\.?\b)/i,
+  /\b(?:united\s*kingdom|uk\b)/i,
+  /\b(?:canada|germany|france|india|australia|china|japan|brazil)\b/i,
+  /\b(?:california|new\s*york|texas|london|berlin|toronto|sydney)\b/i,
+  /\b(?:emea|apac|latam|americas)\b/i,
+  /\b(?:EU|europe)\s*only\b/i,
+  /\b(?:US|UK|CA|AU)\s*only\b/i,
+];
+
+function classifyRemoteWorldwide(title, location, description, isRemote) {
+  if (!isRemote) return false;
+
+  const loc = (location || '').trim();
+
+  // Location explicitly says worldwide/anywhere
+  for (const re of WORLDWIDE_LOCATION) {
+    if (re.test(loc)) {
+      // But check it's not "Remote, US" or "Remote - United States"
+      let countrySpecific = false;
+      for (const cs of COUNTRY_SPECIFIC) {
+        if (cs.test(loc)) { countrySpecific = true; break; }
+      }
+      if (!countrySpecific) return true;
+    }
+  }
+
+  // No location at all + remote = likely worldwide
+  if (!loc || loc.length < 3) {
+    // Check description for worldwide signals
+    for (const re of WORLDWIDE_POSITIVE) {
+      if (re.test(description || '')) return true;
+    }
+    if (/\bremote\b/i.test(title || '')) return true;
+  }
+
+  // Description explicitly says worldwide
+  for (const re of WORLDWIDE_POSITIVE) {
+    if (re.test(description || '')) return true;
+  }
+
+  return false;
+}
+
 // ── Visa Sponsorship Detection ────────────────────────────────────
 
 const VISA_NO_PATTERNS = [
@@ -244,11 +315,14 @@ function classifyJob(job) {
   const location = job.location || '';
   const workplaceType = job.workplace_type || '';
 
+  const is_remote = classifyRemote(title, location, workplaceType, description);
+
   return {
-    is_remote: classifyRemote(title, location, workplaceType, description),
+    is_remote,
+    remote_worldwide: classifyRemoteWorldwide(title, location, description, is_remote),
     visa_sponsorship: classifyVisa(description),
     experience_level: classifyExperienceLevel(title, description),
   };
 }
 
-module.exports = { classifyJob, classifyRemote, classifyVisa, classifyExperienceLevel };
+module.exports = { classifyJob, classifyRemote, classifyVisa, classifyExperienceLevel, classifyRemoteWorldwide };

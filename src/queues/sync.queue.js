@@ -115,9 +115,10 @@ function createSyncWorker() {
             job.employment_type = extractEmploymentType(job.title, plainDesc);
           }
 
-          // Classify: remote, visa, experience level
+          // Classify: remote, worldwide, visa, experience level
           const tags = classifyJob(job);
           job.is_remote = tags.is_remote;
+          job.remote_worldwide = tags.remote_worldwide;
           job.visa_sponsorship = tags.visa_sponsorship;
           job.experience_level = tags.experience_level;
         }

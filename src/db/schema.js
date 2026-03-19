@@ -91,7 +91,9 @@ async function migrate() {
     await exec('ALTER TABLE jobs ADD COLUMN IF NOT EXISTS visa_sponsorship TEXT');
     await exec('ALTER TABLE jobs ADD COLUMN IF NOT EXISTS experience_level TEXT');
     await exec('ALTER TABLE jobs ADD COLUMN IF NOT EXISTS is_remote BOOLEAN DEFAULT FALSE');
+    await exec('ALTER TABLE jobs ADD COLUMN IF NOT EXISTS remote_worldwide BOOLEAN DEFAULT FALSE');
     await exec('CREATE INDEX IF NOT EXISTS idx_jobs_is_remote ON jobs(is_remote) WHERE removed_at IS NULL AND is_remote = TRUE');
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_remote_worldwide ON jobs(remote_worldwide) WHERE removed_at IS NULL AND remote_worldwide = TRUE');
     await exec('CREATE INDEX IF NOT EXISTS idx_jobs_visa ON jobs(visa_sponsorship) WHERE removed_at IS NULL');
     await exec('CREATE INDEX IF NOT EXISTS idx_jobs_experience ON jobs(experience_level) WHERE removed_at IS NULL');
   }
