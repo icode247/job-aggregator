@@ -5,12 +5,10 @@
  */
 const { query } = require('../src/db/connection');
 const { extractSalary } = require('../src/utils/extract');
-const { migrate } = require('../src/db/schema');
 
 const BATCH_SIZE = 500;
 
 async function backfillSalary() {
-  await migrate();
   console.log('Starting salary backfill...');
 
   let totalProcessed = 0;
