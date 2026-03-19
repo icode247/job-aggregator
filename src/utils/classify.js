@@ -62,7 +62,7 @@ function classifyRemote(title, location, workplaceType, description) {
 // ── Visa Sponsorship Detection ────────────────────────────────────
 
 const VISA_NO_PATTERNS = [
-  /\bunable\s*to\s*sponsor\b/i,
+  /\bunable\s*to\s*(?:offer\s*|provide\s*)?(?:[\w\s-]*)?sponsor/i,
   /\bcannot\s*(?:offer\s*|provide\s*)?sponsor/i,
   /\bwill\s*not\s*(?:offer\s*|provide\s*)?(?:have\s*)?sponsor/i,
   /\bdoes\s*not\s*(?:offer\s*|provide\s*)?sponsor/i,
