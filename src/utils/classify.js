@@ -118,9 +118,10 @@ const VISA_YES_PATTERNS = [
   /\bh[\s-]?1b\s*transfer/i,
   /\bh[\s-]?1b\s*(?:visa\s*)?sponsor(?:ship)?\s*(?:available|offered|provided|included|supported)\b/i,
   /\bvisa\s*arrangements\b/i,
-  // Note: "sponsorship available" alone is ambiguous — only match with explicit positive context
-  // Removed: /\bsponsorship\s*(?:is\s*)?available\b/i — too many false positives
-  // Removed: /\brelocation\s*package\b/i — relocation != visa
+  // "Sponsorship Available: Yes" — explicit positive with colon format
+  /\bsponsorship\s*available\s*:\s*yes\b/i,
+  /\bsponsorship\s*:\s*yes\b/i,
+  /\bvisa\s*(?:\/\s*)?sponsorship\s*available\s*:\s*(?:yes|available)\b/i,
 ];
 
 function classifyVisa(description) {
