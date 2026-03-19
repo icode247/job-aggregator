@@ -61,12 +61,12 @@ function buildFilters(filters = {}) {
     params.push(`%${filters.location}%`);
   }
 
-  // Visa sponsorship filter
+  // Visa sponsorship filter — strict: only return classified jobs
   if (filters.visa) {
     if (filters.visa === 'yes') {
-      clauses.push("j.visa_sponsorship = 'yes'");
+      clauses.push("j.visa_sponsorship IS NOT NULL AND j.visa_sponsorship = 'yes'");
     } else if (filters.visa === 'no') {
-      clauses.push("j.visa_sponsorship = 'no'");
+      clauses.push("j.visa_sponsorship IS NOT NULL AND j.visa_sponsorship = 'no'");
     }
   }
 
