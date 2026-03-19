@@ -75,7 +75,7 @@ const WORLDWIDE_POSITIVE = [
   /\bno\s*location\s*requirement\b/i,
   /\bopen\s*to\s*(?:all|any)\s*(?:location|countr)/i,
   /\bremote\s*[\-–—]\s*anywhere\b/i,
-  /\bremote\s*first\b/i,
+  // NOT: remote-first — that's a work style, not location
 ];
 
 const WORLDWIDE_LOCATION = [
@@ -86,46 +86,70 @@ const WORLDWIDE_LOCATION = [
   /^remote$/i,
 ];
 
-// Country-specific signals that indicate NOT worldwide
-const COUNTRY_SPECIFIC = [
-  /\b(?:united\s*states|usa|u\.?s\.?\b)/i,
-  /\b(?:united\s*kingdom|uk\b)/i,
-  /\b(?:canada|germany|france|india|australia|china|japan|brazil)\b/i,
-  /\b(?:california|new\s*york|texas|london|berlin|toronto|sydney)\b/i,
-  /\b(?:emea|apac|latam|americas)\b/i,
-  /\b(?:EU|europe)\s*only\b/i,
-  /\b(?:US|UK|CA|AU)\s*only\b/i,
+// Country/region signals in LOCATION field that indicate NOT worldwide
+const COUNTRY_SPECIFIC_LOCATION = [
+  /\b(?:united\s*states|usa|u\.?s\.?)\b/i,
+  /\b(?:united\s*kingdom|uk)\b/i,
+  /\b(?:canada|germany|france|india|australia|china|japan|brazil|mexico|spain|italy|netherlands|ireland|singapore|israel|poland|portugal|switzerland|austria|sweden|norway|denmark|finland|belgium|czech|romania|hungary|philippines|indonesia|vietnam|thailand|malaysia|korea|taiwan|argentina|colombia|chile|peru|nigeria|kenya|south\s*africa|egypt|morocco|new\s*zealand)\b/i,
+  /\b(?:california|new\s*york|texas|florida|london|berlin|toronto|sydney|paris|amsterdam|dublin|munich|zurich|copenhagen|stockholm|oslo|barcelona|madrid|milan|rome|lisbon|warsaw|prague|budapest|bangalore|mumbai|delhi|shanghai|beijing|tokyo|seoul|manila|jakarta|bogota|sao\s*paulo|nairobi|cape\s*town|auckland)\b/i,
+  /\b(?:emea|apac|latam|americas|north\s*america|south\s*america|asia|africa|middle\s*east|oceania)\b/i,
+  /\b(?:europe|european)\b/i,
+  /\b(?:US|UK|CA|AU|DE|FR|IN|BR|JP|CN|SG|IE|NL|IL|PL|PT|CH|SE|NO|DK|FI|BE|CZ|RO|NZ)\b/,
+];
+
+// Description-level country restrictions (must be explicit restriction, not just mention)
+const DESC_COUNTRY_RESTRICTION = [
+  /\b(?:us|u\.?s\.?|united\s*states)\s*only\b/i,
+  /\b(?:uk|united\s*kingdom)\s*only\b/i,
+  /\bmust\s*be\s*(?:based|located)\s*in\b/i,
+  /\brestricted\s*to\b/i,
+  /\beligible\s*to\s*work\s*in\b/i,
+  /\bauthorized\s*to\s*work\s*in\b/i,
+  /\bresidents?\s*(?:of|only)\b/i,
+  /\bbased\s*(?:in|out\s*of)\s*(?:europe|the\s*us|the\s*uk|the\s*united)/i,
 ];
 
 function classifyRemoteWorldwide(title, location, description, isRemote) {
   if (!isRemote) return false;
 
   const loc = (location || '').trim();
+  const desc = description || '';
 
-  // Location explicitly says worldwide/anywhere
+  // Step 1: Check if location is country/region-specific → NOT worldwide
+  if (loc.length > 2) {
+    for (const cs of COUNTRY_SPECIFIC_LOCATION) {
+      if (cs.test(loc)) return false;
+    }
+  }
+
+  // Step 2: Location explicitly says worldwide/anywhere/global
   for (const re of WORLDWIDE_LOCATION) {
-    if (re.test(loc)) {
-      // But check it's not "Remote, US" or "Remote - United States"
-      let countrySpecific = false;
-      for (const cs of COUNTRY_SPECIFIC) {
-        if (cs.test(loc)) { countrySpecific = true; break; }
-      }
-      if (!countrySpecific) return true;
-    }
+    if (re.test(loc)) return true;
   }
 
-  // No location at all + remote = likely worldwide
+  // Step 3: No location — check description for EXPLICIT worldwide signals
+  // But also check for country restrictions in description
   if (!loc || loc.length < 3) {
-    // Check description for worldwide signals
-    for (const re of WORLDWIDE_POSITIVE) {
-      if (re.test(description || '')) return true;
+    // First check if description has country restrictions
+    for (const cs of DESC_COUNTRY_RESTRICTION) {
+      if (cs.test(desc)) return false;
     }
-    if (/\bremote\b/i.test(title || '')) return true;
+    // Then check for positive worldwide signals
+    for (const re of WORLDWIDE_POSITIVE) {
+      if (re.test(desc)) return true;
+    }
+    // No location + no description signals = UNKNOWN, not worldwide
+    return false;
   }
 
-  // Description explicitly says worldwide
+  // Step 4: Has a location (not country-specific) — check description for worldwide signals
+  // First check if description has country restrictions
+  for (const cs of DESC_COUNTRY_RESTRICTION) {
+    if (cs.test(desc)) return false;
+  }
+  // Then check positive signals
   for (const re of WORLDWIDE_POSITIVE) {
-    if (re.test(description || '')) return true;
+    if (re.test(desc)) return true;
   }
 
   return false;
