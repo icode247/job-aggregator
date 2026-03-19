@@ -47,9 +47,10 @@ function classifyRemote(title, location, workplaceType, description) {
     if (re.test(text)) return false;
   }
 
-  // Title or location says "Remote"
+  // Title or location says "Remote", "Worldwide", "Anywhere"
   if (/\bremote\b/i.test(title || '')) return true;
   if (/\bremote\b/i.test(location || '') && !/hybrid/i.test(location || '')) return true;
+  if (/\b(?:worldwide|anywhere|global)\b/i.test(location || '')) return true;
 
   // Description signals
   for (const re of REMOTE_POSITIVE) {
