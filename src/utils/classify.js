@@ -82,6 +82,15 @@ const VISA_NO_PATTERNS = [
   /\brequir(?:e|ing)\s*(?:visa\s*)?sponsorship\s*will\s*not\b/i,
   /\bnot\s*(?:require|need)\s*(?:visa\s*)?sponsorship\b/i,
   /\bdo\s*not\s*apply\b.*\b(?:h[\s-]?1b|visa)\b/i,
+  // Immigration/relocation negations
+  /\bnot\s*(?:eligible|available)\s*(?:for\s*)?(?:relocation|immigration)/i,
+  /\bisn'?t\s*eligible\s*(?:for\s*)?(?:relocation|immigration)/i,
+  /\bno\s*(?:relocation|immigration)\s*(?:support|assistance|sponsorship)/i,
+  /\b(?:relocation|immigration)\s*(?:support|assistance|sponsorship)\s*(?:is\s*)?(?:not|unavailable)/i,
+  /\bnot\s*eligible\s*for\s*relocation\b/i,
+  /\bwithout\s*(?:relocation|immigration)\s*(?:support|assistance)/i,
+  /\bcannot\s*(?:offer|provide)\s*(?:[\w\s-]*)?(?:immigration|relocation)\s*(?:support|assistance)/i,
+  /\bnot\s*(?:offer|provide)\s*(?:[\w\s-]*)?(?:immigration|relocation)\s*(?:support|assistance)/i,
 ];
 
 const VISA_YES_PATTERNS = [
@@ -90,12 +99,15 @@ const VISA_YES_PATTERNS = [
   /\bopen\s*to\s*sponsor/i,
   /\bproudly\s*sponsor/i,
   /\bwe\s*(?:do\s*)?sponsor\s*(?:h[\s-]?1b|work\s*visa|visa)\b/i,
-  /\bvisa\s*support\b/i,
-  /\bimmigration\s*(?:support|assistance|sponsorship)\b/i,
-  /\bsponsorship\s*available\b/i,
+  /\bvisa\s*(?:support|assistance)\s*(?:available|offered|provided|included)\b/i,
+  /\bimmigration\s*(?:support|assistance|sponsorship)\s*(?:available|offered|provided|included|is\s*available)\b/i,
+  /\b(?:offer|provide)s?\s*(?:visa|immigration)\s*(?:support|assistance|sponsorship)\b/i,
+  /\bsponsorship\s*(?:is\s*)?available\b/i,
   /\bh[\s-]?1b\s*transfer/i,
-  /\brelocation\s*(?:and|&)\s*visa\b/i,
+  /\brelocation\s*(?:and|&)\s*visa\s*(?:support|assistance|sponsorship|package)\b/i,
   /\bh[\s-]?1b\s*(?:visa\s*)?sponsor(?:ship)?\s*(?:available|offered|provided|included|supported)\b/i,
+  /\bvisa\s*arrangements\b/i,
+  /\brelocation\s*package\b/i,
 ];
 
 function classifyVisa(description) {

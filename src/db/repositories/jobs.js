@@ -1,5 +1,4 @@
 const { query, transaction, isPostgres } = require('../connection');
-const logger = require('../../logger');
 
 /**
  * Build WHERE clauses from filters.
@@ -63,8 +62,6 @@ function buildFilters(filters = {}) {
 
   // Visa sponsorship filter — strict: only return classified jobs
   if (filters.visa) {
-    const logger = require('../../logger');
-    logger.info({ visa: filters.visa }, 'VISA FILTER APPLIED');
     if (filters.visa === 'yes') {
       clauses.push("j.visa_sponsorship = 'yes'");
     } else if (filters.visa === 'no') {
