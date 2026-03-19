@@ -16,11 +16,13 @@ function cacheMiddleware(ttlSeconds = 60) {
     const client = getRedis();
     if (!client) return next();
 
-    // Only cache simple routes, skip high-cardinality search queries
+    // Skip caching for high-cardinality job queries (search, filters)
     const path = req.path;
-    if (path.startsWith('/api/jobs') && req.query.q) {
-      // Don't cache search queries — too many unique combinations fill Redis
-      return next();
+    if (path.startsWith('/api/jobs')) {
+      const hasFilters = req.query.q || req.query.visa || req.query.remote ||
+        req.query.experience_level || req.query.work_mode || req.query.location ||
+        req.query.employment_type || req.query.company_id || req.query.ats;
+      if (hasFilters) return next();
     }
 
     const key = `cache:${req.originalUrl}`;
