@@ -56,19 +56,22 @@ async function main() {
   // Backfill descriptions for all ATS platforms every 10 minutes (with overlap guard)
   let allBackfillRunning = false;
   async function runAllBackfill() {
+    logger.info('Backfill timer fired');
     if (allBackfillRunning) { logger.warn('All-ATS backfill still running, skipping'); return; }
     allBackfillRunning = true;
     try {
-      await backfillDescriptions();
+      const filled = await backfillDescriptions();
+      logger.info({ filled }, 'Backfill cycle complete');
     } catch (err) {
-      logger.error({ err: err.message }, 'Description backfill error');
+      logger.error({ err: err.message, stack: err.stack }, 'Description backfill error');
     } finally {
       allBackfillRunning = false;
     }
     const jitter = Math.floor(Math.random() * 120000);
     setTimeout(runAllBackfill, 10 * 60 * 1000 + jitter);
   }
-  setTimeout(runAllBackfill, 3 * 60 * 1000); // Start 3 minutes after boot
+  logger.info('Scheduling backfill in 3 minutes');
+  setTimeout(runAllBackfill, 3 * 60 * 1000);
 
   async function shutdown(signal) {
     logger.info({ signal }, 'Shutting down worker');
