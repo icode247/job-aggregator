@@ -449,7 +449,7 @@ async function backfillForAts(ats, batchSize, delayMs) {
     `SELECT j.id, j.ats, j.external_id, j.url, j.raw_data, c.ats_slug
      FROM jobs j JOIN companies c ON j.company_id = c.id
      WHERE j.removed_at IS NULL
-     AND (j.description IS NULL OR j.description = '')
+     AND j.description IS NULL
      AND j.ats = ?
      ORDER BY j.first_seen_at DESC
      LIMIT ?`,
@@ -471,11 +471,15 @@ async function backfillForAts(ats, batchSize, delayMs) {
         consecutiveFailures = 0;
         metrics.increment(`backfill.filled.${ats}`);
       } else {
+        // Mark as empty so we don't retry this job
+        await query('UPDATE jobs SET description = ? WHERE id = ?', ['', job.id]);
         failed++;
         consecutiveFailures++;
         metrics.increment(`backfill.failed.${ats}`);
       }
     } catch (err) {
+      // Mark as empty so we don't retry this job
+      await query('UPDATE jobs SET description = ? WHERE id = ?', ['', job.id]);
       failed++;
       consecutiveFailures++;
       metrics.increment(`backfill.failed.${ats}`);
