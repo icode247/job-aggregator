@@ -61,7 +61,7 @@ function createDiscoveryWorker(syncQueue) {
     {
       connection: createRedisConnection(),
       limiter: config.DISCOVERY_RATE_LIMIT,
-      concurrency: 4,
+      concurrency: 20,
     }
   );
 

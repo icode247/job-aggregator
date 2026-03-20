@@ -97,7 +97,7 @@ function createCrawlWorker(syncQueue) {
     {
       connection: createRedisConnection(),
       limiter: config.CRAWL_RATE_LIMIT,
-      concurrency: 1,
+      concurrency: 3,
     }
   );
 
