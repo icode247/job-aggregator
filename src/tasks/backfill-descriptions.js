@@ -12,25 +12,25 @@ const logger = require('../logger');
 const metrics = require('../utils/metrics');
 
 const ATS_CONFIG = {
-  workday:         { batchSize: 50, delayMs: 2000 },
-  taleo:           { batchSize: 20, delayMs: 500 },
-  smartrecruiters: { batchSize: 100, delayMs: 150 },
-  bamboohr:        { batchSize: 50, delayMs: 500 },
-  jazzhr:          { batchSize: 50, delayMs: 500 },
-  breezy:          { batchSize: 50, delayMs: 500 },
-  oracle:          { batchSize: 30, delayMs: 300 },
-  greenhouse:      { batchSize: 50, delayMs: 300 },
-  lever:           { batchSize: 50, delayMs: 300 },
-  ashby:           { batchSize: 50, delayMs: 300 },
-  icims:           { batchSize: 100, delayMs: 200 },
-  personio:        { batchSize: 50, delayMs: 500 },
-  recruitee:       { batchSize: 50, delayMs: 300 },
-  rippling:        { batchSize: 30, delayMs: 500 },
-  zoho:            { batchSize: 20, delayMs: 800 },
-  workable:        { batchSize: 50, delayMs: 500 },
-  jobvite:         { batchSize: 50, delayMs: 500 },
-  pinpoint:        { batchSize: 50, delayMs: 300 },
-  successfactors:  { batchSize: 30, delayMs: 1000 },
+  icims:           { batchSize: 500, concurrency: 20 },
+  workday:         { batchSize: 200, concurrency: 10 },
+  workable:        { batchSize: 200, concurrency: 10 },
+  oracle:          { batchSize: 200, concurrency: 10 },
+  taleo:           { batchSize: 100, concurrency: 10 },
+  smartrecruiters: { batchSize: 200, concurrency: 15 },
+  bamboohr:        { batchSize: 100, concurrency: 10 },
+  jazzhr:          { batchSize: 100, concurrency: 10 },
+  breezy:          { batchSize: 100, concurrency: 10 },
+  greenhouse:      { batchSize: 200, concurrency: 15 },
+  lever:           { batchSize: 100, concurrency: 10 },
+  ashby:           { batchSize: 100, concurrency: 10 },
+  personio:        { batchSize: 100, concurrency: 5 },
+  recruitee:       { batchSize: 100, concurrency: 10 },
+  rippling:        { batchSize: 100, concurrency: 10 },
+  zoho:            { batchSize: 100, concurrency: 5 },
+  jobvite:         { batchSize: 100, concurrency: 10 },
+  pinpoint:        { batchSize: 100, concurrency: 10 },
+  successfactors:  { batchSize: 100, concurrency: 5 },
 };
 
 // Cache workday configs per slug with TTL (1 hour)
@@ -493,7 +493,50 @@ async function fetchDescription(job) {
   return description;
 }
 
-async function backfillForAts(ats, batchSize, delayMs) {
+/**
+ * Process a single job — fetch description and update DB.
+ * Returns 'filled' or 'failed'.
+ */
+async function processJob(job, ats) {
+  try {
+    const description = await fetchDescription(job);
+    if (description) {
+      await query('UPDATE jobs SET description = ? WHERE id = ?', [description, job.id]);
+      metrics.increment(`backfill.filled.${ats}`);
+      return 'filled';
+    } else {
+      await query('UPDATE jobs SET description = ? WHERE id = ?', ['', job.id]);
+      metrics.increment(`backfill.failed.${ats}`);
+      return 'failed';
+    }
+  } catch (err) {
+    await query('UPDATE jobs SET description = ? WHERE id = ?', ['', job.id]);
+    metrics.increment(`backfill.failed.${ats}`);
+    logger.warn({ jobId: job.id, ats: job.ats, slug: job.ats_slug, err: err.message }, 'Backfill fetch failed');
+    return 'failed';
+  }
+}
+
+/**
+ * Run jobs concurrently with a pool of N workers.
+ */
+async function runWithConcurrency(items, concurrency, fn) {
+  const results = [];
+  let index = 0;
+
+  async function worker() {
+    while (index < items.length) {
+      const i = index++;
+      results[i] = await fn(items[i]);
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
+async function backfillForAts(ats, batchSize, concurrency) {
   const { rows: jobs } = await query(
     `SELECT j.id, j.ats, j.external_id, j.url, j.raw_data, c.ats_slug
      FROM jobs j JOIN companies c ON j.company_id = c.id
@@ -507,47 +550,10 @@ async function backfillForAts(ats, batchSize, delayMs) {
 
   if (jobs.length === 0) return { filled: 0, failed: 0 };
 
-  let filled = 0;
-  let failed = 0;
-  let consecutiveFailures = 0;
+  const results = await runWithConcurrency(jobs, concurrency, (job) => processJob(job, ats));
 
-  for (const job of jobs) {
-    try {
-      const description = await fetchDescription(job);
-      if (description) {
-        await query('UPDATE jobs SET description = ? WHERE id = ?', [description, job.id]);
-        filled++;
-        consecutiveFailures = 0;
-        metrics.increment(`backfill.filled.${ats}`);
-      } else {
-        // Mark as empty so we don't retry this job
-        await query('UPDATE jobs SET description = ? WHERE id = ?', ['', job.id]);
-        failed++;
-        consecutiveFailures++;
-        metrics.increment(`backfill.failed.${ats}`);
-      }
-    } catch (err) {
-      // Mark as empty so we don't retry this job
-      await query('UPDATE jobs SET description = ? WHERE id = ?', ['', job.id]);
-      failed++;
-      consecutiveFailures++;
-      metrics.increment(`backfill.failed.${ats}`);
-      logger.warn({ jobId: job.id, ats: job.ats, slug: job.ats_slug, err: err.message }, 'Backfill fetch failed');
-    }
-
-    // Circuit breaker: stop early if first 10 all fail (fetcher is broken for this ATS)
-    if (consecutiveFailures >= 10 && filled === 0) {
-      logger.warn({ ats, consecutiveFailures }, 'Backfill circuit breaker: skipping ATS (all failures)');
-      break;
-    }
-
-    // Exponential backoff after 3 consecutive failures (cap at 5s)
-    let currentDelay = delayMs;
-    if (consecutiveFailures >= 3) {
-      currentDelay = Math.min(delayMs * Math.pow(2, consecutiveFailures - 2), 5000);
-    }
-    await new Promise(r => setTimeout(r, currentDelay));
-  }
+  const filled = results.filter(r => r === 'filled').length;
+  const failed = results.filter(r => r === 'failed').length;
 
   return { filled, failed };
 }
@@ -557,8 +563,8 @@ async function backfillDescriptions() {
 
   // Run all ATS platforms in parallel — each has its own rate limiting via delayMs
   const results = await Promise.allSettled(
-    Object.entries(ATS_CONFIG).map(async ([ats, config]) => {
-      const { filled, failed } = await backfillForAts(ats, config.batchSize, config.delayMs);
+    Object.entries(ATS_CONFIG).map(async ([ats, cfg]) => {
+      const { filled, failed } = await backfillForAts(ats, cfg.batchSize, cfg.concurrency);
       if (filled > 0 || failed > 0) {
         logger.info({ ats, filled, failed }, 'Description backfill: ATS batch done');
       }

@@ -54,7 +54,7 @@ async function main() {
 
   logger.info('Worker started — processing discovery, sync, and crawl queues');
 
-  // Backfill descriptions every 10 minutes
+  // Backfill descriptions every 3 minutes (concurrent fetching per ATS)
   let allBackfillRunning = false;
   async function runAllBackfill() {
     if (allBackfillRunning) { logger.warn('Description backfill still running, skipping'); return; }
@@ -67,9 +67,9 @@ async function main() {
     } finally {
       allBackfillRunning = false;
     }
-    setTimeout(runAllBackfill, 10 * 60 * 1000);
+    setTimeout(runAllBackfill, 3 * 60 * 1000);
   }
-  setTimeout(runAllBackfill, 3 * 60 * 1000);
+  setTimeout(runAllBackfill, 2 * 60 * 1000);
 
   // Backfill classifications (visa, remote, experience) every 5 minutes
   async function runClassificationBackfill() {
