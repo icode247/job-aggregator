@@ -6,9 +6,7 @@ const { createDiscoveryQueue, createDiscoveryWorker } = require('./queues/discov
 const { createSyncQueue, createSyncWorker } = require('./queues/sync.queue');
 const { createCrawlQueue, createCrawlWorker } = require('./queues/crawl.queue');
 const { registerSchedules, fanoutDiscovery, fanoutSync, fanoutCrawl } = require('./queues/scheduler');
-// Description backfill disabled on Heroku — run locally instead:
-//   DATABASE_URL=$(heroku config:get DATABASE_URL) node scripts/local-backfill-descriptions.js
-// const { backfillDescriptions } = require('./tasks/backfill-descriptions');
+const { backfillDescriptions } = require('./tasks/backfill-descriptions');
 const { backfillClassifications } = require('./tasks/backfill-classifications');
 
 async function main() {
@@ -56,8 +54,22 @@ async function main() {
 
   logger.info('Worker started — processing discovery, sync, and crawl queues');
 
-  // Description backfill disabled on Heroku (ATS providers block shared IPs).
-  // Run locally instead: node scripts/local-backfill-descriptions.js
+  // Backfill descriptions every 10 minutes
+  let allBackfillRunning = false;
+  async function runAllBackfill() {
+    if (allBackfillRunning) { logger.warn('Description backfill still running, skipping'); return; }
+    allBackfillRunning = true;
+    try {
+      const filled = await backfillDescriptions();
+      logger.info({ filled }, 'Description backfill cycle complete');
+    } catch (err) {
+      logger.error({ err: err.message }, 'Description backfill error');
+    } finally {
+      allBackfillRunning = false;
+    }
+    setTimeout(runAllBackfill, 10 * 60 * 1000);
+  }
+  setTimeout(runAllBackfill, 3 * 60 * 1000);
 
   // Backfill classifications (visa, remote, experience) every 5 minutes
   async function runClassificationBackfill() {

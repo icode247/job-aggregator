@@ -221,7 +221,15 @@ async function fetchOracleDescription(job) {
   const data = await res.json();
   const item = data.items?.[0];
   if (!item) return null;
-  const descParts = [item.ExternalDescriptionStr, item.ExternalQualificationsStr, item.ExternalResponsibilitiesStr].filter(Boolean);
+  const descParts = [
+    item.ExternalDescriptionStr,
+    item.ExternalQualificationsStr,
+    item.ExternalResponsibilitiesStr,
+    // Fallback to corporate/org descriptions when external fields are empty
+    item.CorporateDescriptionStr,
+    item.OrganizationDescriptionStr,
+    item.ShortDescriptionStr,
+  ].filter(Boolean);
   return descParts.length > 0 ? descParts.join('\n') : null;
 }
 
