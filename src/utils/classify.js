@@ -176,7 +176,7 @@ function classifyRemoteWorldwide(title, location, description, isRemote) {
 const VISA_NO_PATTERNS = [
   /\bunable\s*to\s*(?:offer\s*|provide\s*)?(?:[\w\s-]*)?sponsor/i,
   /\bcannot\s*(?:offer\s*|provide\s*)?sponsor/i,
-  /\bwill\s*not\s*(?:offer\s*|provide\s*)?(?:have\s*)?sponsor/i,
+  /\bwill\s*not\s*(?:offer\s*|provide\s*|pursue\s*)?(?:have\s*)?(?:[\w\s-]*)?sponsor/i,
   /\bdoes\s*not\s*(?:offer\s*|provide\s*)?sponsor/i,
   /\bdo\s*not\s*(?:offer|provide)\s*(?:[\w\s-]*)?sponsor/i,
   // Simple "do not sponsor" without offer/provide (e.g. "we do not sponsor visa")
@@ -185,6 +185,8 @@ const VISA_NO_PATTERNS = [
   /\bnot\s*(?:offer|provide|available)\s*(?:[\w\s-]*)?sponsor/i,
   // "not ... able to sponsor" with optional words in between (e.g. "not currently able to sponsor")
   /\bnot\s+(?:\w+\s+)*able\s+to\s+sponsor/i,
+  // "not able to offer/provide visa sponsorship" (e.g. "We are not able to offer visa sponsorship")
+  /\bnot\s+(?:\w+\s+)*able\s+to\s+(?:offer|provide)\s+(?:[\w\s-]*)?sponsor/i,
   /\bno\s*(?:h[\s-]?1b\s*)?(?:visa\s*)?sponsorship\b/i,
   /\bsponsorship\s*(?:is\s*)?(?:not|unavailable)\b/i,
   /\bwithout\s*(?:visa\s*)?sponsorship\b/i,
