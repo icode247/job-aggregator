@@ -187,6 +187,8 @@ const VISA_NO_PATTERNS = [
   /\bnot\s+(?:\w+\s+)*able\s+to\s+sponsor/i,
   // "not able to offer/provide visa sponsorship" (e.g. "We are not able to offer visa sponsorship")
   /\bnot\s+(?:\w+\s+)*able\s+to\s+(?:offer|provide)\s+(?:[\w\s-]*)?sponsor/i,
+  // "not in a position to offer/provide visa sponsorship"
+  /\bnot\s+in\s+a\s+position\s+to\s+(?:offer|provide)\s+(?:[\w\s-]*)?sponsor/i,
   /\bno\s*(?:h[\s-]?1b\s*)?(?:visa\s*)?sponsorship\b/i,
   /\bsponsorship\s*(?:is\s*)?(?:not|unavailable)\b/i,
   /\bwithout\s*(?:visa\s*)?sponsorship\b/i,
