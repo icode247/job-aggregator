@@ -222,6 +222,17 @@ const VISA_NO_PATTERNS = [
   // US citizenship required
   /\b(?:us|u\.?s\.?)\s*citizenship\s*(?:is\s*)?required\b/i,
   /\bcitizenship\s*(?:is\s*)?required\b/i,
+  // "inability to offer/provide visa sponsorship"
+  /\binability\s*to\s*(?:offer|provide)\s*(?:[\w\s-]*)?sponsor/i,
+  // "not sponsoring visas" / "is not sponsoring"
+  /\bnot\s*sponsoring\b/i,
+  // Contractions: "don't offer/provide/sponsor", "doesn't offer/sponsor", "won't sponsor", "can't sponsor"
+  /\bdon'?t\s*(?:offer|provide)\s*(?:[\w\s-]*)?sponsor/i,
+  /\bdon'?t\s*sponsor\b/i,
+  /\bdoesn'?t\s*(?:offer|provide)\s*(?:[\w\s-]*)?sponsor/i,
+  /\bdoesn'?t\s*sponsor\b/i,
+  /\bwon'?t\s*sponsor\b/i,
+  /\bcan'?t\s*sponsor\b/i,
 ];
 
 const VISA_YES_PATTERNS = [
@@ -235,7 +246,7 @@ const VISA_YES_PATTERNS = [
   /\b(?:offer|provide)s?\s*(?:visa|immigration)\s*(?:support|assistance|sponsorship)\b/i,
   /\bh[\s-]?1b\s*transfer/i,
   /\bh[\s-]?1b\s*(?:visa\s*)?sponsor(?:ship)?\s*(?:available|offered|provided|included|supported)\b/i,
-  /\bvisa\s*arrangements\b/i,
+  // Removed: /\bvisa\s*arrangements\b/i — too broad, matches travel visa logistics
   // "Sponsorship Available: Yes" — explicit positive with colon format
   /\bsponsorship\s*available\s*:\s*yes\b/i,
   /\bsponsorship\s*:\s*yes\b/i,
