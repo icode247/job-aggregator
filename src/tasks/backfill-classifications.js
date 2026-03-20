@@ -7,7 +7,7 @@ const { query } = require('../db/connection');
 const { classifyJob } = require('../utils/classify');
 const logger = require('../logger');
 
-const BATCH_SIZE = 500;
+const BATCH_SIZE = 5000;
 
 async function backfillClassifications() {
   // Find jobs with descriptions but no visa_sponsorship classification

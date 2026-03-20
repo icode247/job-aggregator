@@ -81,7 +81,7 @@ async function main() {
     } catch (err) {
       logger.error({ err: err.message }, 'Classification backfill error');
     }
-    setTimeout(runClassificationBackfill, 5 * 60 * 1000);
+    setTimeout(runClassificationBackfill, 60 * 1000); // Every 1 minute during backlog clearance
   }
   setTimeout(runClassificationBackfill, 2 * 60 * 1000); // Start 2 minutes after boot
 
