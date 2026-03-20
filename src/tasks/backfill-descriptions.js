@@ -488,16 +488,26 @@ async function backfillForAts(ats, batchSize, delayMs) {
 async function backfillDescriptions() {
   logger.info('Description backfill: starting');
 
+  // Run all ATS platforms in parallel — each has its own rate limiting via delayMs
+  const results = await Promise.allSettled(
+    Object.entries(ATS_CONFIG).map(async ([ats, config]) => {
+      const { filled, failed } = await backfillForAts(ats, config.batchSize, config.delayMs);
+      if (filled > 0 || failed > 0) {
+        logger.info({ ats, filled, failed }, 'Description backfill: ATS batch done');
+      }
+      return { ats, filled, failed };
+    })
+  );
+
   let totalFilled = 0;
   let totalFailed = 0;
-
-  for (const [ats, config] of Object.entries(ATS_CONFIG)) {
-    const { filled, failed } = await backfillForAts(ats, config.batchSize, config.delayMs);
-    if (filled > 0 || failed > 0) {
-      logger.info({ ats, filled, failed }, 'Description backfill: ATS batch done');
+  for (const r of results) {
+    if (r.status === 'fulfilled') {
+      totalFilled += r.value.filled;
+      totalFailed += r.value.failed;
+    } else {
+      logger.error({ err: r.reason?.message }, 'Description backfill: ATS batch error');
     }
-    totalFilled += filled;
-    totalFailed += failed;
   }
 
   logger.info({ filled: totalFilled, failed: totalFailed }, 'Description backfill: complete');
