@@ -4,7 +4,8 @@
  *
  * Usage: node scripts/reset-visa-classification.js
  */
-const { query, closeDb, migrate } = require('../src/db');
+const { migrate, closeDb } = require('../src/db');
+const { query } = require('../src/db/connection');
 
 async function main() {
   await migrate();
