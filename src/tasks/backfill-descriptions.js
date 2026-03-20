@@ -260,20 +260,16 @@ async function fetchAshbyDescription(job) {
 
 async function fetchIcimsDescription(job) {
   const externalId = job.external_id.replace('icims_', '');
-  const urls = [
-    `https://careers.${job.ats_slug}.com/api/jobs/${externalId}`,
-    `https://jobs.${job.ats_slug}.com/api/jobs/${externalId}`,
-  ];
-  for (const url of urls) {
-    try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-      if (!res.ok) continue;
-      const data = await res.json();
-      const jobData = data.data || data;
-      const parts = [jobData.description, jobData.responsibilities, jobData.qualifications].filter(Boolean);
-      if (parts.length > 0) return parts.join('\n');
-    } catch { /* try next */ }
-  }
+  // iCIMS iframe endpoint returns server-rendered HTML with JSON-LD
+  const url = `https://${job.ats_slug}.icims.com/jobs/${externalId}/job?in_iframe=1`;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    if (!res.ok) return null;
+    const html = await res.text();
+    // Extract description from JSON-LD (most reliable)
+    const ld = extractJsonLdDescription(html);
+    if (ld) return ld;
+  } catch { /* timeout or network error */ }
   return null;
 }
 
