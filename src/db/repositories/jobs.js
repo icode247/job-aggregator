@@ -60,6 +60,28 @@ function buildFilters(filters = {}) {
     }
   }
 
+  // Remote filter (uses indexed boolean column)
+  if (filters.remote === 'true') {
+    clauses.push('j.is_remote = true');
+  }
+
+  // Remote worldwide filter
+  if (filters.remoteWorldwide === 'true') {
+    clauses.push('j.remote_worldwide = true');
+  }
+
+  // Visa sponsorship filter
+  if (filters.visa) {
+    clauses.push('j.visa_sponsorship = ?');
+    params.push(filters.visa);
+  }
+
+  // Experience level filter
+  if (filters.experienceLevel) {
+    clauses.push('j.experience_level = ?');
+    params.push(filters.experienceLevel);
+  }
+
   // Exact filters
   if (filters.companyId) {
     clauses.push('j.company_id = ?');
