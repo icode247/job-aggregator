@@ -179,8 +179,12 @@ const VISA_NO_PATTERNS = [
   /\bwill\s*not\s*(?:offer\s*|provide\s*)?(?:have\s*)?sponsor/i,
   /\bdoes\s*not\s*(?:offer\s*|provide\s*)?sponsor/i,
   /\bdo\s*not\s*(?:offer|provide)\s*(?:[\w\s-]*)?sponsor/i,
+  // Simple "do not sponsor" without offer/provide (e.g. "we do not sponsor visa")
+  /\bdo\s*not\s*sponsor\b/i,
   /\bcannot\s*(?:offer|provide)\s*(?:[\w\s-]*)?sponsor/i,
-  /\bnot\s*(?:offer|provide|available|able)\s*(?:[\w\s-]*)?sponsor/i,
+  /\bnot\s*(?:offer|provide|available)\s*(?:[\w\s-]*)?sponsor/i,
+  // "not ... able to sponsor" with optional words in between (e.g. "not currently able to sponsor")
+  /\bnot\s+(?:\w+\s+)*able\s+to\s+sponsor/i,
   /\bno\s*(?:h[\s-]?1b\s*)?(?:visa\s*)?sponsorship\b/i,
   /\bsponsorship\s*(?:is\s*)?(?:not|unavailable)\b/i,
   /\bwithout\s*(?:visa\s*)?sponsorship\b/i,
@@ -239,16 +243,16 @@ const VISA_YES_PATTERNS = [
   /\bwork\s*visa\s*support\b/i,
   // "Sponsorship available for ..." (e.g. "for qualified candidates", "for the right candidate")
   /\bsponsorship\s*available\s*for\b/i,
-  // "can sponsor" / "will sponsor" (positive — negations caught above)
-  /\bcan\s*sponsor\b/i,
-  /\bwill\s*sponsor\b/i,
+  // "can sponsor" / "will sponsor" — require visa context nearby
+  /\bcan\s*sponsor\s*(?:your\s*)?(?:h[\s-]?1b|visa|work\s*(?:permit|authorization))\b/i,
+  /\bwill\s*sponsor\s*(?:your\s*)?(?:h[\s-]?1b|visa|work\s*(?:permit|authorization))\b/i,
   // "sponsor your visa" / "sponsor visas" / "sponsoring visa"
-  /\bsponsor\s*(?:your\s*)?visa/i,
-  /\bsponsoring\s*visa/i,
+  /\bsponsor\s*your\s*visa/i,
+  /\bsponsoring\s*(?:h[\s-]?1b|work\s*)?visa/i,
   // "relocation and visa support" / "relocation package with visa"
   /\brelocation\s*(?:package\s*)?(?:with|and|&)\s*visa\b/i,
-  // "immigration support" standalone (without negation — checked above)
-  /\bimmigration\s*support\b/i,
+  // "immigration support" — require qualifier to avoid false positives
+  /\bimmigration\s*support\s*(?:available|offered|provided|included)\b/i,
 ];
 
 function classifyVisa(description) {
