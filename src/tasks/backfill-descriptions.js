@@ -6,6 +6,8 @@
  */
 const { query } = require('../db/connection');
 const { discoverConfig } = require('../adapters/workday');
+const { fetchUnlockedHtml } = require('../adapters/brightdata');
+const config = require('../config');
 const logger = require('../logger');
 const metrics = require('../utils/metrics');
 
@@ -25,7 +27,7 @@ const ATS_CONFIG = {
   recruitee:       { batchSize: 50, delayMs: 300 },
   rippling:        { batchSize: 30, delayMs: 500 },
   zoho:            { batchSize: 20, delayMs: 800 },
-  // workable:        { batchSize: 200, delayMs: 3000 }, // disabled — API unreliable
+  workable:        { batchSize: 50, delayMs: 500 },
   jobvite:         { batchSize: 50, delayMs: 500 },
   pinpoint:        { batchSize: 50, delayMs: 300 },
   successfactors:  { batchSize: 30, delayMs: 1000 },
@@ -397,51 +399,98 @@ async function fetchSuccessFactorsDescription(job) {
   return null;
 }
 
+/**
+ * Extract description from raw HTML using multiple strategies:
+ * 1. JSON-LD JobPosting schema
+ * 2. og:description meta tag
+ * 3. meta description tag
+ */
+function extractDescriptionFromHtml(html) {
+  if (!html) return null;
+  // 1. JSON-LD (most reliable)
+  const ld = extractJsonLdDescription(html);
+  if (ld) return ld;
+  // 2. og:description (often has full job description)
+  const ogMatch = html.match(/property="og:description"[^>]*content="([^"]*)"/i)
+    || html.match(/content="([^"]*)"[^>]*property="og:description"/i);
+  if (ogMatch?.[1] && ogMatch[1].length > 100) return ogMatch[1];
+  // 3. meta description
+  const metaMatch = html.match(/name="description"[^>]*content="([^"]*)"/i)
+    || html.match(/content="([^"]*)"[^>]*name="description"/i);
+  if (metaMatch?.[1] && metaMatch[1].length > 100) return metaMatch[1];
+  return null;
+}
+
+/**
+ * Brightdata fallback: fetch the job URL via Brightdata Web Unlocker
+ * and extract description from the rendered HTML.
+ */
+async function fetchViaBrightdata(job) {
+  if (!job.url || !config.BRIGHT_DATA_API_KEY) return null;
+  try {
+    const html = await fetchUnlockedHtml(job.url);
+    return extractDescriptionFromHtml(html);
+  } catch (err) {
+    logger.debug({ jobId: job.id, err: err.message }, 'Brightdata fallback failed');
+    return null;
+  }
+}
+
 async function fetchDescription(job) {
   const rawData = typeof job.raw_data === 'string' ? JSON.parse(job.raw_data) : job.raw_data;
 
+  // Try ATS-specific fetcher first
+  let description = null;
   switch (job.ats) {
     case 'workday':
-      return fetchWorkdayDescription(job, rawData);
+      description = await fetchWorkdayDescription(job, rawData); break;
     case 'taleo':
-      return fetchTaleoDescription(job);
+      description = await fetchTaleoDescription(job); break;
     case 'oracle':
-      return fetchOracleDescription(job);
+      description = await fetchOracleDescription(job); break;
     case 'smartrecruiters':
-      return fetchSmartRecruitersDescription(job);
+      description = await fetchSmartRecruitersDescription(job); break;
     case 'bamboohr':
-      return fetchBambooHRDescription(job);
+      description = await fetchBambooHRDescription(job); break;
     case 'jazzhr':
-      return fetchJazzHRDescription(job);
+      description = await fetchJazzHRDescription(job); break;
     case 'breezy':
-      return fetchBreezyDescription(job);
+      description = await fetchBreezyDescription(job); break;
     case 'greenhouse':
-      return fetchGreenhouseDescription(job);
+      description = await fetchGreenhouseDescription(job); break;
     case 'lever':
-      return fetchLeverDescription(job);
+      description = await fetchLeverDescription(job); break;
     case 'ashby':
-      return fetchAshbyDescription(job);
+      description = await fetchAshbyDescription(job); break;
     case 'icims':
-      return fetchIcimsDescription(job);
+      description = await fetchIcimsDescription(job); break;
     case 'personio':
-      return fetchPersonioDescription(job);
+      description = await fetchPersonioDescription(job); break;
     case 'recruitee':
-      return fetchRecruiteeDescription(job);
+      description = await fetchRecruiteeDescription(job); break;
     case 'rippling':
-      return fetchRipplingDescription(job);
+      description = await fetchRipplingDescription(job); break;
     case 'zoho':
-      return fetchZohoDescription(job);
+      description = await fetchZohoDescription(job); break;
     case 'workable':
-      return fetchWorkableDescription(job);
+      description = await fetchWorkableDescription(job); break;
     case 'jobvite':
-      return fetchJobviteDescription(job);
+      description = await fetchJobviteDescription(job); break;
     case 'pinpoint':
-      return fetchPinpointDescription(job);
+      description = await fetchPinpointDescription(job); break;
     case 'successfactors':
-      return fetchSuccessFactorsDescription(job);
-    default:
-      return null;
+      description = await fetchSuccessFactorsDescription(job); break;
   }
+
+  // Brightdata fallback: if ATS fetcher returned nothing and job has a URL
+  if (!description && job.url) {
+    description = await fetchViaBrightdata(job);
+    if (description) {
+      metrics.increment(`backfill.brightdata_fallback.${job.ats}`);
+    }
+  }
+
+  return description;
 }
 
 async function backfillForAts(ats, batchSize, delayMs) {
