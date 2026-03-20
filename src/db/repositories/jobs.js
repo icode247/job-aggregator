@@ -1,6 +1,5 @@
 const { query, transaction, isPostgres } = require('../connection');
 const logger = require('../../logger');
-const { classifyJob } = require('../../utils/classify');
 
 /**
  * Build WHERE clauses from filters.
@@ -144,9 +143,6 @@ const jobsRepo = {
       const incomingIds = new Set(freshJobs.map(j => j.external_id));
 
       for (const job of freshJobs) {
-        // Classify job inline (fast, no I/O)
-        const classification = classifyJob(job);
-
         await tx.query(
           `INSERT INTO jobs (
             external_id, company_id, ats, title, department, location,
@@ -185,10 +181,10 @@ const jobsRepo = {
             job.salary_currency || null, job.salary_interval || null,
             job.description || null, job.url, job.posted_at || null,
             JSON.stringify(job.raw_data || null),
-            classification.visa_sponsorship || '',
-            classification.experience_level || '',
-            classification.is_remote,
-            classification.remote_worldwide,
+            job.visa_sponsorship || '',
+            job.experience_level || '',
+            job.is_remote || false,
+            job.remote_worldwide || false,
           ]
         );
         if (existingMap.has(job.external_id)) {
