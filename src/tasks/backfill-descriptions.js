@@ -12,7 +12,7 @@ const metrics = require('../utils/metrics');
 const ATS_CONFIG = {
   workday:         { batchSize: 50, delayMs: 2000 },
   taleo:           { batchSize: 20, delayMs: 500 },
-  smartrecruiters: { batchSize: 50, delayMs: 500 },
+  smartrecruiters: { batchSize: 100, delayMs: 150 },
   bamboohr:        { batchSize: 50, delayMs: 500 },
   jazzhr:          { batchSize: 50, delayMs: 500 },
   breezy:          { batchSize: 50, delayMs: 500 },
@@ -20,7 +20,7 @@ const ATS_CONFIG = {
   greenhouse:      { batchSize: 50, delayMs: 300 },
   lever:           { batchSize: 50, delayMs: 300 },
   ashby:           { batchSize: 50, delayMs: 300 },
-  icims:           { batchSize: 30, delayMs: 500 },
+  icims:           { batchSize: 100, delayMs: 200 },
   personio:        { batchSize: 50, delayMs: 500 },
   recruitee:       { batchSize: 50, delayMs: 300 },
   rippling:        { batchSize: 30, delayMs: 500 },
