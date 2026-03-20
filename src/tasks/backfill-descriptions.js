@@ -474,10 +474,16 @@ async function backfillForAts(ats, batchSize, delayMs) {
       logger.warn({ jobId: job.id, ats: job.ats, slug: job.ats_slug, err: err.message }, 'Backfill fetch failed');
     }
 
-    // Exponential backoff after 3 consecutive failures (cap at 30s)
+    // Circuit breaker: stop early if first 10 all fail (fetcher is broken for this ATS)
+    if (consecutiveFailures >= 10 && filled === 0) {
+      logger.warn({ ats, consecutiveFailures }, 'Backfill circuit breaker: skipping ATS (all failures)');
+      break;
+    }
+
+    // Exponential backoff after 3 consecutive failures (cap at 5s)
     let currentDelay = delayMs;
     if (consecutiveFailures >= 3) {
-      currentDelay = Math.min(delayMs * Math.pow(2, consecutiveFailures - 2), 30000);
+      currentDelay = Math.min(delayMs * Math.pow(2, consecutiveFailures - 2), 5000);
     }
     await new Promise(r => setTimeout(r, currentDelay));
   }
