@@ -1,4 +1,6 @@
 const { query, transaction, isPostgres } = require('../connection');
+const logger = require('../../logger');
+const { classifyJob } = require('../../utils/classify');
 
 /**
  * Build WHERE clauses from filters.
@@ -11,28 +13,19 @@ function buildFilters(filters = {}) {
 
   // Role / Keywords — searches title, department, and company name
   if (filters.q) {
-    if (isPostgres) {
-      // Full-text search with ts_rank for relevance
-      clauses.push('(j.search_vector @@ plainto_tsquery(\'english\', ?) OR c.company_name ILIKE ?)');
-      params.push(filters.q, `%${filters.q}%`);
+    const terms = filters.q.trim().split(/\s+/).filter(Boolean);
+    for (const term of terms) {
+      clauses.push('(j.title ILIKE ? OR j.department ILIKE ? OR c.company_name ILIKE ?)');
+      const pattern = `%${term}%`;
+      params.push(pattern, pattern, pattern);
       needsJoin = true;
-    } else {
-      // SQLite fallback: LIKE-based search
-      const terms = filters.q.trim().split(/\s+/).filter(Boolean);
-      for (const term of terms) {
-        clauses.push('(j.title LIKE ? OR j.department LIKE ? OR c.company_name LIKE ?)');
-        const pattern = `%${term}%`;
-        params.push(pattern, pattern, pattern);
-        needsJoin = true;
-      }
     }
   }
 
   // Work mode: remote, hybrid, onsite
   if (filters.workMode && filters.workMode !== 'any') {
     if (filters.workMode === 'remote') {
-      // Use indexed is_remote boolean when available, fallback to text search
-      clauses.push("(j.is_remote = TRUE OR j.workplace_type ILIKE ? OR j.location ILIKE ? OR j.title ILIKE ?)");
+      clauses.push("(j.workplace_type ILIKE ? OR j.location ILIKE ? OR j.title ILIKE ?)");
       params.push('%remote%', '%remote%', '%remote%');
     } else if (filters.workMode === 'hybrid') {
       clauses.push("(j.workplace_type ILIKE ? OR j.location ILIKE ?)");
@@ -41,16 +34,6 @@ function buildFilters(filters = {}) {
       clauses.push("(j.workplace_type ILIKE ? OR j.workplace_type ILIKE ?)");
       params.push('%on-site%', '%onsite%');
     }
-  }
-
-  // Remote-only filter (fast, indexed boolean)
-  if (filters.remote === 'true' || filters.remote === true) {
-    clauses.push('j.is_remote = TRUE');
-  }
-
-  // Remote worldwide filter — location-agnostic remote jobs
-  if (filters.remoteWorldwide === 'true' || filters.remoteWorldwide === true) {
-    clauses.push('j.remote_worldwide = TRUE');
   }
 
   // Employment type: full-time, part-time, contract, internship
@@ -65,24 +48,9 @@ function buildFilters(filters = {}) {
     params.push(`%${filters.location}%`);
   }
 
-  // Visa sponsorship filter — strict: only return classified jobs
-  if (filters.visa) {
-    if (filters.visa === 'yes') {
-      clauses.push("j.visa_sponsorship = 'yes'");
-    } else if (filters.visa === 'no') {
-      clauses.push("j.visa_sponsorship = 'no'");
-    }
-  }
-
-  // Experience level filter
-  if (filters.experienceLevel && filters.experienceLevel !== 'any') {
-    clauses.push('j.experience_level = ?');
-    params.push(filters.experienceLevel);
-  }
-
-  // Posted — time window: 24h, 7d, 30d, 90d, 6m
+  // Posted — time window: 24h, 7d, 30d, 90d
   if (filters.posted) {
-    const intervals = { '24h': 1, '7d': 7, '30d': 30, '90d': 90, '3m': 90 };
+    const intervals = { '24h': 1, '7d': 7, '30d': 30, '90d': 90 };
     const days = intervals[filters.posted];
     if (days) {
       if (isPostgres) {
@@ -176,16 +144,19 @@ const jobsRepo = {
       const incomingIds = new Set(freshJobs.map(j => j.external_id));
 
       for (const job of freshJobs) {
+        // Classify job inline (fast, no I/O)
+        const classification = classifyJob(job);
+
         await tx.query(
           `INSERT INTO jobs (
             external_id, company_id, ats, title, department, location,
             workplace_type, employment_type,
             salary_min, salary_max, salary_currency, salary_interval,
             description, url, posted_at, raw_data,
-            is_remote, remote_worldwide, visa_sponsorship, experience_level,
+            visa_sponsorship, experience_level, is_remote, remote_worldwide,
             first_seen_at, last_seen_at
           )
-          Values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
           ON CONFLICT(external_id, company_id) DO UPDATE SET
             title = EXCLUDED.title,
             department = EXCLUDED.department,
@@ -200,10 +171,10 @@ const jobsRepo = {
             url = EXCLUDED.url,
             posted_at = EXCLUDED.posted_at,
             raw_data = EXCLUDED.raw_data,
-            is_remote = EXCLUDED.is_remote,
-            remote_worldwide = EXCLUDED.remote_worldwide,
             visa_sponsorship = EXCLUDED.visa_sponsorship,
             experience_level = EXCLUDED.experience_level,
+            is_remote = EXCLUDED.is_remote,
+            remote_worldwide = EXCLUDED.remote_worldwide,
             last_seen_at = datetime('now'),
             removed_at = NULL`,
           [
@@ -214,7 +185,10 @@ const jobsRepo = {
             job.salary_currency || null, job.salary_interval || null,
             job.description || null, job.url, job.posted_at || null,
             JSON.stringify(job.raw_data || null),
-            job.is_remote || false, job.remote_worldwide || false, job.visa_sponsorship || null, job.experience_level || null,
+            classification.visa_sponsorship || '',
+            classification.experience_level || '',
+            classification.is_remote,
+            classification.remote_worldwide,
           ]
         );
         if (existingMap.has(job.external_id)) {
@@ -229,7 +203,7 @@ const jobsRepo = {
       const missingCount = [...existingMap.keys()].filter(id => !incomingIds.has(id)).length;
       const skipRemoval = existingCount > 0 && (
         freshJobs.length === 0 ||
-        (existingCount > 5 && missingCount / existingCount > 0.5)
+        missingCount / existingCount > 0.5
       );
 
       if (skipRemoval) {

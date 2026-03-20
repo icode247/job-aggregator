@@ -7,6 +7,7 @@ const { createSyncQueue, createSyncWorker } = require('./queues/sync.queue');
 const { createCrawlQueue, createCrawlWorker } = require('./queues/crawl.queue');
 const { registerSchedules, fanoutDiscovery, fanoutSync, fanoutCrawl } = require('./queues/scheduler');
 const { backfillDescriptions } = require('./tasks/backfill-descriptions');
+const { backfillClassifications } = require('./tasks/backfill-classifications');
 
 async function main() {
   await migrate();
@@ -72,6 +73,17 @@ async function main() {
   }
   logger.info('Scheduling backfill in 3 minutes');
   setTimeout(runAllBackfill, 3 * 60 * 1000);
+
+  // Backfill classifications (visa, remote, experience) every 5 minutes
+  async function runClassificationBackfill() {
+    try {
+      await backfillClassifications();
+    } catch (err) {
+      logger.error({ err: err.message }, 'Classification backfill error');
+    }
+    setTimeout(runClassificationBackfill, 5 * 60 * 1000);
+  }
+  setTimeout(runClassificationBackfill, 2 * 60 * 1000); // Start 2 minutes after boot
 
   async function shutdown(signal) {
     logger.info({ signal }, 'Shutting down worker');

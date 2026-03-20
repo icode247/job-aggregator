@@ -234,6 +234,21 @@ const VISA_YES_PATTERNS = [
   /\bsponsorship\s*available\s*:\s*yes\b/i,
   /\bsponsorship\s*:\s*yes\b/i,
   /\bvisa\s*(?:\/\s*)?sponsorship\s*available\s*:\s*(?:yes|available)\b/i,
+  // "visa support" / "work visa support" (without negation — checked above)
+  /\b(?:with\s+)?visa\s*support\b/i,
+  /\bwork\s*visa\s*support\b/i,
+  // "Sponsorship available for ..." (e.g. "for qualified candidates", "for the right candidate")
+  /\bsponsorship\s*available\s*for\b/i,
+  // "can sponsor" / "will sponsor" (positive — negations caught above)
+  /\bcan\s*sponsor\b/i,
+  /\bwill\s*sponsor\b/i,
+  // "sponsor your visa" / "sponsor visas" / "sponsoring visa"
+  /\bsponsor\s*(?:your\s*)?visa/i,
+  /\bsponsoring\s*visa/i,
+  // "relocation and visa support" / "relocation package with visa"
+  /\brelocation\s*(?:package\s*)?(?:with|and|&)\s*visa\b/i,
+  // "immigration support" standalone (without negation — checked above)
+  /\bimmigration\s*support\b/i,
 ];
 
 function classifyVisa(description) {
