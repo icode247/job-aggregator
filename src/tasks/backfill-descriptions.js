@@ -386,7 +386,21 @@ async function fetchPinpointDescription(job) {
   );
   if (!res.ok) return null;
   const data = await res.json();
-  return data.description || data.attributes?.description || null;
+  const sections = [];
+  if (data.description) sections.push(data.description);
+  if (data.key_responsibilities) {
+    const header = data.key_responsibilities_header || 'Key Responsibilities';
+    sections.push(`<h3>${header}</h3>${data.key_responsibilities}`);
+  }
+  if (data.skills_knowledge_expertise) {
+    const header = data.skills_knowledge_expertise_header || 'Skills, Knowledge and Expertise';
+    sections.push(`<h3>${header}</h3>${data.skills_knowledge_expertise}`);
+  }
+  if (data.benefits) {
+    const header = data.benefits_header || 'Benefits';
+    sections.push(`<h3>${header}</h3>${data.benefits}`);
+  }
+  return sections.length > 0 ? sections.join('\n') : null;
 }
 
 async function fetchSuccessFactorsDescription(job) {
