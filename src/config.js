@@ -17,6 +17,9 @@ module.exports = {
   BRIGHT_DATA_API_KEY: process.env.BRIGHT_DATA_API_KEY || '',
   BRIGHT_DATA_ZONE: process.env.BRIGHT_DATA_ZONE || 'web_unlocker1',
 
+  // ScraperAPI
+  SCRAPER_API_KEY: process.env.SCRAPER_API_KEY || '',
+
   // Queue settings
   DISCOVERY_INTERVAL_MS: 1000 * 60 * 60 * 24 * 7, // 7 days
   SYNC_INTERVAL_MS: 1000 * 60 * 5,                 // 5 minutes (was 15)
