@@ -167,7 +167,16 @@ router.get('/api/companies', async (req, res) => {
   const total = parseInt(countRows[0].count, 10);
   res.json({
     meta: { total, limit, page, totalPages: Math.ceil(total / limit) },
-    data: rows,
+    data: rows.map(r => ({
+      id: r.id,
+      name: r.name || r.company_name,
+      domain: r.domain,
+      logo_url: r.logo_url,
+      ats: r.ats,
+      job_count: r.job_count,
+      remote_job_count: r.remote_job_count,
+      visa_job_count: r.visa_job_count,
+    })),
   });
 });
 
