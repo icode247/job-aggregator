@@ -14,6 +14,25 @@ function createApp(queues = {}) {
   const app = express();
   app.use(express.json());
 
+  // CORS — only allow specific origins
+  const ALLOWED_ORIGINS = [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'https://fastapply.co',
+    'https://www.fastapply.co',
+  ];
+  app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && ALLOWED_ORIGINS.includes(origin)) {
+      res.set('Access-Control-Allow-Origin', origin);
+      res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      res.set('Access-Control-Max-Age', '86400');
+    }
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    next();
+  });
+
   // Response time tracking
   app.use((req, res, next) => {
     const start = Date.now();
