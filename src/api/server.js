@@ -20,6 +20,7 @@ function createApp(queues = {}) {
     'http://localhost:3001',
     'https://fastapply.co',
     'https://www.fastapply.co',
+    'https://api.fastapply.co',
   ];
   app.use((req, res, next) => {
     const origin = req.headers.origin;
