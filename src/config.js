@@ -20,6 +20,9 @@ module.exports = {
   BROWSERLESS_FREE_TOKEN: process.env.BROWSERLESS_FREE_TOKEN || '',
   BROWSERLESS_PAID_TOKEN: process.env.BROWSERLESS_PAID_TOKEN || '',
 
+  // Hugging Face Inference API
+  HF_API_TOKEN: process.env.HF_API_TOKEN || '',
+
   // Queue settings
   DISCOVERY_INTERVAL_MS: 1000 * 60 * 60 * 24 * 14, // 14 days
   SYNC_INTERVAL_MS: 1000 * 60 * 5,                 // 5 minutes (was 15)
