@@ -15,16 +15,14 @@ function createApp(queues = {}) {
   app.use(express.json());
 
   // CORS — only allow specific origins
-  const ALLOWED_ORIGINS = [
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'https://fastapply.co',
-    'https://www.fastapply.co',
-    'https://api.fastapply.co',
-  ];
   app.use((req, res, next) => {
     const origin = req.headers.origin;
-    if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    const isAllowed = origin && (
+      origin === 'http://localhost:3000' ||
+      origin === 'http://localhost:3001' ||
+      /^https:\/\/([a-z0-9-]+\.)*fastapply\.co$/.test(origin)
+    );
+    if (isAllowed) {
       res.set('Access-Control-Allow-Origin', origin);
       res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
       res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
