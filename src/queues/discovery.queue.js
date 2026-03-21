@@ -33,7 +33,7 @@ function createDiscoveryWorker(syncQueue) {
       try {
         html = await fetchUnlockedHtml(careerUrl);
       } catch (err) {
-        logger.warn({ companyId, err: err.message }, 'Bright Data fetch failed, falling back to API probe');
+        logger.warn({ companyId, err: err.message }, 'Proxy fetch failed, falling back to API probe');
       }
 
       const result = await extractAtsSlug(html, domain);

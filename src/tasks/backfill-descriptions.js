@@ -7,7 +7,6 @@
 const { query } = require('../db/connection');
 const { discoverConfig } = require('../adapters/workday');
 const { fetchUnlockedHtml } = require('../adapters/brightdata');
-const config = require('../config');
 const logger = require('../logger');
 const metrics = require('../utils/metrics');
 
@@ -465,16 +464,16 @@ function extractDescriptionFromHtml(html) {
 }
 
 /**
- * Brightdata fallback: fetch the job URL via Brightdata Web Unlocker
+ * Proxy fallback: fetch the job URL via proxy chain (Browserless → ScraperAPI → Brightdata)
  * and extract description from the rendered HTML.
  */
-async function fetchViaBrightdata(job) {
-  if (!job.url || !config.BRIGHT_DATA_API_KEY) return null;
+async function fetchViaProxy(job) {
+  if (!job.url) return null;
   try {
     const html = await fetchUnlockedHtml(job.url);
     return extractDescriptionFromHtml(html);
   } catch (err) {
-    logger.debug({ jobId: job.id, err: err.message }, 'Brightdata fallback failed');
+    logger.debug({ jobId: job.id, err: err.message }, 'Proxy fallback failed');
     return null;
   }
 }
@@ -525,11 +524,11 @@ async function fetchDescription(job) {
       description = await fetchSuccessFactorsDescription(job); break;
   }
 
-  // Brightdata fallback: if ATS fetcher returned nothing and job has a URL
+  // Proxy fallback: if ATS fetcher returned nothing and job has a URL
   if (!description && job.url) {
-    description = await fetchViaBrightdata(job);
+    description = await fetchViaProxy(job);
     if (description) {
-      metrics.increment(`backfill.brightdata_fallback.${job.ats}`);
+      metrics.increment(`backfill.proxy_fallback.${job.ats}`);
     }
   }
 
