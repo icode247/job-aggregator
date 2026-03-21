@@ -79,10 +79,10 @@ const WORLDWIDE_POSITIVE = [
 ];
 
 const WORLDWIDE_LOCATION = [
-  /\banywhere\b/i,
   /\bworldwide\b/i,
   /\bglobal\b/i,
   /\bworld\b/i,
+  /\banywhere\b/i,
   // NOT: /^remote$/i — "Remote" alone doesn't mean worldwide
 ];
 
@@ -92,7 +92,7 @@ const COUNTRY_SPECIFIC_LOCATION = [
   /\b(?:united\s*kingdom|uk)\b/i,
   /\b(?:canada|germany|france|india|australia|china|japan|brazil|mexico|spain|italy|netherlands|ireland|singapore|israel|poland|portugal|switzerland|austria|sweden|norway|denmark|finland|belgium|czech|romania|hungary|philippines|indonesia|vietnam|thailand|malaysia|korea|taiwan|argentina|colombia|chile|peru|nigeria|kenya|south\s*africa|egypt|morocco|new\s*zealand)\b/i,
   /\b(?:california|new\s*york|texas|florida|london|berlin|toronto|sydney|paris|amsterdam|dublin|munich|zurich|copenhagen|stockholm|oslo|barcelona|madrid|milan|rome|lisbon|warsaw|prague|budapest|bangalore|mumbai|delhi|shanghai|beijing|tokyo|seoul|manila|jakarta|bogota|sao\s*paulo|nairobi|cape\s*town|auckland)\b/i,
-  /\b(?:emea|apac|latam|americas|north\s*america|south\s*america|asia|africa|middle\s*east|oceania)\b/i,
+  /\b(?:emea|apac|latam|latin\s*america|americas|north\s*america|south\s*america|asia|africa|middle\s*east|oceania)\b/i,
   /\b(?:europe|european)\b/i,
   /\b(?:US|UK|CA|AU|DE|FR|IN|BR|JP|CN|SG|IE|NL|IL|PL|PT|CH|SE|NO|DK|FI|BE|CZ|RO|NZ)\b/,
 ];
@@ -123,11 +123,21 @@ function classifyRemoteWorldwide(title, location, description, isRemote) {
   }
 
   // Step 1: Check if location is country/region-specific → NOT worldwide
-  if (loc.length > 2) {
+  if (loc.length >= 2) {
     for (const cs of COUNTRY_SPECIFIC_LOCATION) {
       if (cs.test(loc)) return false;
     }
   }
+
+  // Step 1b: "Anywhere in [region]" — regional, not worldwide
+  if (/\banywhere\s+in\b/i.test(loc) && !/\banywhere\s+in\s+the\s+world\b/i.test(loc)) return false;
+
+  // Step 1c: Physical/on-site/venue jobs — cannot be worldwide (check BEFORE location match)
+  if (/\b(?:on[\-\s]?site|in[\-\s]?office|in[\-\s]?person)\s+(?:required|only|position|role)\b/i.test(desc)) return false;
+  if (/\b(?:convention\s*center|warehouse|factory|store|restaurant|clinic|hospital)\b/i.test(titleStr)) return false;
+  if (/\b(?:car\s*detail|janitor|custodian|forklift|housekeeper|cashier|bartender|barista|dishwasher|cook\b|chef\b|plumber|electrician|mechanic|driver|delivery|caregiver|nurse\b)/i.test(titleStr)) return false;
+  // City name in title suggests location-specific role
+  if (/\b(?:dallas|fort\s*worth|new\s*york|chicago|los\s*angeles|san\s*francisco|houston|atlanta|miami|austin|denver|seattle|boston|portland|phoenix|charlotte|nashville|minneapolis|detroit|philadelphia|tampa|orlando|las\s*vegas|pittsburgh|indianapolis|columbus|raleigh|memphis|richmond|salt\s*lake|sacramento|san\s*diego|san\s*antonio|san\s*jose|terre\s*haute|south\s*oc)\b/i.test(titleStr)) return false;
 
   // Step 2: Location explicitly says worldwide/anywhere/global
   for (const re of WORLDWIDE_LOCATION) {
