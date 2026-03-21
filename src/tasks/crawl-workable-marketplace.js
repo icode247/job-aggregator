@@ -182,8 +182,8 @@ async function crawlWorkableMarketplace() {
         break;
       }
 
-      // Small delay to be respectful
-      await new Promise(r => setTimeout(r, 200));
+      // Delay to avoid 429 rate limits (1 second between pages)
+      await new Promise(r => setTimeout(r, 1000));
     }
   } catch (err) {
     logger.error({ err: err.message }, 'Workable marketplace crawl error');
