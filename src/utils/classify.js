@@ -151,6 +151,8 @@ function classifyRemoteWorldwide(title, location, description, isRemote) {
     for (const cs of DESC_COUNTRY_RESTRICTION) {
       if (cs.test(desc)) return false;
     }
+    // Check for on-site/hybrid contradictions in description
+    if (/\b(?:on[\-\s]?site|in[\-\s]?office|in[\-\s]?person)\s+(?:required|only|position|role|work|days?)\b/i.test(desc)) return false;
     // Then check for positive worldwide signals in description
     for (const re of WORLDWIDE_POSITIVE) {
       if (re.test(desc)) return true;
