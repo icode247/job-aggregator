@@ -177,7 +177,7 @@ async function fetchBreezyDescription(job) {
 
 async function fetchTaleoDescription(job) {
   if (!job.url) return null;
-  const res = await fetch(job.url, { signal: AbortSignal.timeout(15000) });
+  const res = await fetch(job.url, { redirect: 'follow', signal: AbortSignal.timeout(15000) });
   if (!res.ok) return null;
   const html = await res.text();
   // Try JSON-LD first
@@ -205,6 +205,9 @@ async function fetchTaleoDescription(job) {
     }
     if (descSegments.length > 0) return descSegments.join('\n');
   }
+  // Try extracting from job_description div (SelectMinds redirect pages)
+  const bodyDesc = extractBodyDescription(html);
+  if (bodyDesc) return bodyDesc;
   return null;
 }
 
@@ -414,21 +417,47 @@ async function fetchSuccessFactorsDescription(job) {
 }
 
 /**
+ * Extract job description from page body HTML using common CSS selectors.
+ * Targets well-known job description container classes/IDs.
+ */
+function extractBodyDescription(html) {
+  if (!html) return null;
+  // Common job description selectors (class or id)
+  const patterns = [
+    /class="job[_-]?description"[^>]*>([\s\S]*?)<\/div>/i,
+    /id="job[_-]?description"[^>]*>([\s\S]*?)<\/div>/i,
+    /id="description[_-]?box"[^>]*>([\s\S]*?)<\/div>/i,
+    /class="job[_-]?details?[_-]?content"[^>]*>([\s\S]*?)<\/div>/i,
+    /class="posting[_-]?description"[^>]*>([\s\S]*?)<\/div>/i,
+    /data-testid="job[_-]?description"[^>]*>([\s\S]*?)<\/div>/i,
+  ];
+  for (const p of patterns) {
+    const m = html.match(p);
+    if (m?.[1] && m[1].length > 100) return m[1].trim();
+  }
+  return null;
+}
+
+/**
  * Extract description from raw HTML using multiple strategies:
  * 1. JSON-LD JobPosting schema
- * 2. og:description meta tag
- * 3. meta description tag
+ * 2. Page body (job_description divs)
+ * 3. og:description meta tag
+ * 4. meta description tag
  */
 function extractDescriptionFromHtml(html) {
   if (!html) return null;
   // 1. JSON-LD (most reliable)
   const ld = extractJsonLdDescription(html);
   if (ld) return ld;
-  // 2. og:description (often has full job description)
+  // 2. Page body (job description divs)
+  const bodyDesc = extractBodyDescription(html);
+  if (bodyDesc) return bodyDesc;
+  // 3. og:description (often has full job description)
   const ogMatch = html.match(/property="og:description"[^>]*content="([^"]*)"/i)
     || html.match(/content="([^"]*)"[^>]*property="og:description"/i);
   if (ogMatch?.[1] && ogMatch[1].length > 100) return ogMatch[1];
-  // 3. meta description
+  // 4. meta description
   const metaMatch = html.match(/name="description"[^>]*content="([^"]*)"/i)
     || html.match(/content="([^"]*)"[^>]*name="description"/i);
   if (metaMatch?.[1] && metaMatch[1].length > 100) return metaMatch[1];
