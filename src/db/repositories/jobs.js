@@ -88,8 +88,9 @@ function buildFilters(filters = {}) {
     params.push(filters.companyId);
   }
   if (filters.ats) {
-    clauses.push('j.ats = ?');
-    params.push(filters.ats);
+    const atsList = Array.isArray(filters.ats) ? filters.ats : [filters.ats];
+    clauses.push(`j.ats IN (${atsList.map(() => '?').join(', ')})`);
+    params.push(...atsList);
   }
 
   return { clauses, params, needsJoin };

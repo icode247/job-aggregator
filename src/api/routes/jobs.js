@@ -73,7 +73,7 @@ router.get('/api/jobs', async (req, res) => {
   if (req.query.visa) filters.visa = req.query.visa;
   if (req.query.experience_level) filters.experienceLevel = req.query.experience_level;
   if (req.query.company_id) filters.companyId = parseInt(req.query.company_id, 10);
-  if (req.query.ats) filters.ats = req.query.ats;
+  if (req.query.ats) filters.ats = req.query.ats.split(',');
 
   const [jobs, total] = await Promise.all([
     jobsRepo.findActive(filters),
