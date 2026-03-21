@@ -20,6 +20,10 @@ module.exports = {
   // ScraperAPI
   SCRAPER_API_KEY: process.env.SCRAPER_API_KEY || '',
 
+  // Browserless
+  BROWSERLESS_FREE_TOKEN: process.env.BROWSERLESS_FREE_TOKEN || '',
+  BROWSERLESS_PAID_TOKEN: process.env.BROWSERLESS_PAID_TOKEN || '',
+
   // Queue settings
   DISCOVERY_INTERVAL_MS: 1000 * 60 * 60 * 24 * 7, // 7 days
   SYNC_INTERVAL_MS: 1000 * 60 * 5,                 // 5 minutes (was 15)
