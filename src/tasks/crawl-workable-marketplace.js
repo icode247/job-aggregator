@@ -10,7 +10,7 @@ const logger = require('../logger');
 
 const API_BASE = 'https://jobs.workable.com/api/v1';
 const JOBS_PER_PAGE = 20; // API returns 20 per page
-const MAX_PAGES_PER_CYCLE = 50; // 1000 jobs per cycle to avoid overloading
+const MAX_PAGES_PER_CYCLE = 500; // 10,000 jobs per cycle
 
 function mapEmploymentType(type) {
   if (!type) return null;
