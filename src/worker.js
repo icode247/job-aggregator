@@ -8,6 +8,7 @@ const { createCrawlQueue, createCrawlWorker } = require('./queues/crawl.queue');
 const { registerSchedules, fanoutDiscovery, fanoutSync, fanoutCrawl } = require('./queues/scheduler');
 const { backfillDescriptions } = require('./tasks/backfill-descriptions');
 const { backfillClassifications } = require('./tasks/backfill-classifications');
+const { crawlWorkableMarketplace } = require('./tasks/crawl-workable-marketplace');
 
 async function main() {
   await migrate();
@@ -81,6 +82,18 @@ async function main() {
     setTimeout(runClassificationBackfill, 60 * 1000); // Every 1 minute during backlog clearance
   }
   setTimeout(runClassificationBackfill, 2 * 60 * 1000); // Start 2 minutes after boot
+
+  // Crawl Workable marketplace (jobs.workable.com) every 6 hours
+  async function runWorkableMarketplace() {
+    try {
+      const added = await crawlWorkableMarketplace();
+      logger.info({ added }, 'Workable marketplace crawl cycle complete');
+    } catch (err) {
+      logger.error({ err: err.message }, 'Workable marketplace crawl error');
+    }
+    setTimeout(runWorkableMarketplace, 6 * 60 * 60 * 1000); // Every 6 hours
+  }
+  setTimeout(runWorkableMarketplace, 3 * 60 * 1000); // Start 3 minutes after boot
 
   async function shutdown(signal) {
     logger.info({ signal }, 'Shutting down worker');
