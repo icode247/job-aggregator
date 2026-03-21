@@ -145,13 +145,14 @@ router.get('/api/companies', async (req, res) => {
 
   const [{ rows }, { rows: countRows }] = await Promise.all([
     query(
-      `SELECT c.id, c.company_name, c.domain, c.logo_url, c.ats,
+      `SELECT c.id, c.company_name as name, c.domain, c.logo_url, c.ats,
         COUNT(j.id) as job_count,
         COUNT(j.id) FILTER (WHERE j.is_remote = true) as remote_job_count,
         COUNT(j.id) FILTER (WHERE j.visa_sponsorship = 'yes') as visa_job_count
       FROM companies c JOIN jobs j ON j.company_id = c.id
       WHERE ${where}
-      GROUP BY c.id ORDER BY job_count DESC
+      GROUP BY c.id, c.company_name, c.domain, c.logo_url, c.ats
+      ORDER BY job_count DESC
       LIMIT ? OFFSET ?`,
       [...params, limit, offset]
     ),
@@ -217,8 +218,16 @@ router.get('/api/locations', async (req, res) => {
 /**
  * GET /api/roles
  * Top role categories with job counts for role pages
+ * Cached for 1 hour since it scans all jobs
  */
+let rolesCache = null;
+let rolesCacheExpiry = 0;
+
 router.get('/api/roles', async (req, res) => {
+  if (rolesCache && Date.now() < rolesCacheExpiry) {
+    return res.json({ data: rolesCache });
+  }
+
   const { rows } = await query(
     `SELECT
       CASE
@@ -253,6 +262,8 @@ router.get('/api/roles', async (req, res) => {
     FROM jobs WHERE removed_at IS NULL
     GROUP BY role ORDER BY job_count DESC`
   );
+  rolesCache = rows;
+  rolesCacheExpiry = Date.now() + 60 * 60 * 1000; // 1 hour
   res.json({ data: rows });
 });
 
