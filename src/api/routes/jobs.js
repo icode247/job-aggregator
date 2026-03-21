@@ -120,6 +120,121 @@ router.get('/api/stats', async (req, res) => {
 });
 
 /**
+ * GET /api/trending
+ * Trending job searches and categories
+ * Returns trending roles, locations, companies, and search terms
+ * Cached for 1 hour
+ */
+let trendingCache = null;
+let trendingCacheExpiry = 0;
+
+router.get('/api/trending', async (req, res) => {
+  if (trendingCache && Date.now() < trendingCacheExpiry) {
+    return res.json(trendingCache);
+  }
+
+  const [
+    { rows: recentRoles },
+    { rows: hotLocations },
+    { rows: topCompanies },
+    { rows: remoteStats },
+    { rows: visaStats },
+    { rows: newToday },
+  ] = await Promise.all([
+    // Trending roles — most posted in last 7 days
+    query(
+      `SELECT
+        CASE
+          WHEN title ILIKE '%software engineer%' OR title ILIKE '%software developer%' THEN 'Software Engineer'
+          WHEN title ILIKE '%data scientist%' THEN 'Data Scientist'
+          WHEN title ILIKE '%data analyst%' THEN 'Data Analyst'
+          WHEN title ILIKE '%data engineer%' THEN 'Data Engineer'
+          WHEN title ILIKE '%product manager%' THEN 'Product Manager'
+          WHEN title ILIKE '%product designer%' THEN 'Product Designer'
+          WHEN title ILIKE '%devops%' OR title ILIKE '%site reliability%' THEN 'DevOps / SRE'
+          WHEN title ILIKE '%frontend%' OR title ILIKE '%front-end%' OR title ILIKE '%front end%' THEN 'Frontend Developer'
+          WHEN title ILIKE '%backend%' OR title ILIKE '%back-end%' OR title ILIKE '%back end%' THEN 'Backend Developer'
+          WHEN title ILIKE '%full stack%' OR title ILIKE '%fullstack%' THEN 'Full Stack Developer'
+          WHEN title ILIKE '%machine learning%' OR title ILIKE '%ML engineer%' OR title ILIKE '%AI engineer%' THEN 'ML / AI Engineer'
+          WHEN title ILIKE '%cloud%' THEN 'Cloud Engineer'
+          WHEN title ILIKE '%security%' OR title ILIKE '%cybersecurity%' THEN 'Security Engineer'
+          WHEN title ILIKE '%QA%' OR title ILIKE '%quality assurance%' OR title ILIKE '%test engineer%' THEN 'QA Engineer'
+          WHEN title ILIKE '%mobile%' OR title ILIKE '%iOS%' OR title ILIKE '%android%' THEN 'Mobile Developer'
+          WHEN title ILIKE '%UX%' OR title ILIKE '%UI%' OR title ILIKE '%designer%' THEN 'Designer'
+          WHEN title ILIKE '%marketing%' THEN 'Marketing'
+          WHEN title ILIKE '%sales%' OR title ILIKE '%account executive%' THEN 'Sales'
+          WHEN title ILIKE '%customer success%' OR title ILIKE '%customer support%' THEN 'Customer Success'
+          WHEN title ILIKE '%recruiter%' OR title ILIKE '%talent%' THEN 'Recruiting'
+          ELSE NULL
+        END as role,
+        COUNT(*) as job_count
+      FROM jobs
+      WHERE removed_at IS NULL AND first_seen_at > NOW() - INTERVAL '24 hours'
+      GROUP BY role
+      HAVING role IS NOT NULL
+      ORDER BY job_count DESC
+      LIMIT 15`
+    ),
+    // Hot locations — most new jobs in last 24 hours
+    query(
+      `SELECT location, COUNT(*) as job_count
+      FROM jobs
+      WHERE removed_at IS NULL AND location IS NOT NULL
+        AND first_seen_at > NOW() - INTERVAL '24 hours'
+      GROUP BY location
+      ORDER BY job_count DESC
+      LIMIT 20`
+    ),
+    // Top hiring companies — most new jobs in last 24 hours
+    query(
+      `SELECT c.company_name as name, c.domain, c.logo_url, COUNT(j.id) as job_count
+      FROM companies c JOIN jobs j ON j.company_id = c.id
+      WHERE j.removed_at IS NULL AND j.first_seen_at > NOW() - INTERVAL '24 hours'
+        AND c.company_name IS NOT NULL
+      GROUP BY c.id, c.company_name, c.domain, c.logo_url
+      ORDER BY job_count DESC
+      LIMIT 20`
+    ),
+    // Remote job trends
+    query(
+      `SELECT
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE first_seen_at > NOW() - INTERVAL '7 days') as new_this_week,
+        COUNT(*) FILTER (WHERE first_seen_at > NOW() - INTERVAL '1 day') as new_today
+      FROM jobs WHERE removed_at IS NULL AND is_remote = true`
+    ),
+    // Visa sponsorship trends
+    query(
+      `SELECT
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE first_seen_at > NOW() - INTERVAL '7 days') as new_this_week,
+        COUNT(*) FILTER (WHERE first_seen_at > NOW() - INTERVAL '1 day') as new_today
+      FROM jobs WHERE removed_at IS NULL AND visa_sponsorship = 'yes'`
+    ),
+    // New jobs today count
+    query(
+      `SELECT COUNT(*) as count
+      FROM jobs WHERE removed_at IS NULL AND first_seen_at > NOW() - INTERVAL '1 day'`
+    ),
+  ]);
+
+  const result = {
+    data: {
+      trending_roles: recentRoles,
+      hot_locations: hotLocations,
+      top_hiring_companies: topCompanies,
+      remote_jobs: remoteStats[0],
+      visa_sponsorship_jobs: visaStats[0],
+      new_jobs_today: parseInt(newToday[0].count, 10),
+    },
+  };
+
+  trendingCache = result;
+  trendingCacheExpiry = Date.now() + 60 * 60 * 1000; // 1 hour
+  res.json(result);
+});
+
+/**
  * GET /api/companies
  * Company directory with job counts
  * Query params: q, ats, limit, page
