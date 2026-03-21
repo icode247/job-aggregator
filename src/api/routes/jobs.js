@@ -141,10 +141,10 @@ router.get('/api/trending', async (req, res) => {
     { rows: visaStats },
     { rows: newToday },
   ] = await Promise.all([
-    // Trending roles — most posted in last 7 days
+    // Trending roles — most posted in last 24 hours
     query(
-      `SELECT
-        CASE
+      `SELECT role, COUNT(*) as job_count FROM (
+        SELECT CASE
           WHEN title ILIKE '%software engineer%' OR title ILIKE '%software developer%' THEN 'Software Engineer'
           WHEN title ILIKE '%data scientist%' THEN 'Data Scientist'
           WHEN title ILIKE '%data analyst%' THEN 'Data Analyst'
@@ -166,14 +166,10 @@ router.get('/api/trending', async (req, res) => {
           WHEN title ILIKE '%customer success%' OR title ILIKE '%customer support%' THEN 'Customer Success'
           WHEN title ILIKE '%recruiter%' OR title ILIKE '%talent%' THEN 'Recruiting'
           ELSE NULL
-        END as role,
-        COUNT(*) as job_count
-      FROM jobs
-      WHERE removed_at IS NULL AND first_seen_at > NOW() - INTERVAL '24 hours'
-      GROUP BY role
-      HAVING role IS NOT NULL
-      ORDER BY job_count DESC
-      LIMIT 15`
+        END as role
+        FROM jobs WHERE removed_at IS NULL AND first_seen_at > NOW() - INTERVAL '24 hours'
+      ) t WHERE role IS NOT NULL
+      GROUP BY role ORDER BY job_count DESC LIMIT 15`
     ),
     // Hot locations — most new jobs in last 24 hours
     query(
