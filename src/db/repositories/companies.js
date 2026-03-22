@@ -127,7 +127,6 @@ const companiesRepo = {
       oracle: `https://${atsSlug}.oraclecloud.com`,
       bamboohr: `https://${atsSlug}.bamboohr.com/careers`,
       taleo: `https://${atsSlug}.taleo.net`,
-      jobvite: `https://jobs.jobvite.com/${atsSlug}`,
       pinpoint: `https://${atsSlug}.pinpointhq.com`,
       successfactors: `https://career${atsSlug}.successfactors.eu/career`,
     };

@@ -44,7 +44,6 @@ const LOGO_PATTERNS = {
   oracle: [],
   bamboohr: [],
   taleo: [],
-  jobvite: [],
   pinpoint: [],
   successfactors: [],
 };
@@ -93,7 +92,6 @@ async function fetchLogoUrl(ats, atsSlug, domain) {
     oracle: null,
     bamboohr: `https://${atsSlug}.bamboohr.com/careers`,
     taleo: null,
-    jobvite: `https://jobs.jobvite.com/${atsSlug}`,
     pinpoint: `https://${atsSlug}.pinpointhq.com`,
     successfactors: null,
   };

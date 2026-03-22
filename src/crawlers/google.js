@@ -10,7 +10,6 @@ const ATS_SEARCH_QUERIES = {
   recruitee:       { query: 'site:*.recruitee.com',            regex: /([a-z0-9_-]+)\.recruitee\.com/gi },
   smartrecruiters: { query: 'site:jobs.smartrecruiters.com',   regex: /jobs\.smartrecruiters\.com\/([a-z0-9_-]+)/gi },
   rippling:        { query: 'site:ats.rippling.com',           regex: /ats\.rippling\.com\/([a-z0-9_-]+)/gi },
-  jobvite:         { query: 'site:jobs.jobvite.com',           regex: /jobs\.jobvite\.com\/([a-z0-9_-]+)/gi },
   pinpoint:        { query: 'site:pinpointhq.com',            regex: /([a-z0-9_-]+)\.pinpointhq\.com/gi },
 };
 

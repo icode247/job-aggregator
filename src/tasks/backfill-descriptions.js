@@ -27,7 +27,6 @@ const ATS_CONFIG = {
   recruitee:       { batchSize: 100, concurrency: 10 },
   rippling:        { batchSize: 100, concurrency: 10 },
   zoho:            { batchSize: 100, concurrency: 5 },
-  jobvite:         { batchSize: 100, concurrency: 10 },
   pinpoint:        { batchSize: 100, concurrency: 10 },
   successfactors:  { batchSize: 100, concurrency: 5 },
 };
@@ -516,8 +515,6 @@ async function fetchDescription(job) {
       description = await fetchZohoDescription(job); break;
     case 'workable':
       description = await fetchWorkableDescription(job); break;
-    case 'jobvite':
-      description = await fetchJobviteDescription(job); break;
     case 'pinpoint':
       description = await fetchPinpointDescription(job); break;
     case 'successfactors':

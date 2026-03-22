@@ -16,7 +16,6 @@ const ATS_PROBE_URLS = {
   jazzhr: (slug) => `https://app.jazz.co/widgets/basic/create/${slug}`,
   zoho: (slug) => `https://${slug}.zohorecruit.com/jobs/Careers`,
   bamboohr: (slug) => `https://${slug}.bamboohr.com/careers/list`,
-  jobvite: (slug) => `https://jobs.jobvite.com/${slug}`,
   pinpoint: (slug) => `https://${slug}.pinpointhq.com/postings.json`,
 };
 

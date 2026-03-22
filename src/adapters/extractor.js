@@ -23,7 +23,6 @@ const HTML_PATTERNS = [
   { ats: 'icims', regex: /careers\.([^/"'?#&\s]+)\.com\/api\/jobs/ },
   { ats: 'bamboohr', regex: /([^/"'?#&\s]+)\.bamboohr\.com/ },
   { ats: 'taleo', regex: /([^/"'?#&\s]+)\.taleo\.net/ },
-  { ats: 'jobvite', regex: /jobs\.jobvite\.com\/([^/"'?#&\s]+)/ },
   { ats: 'pinpoint', regex: /([^/"'?#&\s]+)\.pinpointhq\.com/ },
   { ats: 'successfactors', regex: /career([^/"'?#&\s]+)\.successfactors\.(?:eu|com)/ },
 ];
