@@ -11,7 +11,7 @@
  * This avoids Heroku's shared IP addresses which many ATS providers block.
  * Runs continuously with 2-minute intervals between cycles.
  */
-require('dotenv').config();
+try { require('dotenv').config(); } catch { /* dotenv optional */ }
 const { backfillDescriptions } = require('../src/tasks/backfill-descriptions');
 const logger = require('../src/logger');
 const { migrate, closeDb } = require('../src/db');
