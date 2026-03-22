@@ -1,8 +1,11 @@
 /**
  * Oracle Cloud HCM adapter.
  * Uses the public recruitingCEJobRequisitions REST API.
- * Slug format: "{tenant}.{region}" e.g. "eeho.us2"
- * or "{tenant}.{region}.{siteNumber}" e.g. "eeho.us2.CX_45001"
+ * Slug formats:
+ *   "{tenant}.{region}" e.g. "eeho.us2"
+ *   "{tenant}.{region}.{siteNumber}" e.g. "eeho.us2.CX_45001"
+ *   "full:{subdomain}/{siteNumber}" e.g. "full:jpmc.fa.oraclecloud.com/CX_1001"
+ *     for tenants with non-standard URL patterns (no region segment, SaaS prod URLs, etc.)
  */
 const logger = require('../logger');
 
@@ -11,10 +14,44 @@ const DETAIL_BATCH_SIZE = 3;
 const COMMON_SITE_NUMBERS = ['CX', 'CX_1', 'CX_1001', 'CX_45001', 'CX_1003'];
 
 /**
+ * Build the base API URL from parsed slug info.
+ */
+function buildBaseUrl(parsed) {
+  if (parsed.baseUrl) return parsed.baseUrl;
+  return `https://${parsed.tenant}.fa.${parsed.region}.oraclecloud.com/hcmRestApi/resources/latest`;
+}
+
+/**
+ * Build the careers page URL from parsed slug info.
+ */
+function buildCareersUrl(parsed, siteNumber, jobId) {
+  if (parsed.subdomain) {
+    return `https://${parsed.subdomain}/hcmUI/CandidateExperience/en/sites/${siteNumber}/job/${jobId}`;
+  }
+  return `https://${parsed.tenant}.fa.${parsed.region}.oraclecloud.com/hcmUI/CandidateExperience/en/sites/${siteNumber}/job/${jobId}`;
+}
+
+/**
  * Parse the slug into tenant, region, and siteNumber.
- * Slug format: "tenant.region" or "tenant.region.siteNumber"
+ * Supports standard format and full subdomain format.
  */
 function parseSlug(slug) {
+  // Full subdomain format: "full:subdomain/siteNumber"
+  if (slug.startsWith('full:')) {
+    const rest = slug.slice(5);
+    const slashIdx = rest.indexOf('/');
+    if (slashIdx === -1) return null;
+    const subdomain = rest.substring(0, slashIdx);
+    const siteNumber = rest.substring(slashIdx + 1);
+    return {
+      tenant: null,
+      region: null,
+      siteNumber,
+      subdomain,
+      baseUrl: `https://${subdomain}/hcmRestApi/resources/latest`,
+    };
+  }
+
   const parts = slug.split('.');
   if (parts.length >= 3) {
     return { tenant: parts[0], region: parts[1], siteNumber: parts.slice(2).join('.') };
@@ -28,10 +65,11 @@ function parseSlug(slug) {
 /**
  * Discover the siteNumber by trying common values.
  */
-async function discoverSiteNumber(tenant, region) {
+async function discoverSiteNumber(parsed) {
+  const baseApiUrl = buildBaseUrl(parsed);
   for (const site of COMMON_SITE_NUMBERS) {
     try {
-      const url = `https://${tenant}.fa.${region}.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true&finder=findReqs;siteNumber=${site},limit=1,sortBy=POSTING_DATES_DESC`;
+      const url = `${baseApiUrl}/recruitingCEJobRequisitions?onlyData=true&finder=findReqs;siteNumber=${site},limit=1,sortBy=POSTING_DATES_DESC`;
       const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
       if (!res.ok) continue;
       const data = await res.json();
@@ -40,7 +78,8 @@ async function discoverSiteNumber(tenant, region) {
       }
     } catch { /* try next */ }
   }
-  logger.warn({ tenant, region, triedSites: COMMON_SITE_NUMBERS }, 'Oracle: no working siteNumber found');
+  const label = parsed.subdomain || `${parsed.tenant}.${parsed.region}`;
+  logger.warn({ label, triedSites: COMMON_SITE_NUMBERS }, 'Oracle: no working siteNumber found');
   return null;
 }
 
@@ -123,24 +162,23 @@ async function fetchJobDetail(baseUrl, siteNumber, jobId) {
 
 async function fetchJobs(clientname) {
   const parsed = parseSlug(clientname);
-  if (!parsed) throw new Error(`Oracle: invalid slug format "${clientname}", expected "tenant.region" or "tenant.region.siteNumber"`);
+  if (!parsed) throw new Error(`Oracle: invalid slug format "${clientname}", expected "tenant.region", "tenant.region.siteNumber", or "full:subdomain/siteNumber"`);
 
-  const { tenant, region } = parsed;
   let siteNumber = parsed.siteNumber;
 
   if (!siteNumber) {
-    siteNumber = await discoverSiteNumber(tenant, region);
-    if (!siteNumber) throw new Error(`Oracle: could not discover siteNumber for ${tenant}.${region}`);
+    siteNumber = await discoverSiteNumber(parsed);
+    if (!siteNumber) throw new Error(`Oracle: could not discover siteNumber for ${clientname}`);
   }
 
-  const baseUrl = `https://${tenant}.fa.${region}.oraclecloud.com/hcmRestApi/resources/latest`;
+  const baseUrl = buildBaseUrl(parsed);
 
   // Step 1: Paginate through all job listings
   const postings = [];
   let offset = 0;
   let hasMore = true;
 
-  while (hasMore && offset < 5000) {
+  while (hasMore && offset < 10000) {
     const url = `${baseUrl}/recruitingCEJobRequisitions?onlyData=true&expand=requisitionList.secondaryLocations&finder=findReqs;siteNumber=${siteNumber},limit=${PAGE_SIZE},offset=${offset},sortBy=POSTING_DATES_DESC`;
 
     const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
@@ -214,14 +252,14 @@ async function fetchJobs(clientname) {
         salary_currency: salary.currency || null,
         salary_interval: salary.min ? 'yearly' : null,
         description: detail?.description || job.ShortDescriptionStr || null,
-        url: `https://${tenant}.fa.${region}.oraclecloud.com/hcmUI/CandidateExperience/en/sites/${siteNumber}/job/${job.Id}`,
+        url: buildCareersUrl(parsed, siteNumber, job.Id),
         posted_at: job.PostedDate || null,
         raw_data: job,
       });
     }
   }
 
-  logger.info({ tenant, region, siteNumber, fetched: jobs.length }, 'Oracle Cloud HCM fetch complete');
+  logger.info({ slug: clientname, siteNumber, fetched: jobs.length }, 'Oracle Cloud HCM fetch complete');
 
   return { jobs, meta: { companyName: null } };
 }
