@@ -108,12 +108,13 @@ const jobsRepo = {
     const { clauses, params, needsJoin } = buildFilters(filters);
 
     // Always join companies for company data in response
-    // Exclude description and raw_data from listings for performance
+    // Optionally include description (excluded by default for performance)
+    const descCol = filters.includeDescription ? ', j.description' : '';
     let sql = `SELECT j.id, j.external_id, j.company_id, j.ats, j.title, j.department,
         j.location, j.workplace_type, j.employment_type, j.salary_min, j.salary_max,
         j.salary_currency, j.salary_interval, j.url, j.posted_at, j.first_seen_at,
         j.is_remote, j.remote_worldwide, j.visa_sponsorship, j.experience_level,
-        c.domain, c.ats_slug, c.company_name, c.logo_url
+        c.domain, c.ats_slug, c.company_name, c.logo_url${descCol}
       FROM jobs j JOIN companies c ON j.company_id = c.id
       WHERE ${clauses.join(' AND ')}
       ORDER BY j.first_seen_at DESC`;

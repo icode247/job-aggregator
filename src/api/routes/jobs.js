@@ -79,6 +79,9 @@ router.get('/api/jobs', async (req, res) => {
   if (req.query.company_id) filters.companyId = parseInt(req.query.company_id, 10);
   if (req.query.ats) filters.ats = req.query.ats.split(',');
 
+  const includeDesc = req.query.include === 'description';
+  if (includeDesc) filters.includeDescription = true;
+
   const [jobs, total] = await Promise.all([
     jobsRepo.findActive(filters),
     jobsRepo.countActive(filters),
@@ -101,7 +104,7 @@ router.get('/api/jobs', async (req, res) => {
       nextOffset: hasNext ? offset + limit : null,
       prevOffset: hasPrev ? Math.max(0, offset - limit) : null,
     },
-    data: jobs.map(formatJob),
+    data: jobs.map(j => formatJob(j, includeDesc)),
   });
 });
 
