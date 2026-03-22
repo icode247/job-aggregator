@@ -117,7 +117,7 @@ const jobsRepo = {
         c.domain, c.ats_slug, c.company_name, c.logo_url${descCol}
       FROM jobs j JOIN companies c ON j.company_id = c.id
       WHERE ${clauses.join(' AND ')}
-      ORDER BY j.first_seen_at DESC`;
+      ORDER BY j.first_seen_at DESC, j.random_rank`;
 
     if (filters.limit) {
       sql += ' LIMIT ?';

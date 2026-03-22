@@ -98,6 +98,11 @@ async function migrate() {
     await exec('CREATE INDEX IF NOT EXISTS idx_jobs_experience ON jobs(experience_level) WHERE removed_at IS NULL');
   }
 
+  // Random rank for shuffling jobs from same sync batch
+  if (isPostgres) {
+    await exec('ALTER TABLE jobs ADD COLUMN IF NOT EXISTS random_rank DOUBLE PRECISION DEFAULT random()');
+  }
+
   // Full-text search (PostgreSQL only)
   if (isPostgres) {
     await exec(`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS search_vector tsvector`);
