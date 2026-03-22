@@ -5,8 +5,8 @@ const { stripHtml } = require('../../utils/html');
 
 const router = Router();
 
-function formatJob(row) {
-  return {
+function formatJob(row, includeDescription = false) {
+  const job = {
     id: row.id,
     external_id: row.external_id,
     title: row.title,
@@ -18,7 +18,6 @@ function formatJob(row) {
     remote_worldwide: row.remote_worldwide || false,
     visa_sponsorship: row.visa_sponsorship || null,
     experience_level: row.experience_level || null,
-    description: row.description ? stripHtml(row.description) : null,
     url: row.url,
     posted_at: row.posted_at,
     ats: row.ats,
@@ -36,6 +35,10 @@ function formatJob(row) {
       logo_url: row.logo_url,
     },
   };
+  if (includeDescription) {
+    job.description = row.description ? stripHtml(row.description) : null;
+  }
+  return job;
 }
 
 /**
@@ -420,7 +423,7 @@ router.get('/api/jobs/:id', async (req, res) => {
   const job = await jobsRepo.findById(req.params.id);
   if (!job) return res.status(404).json({ error: 'Job not found' });
 
-  const formatted = formatJob(job);
+  const formatted = formatJob(job, true);
   formatted.description_html = job.description;
   res.json({ data: formatted });
 });

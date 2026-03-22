@@ -10,14 +10,21 @@ function buildFilters(filters = {}) {
   const params = [];
   let needsJoin = false;
 
-  // Role / Keywords — searches title, department, and company name
+  // Role / Keywords — use full-text search on Postgres, ILIKE fallback on SQLite
   if (filters.q) {
-    const terms = filters.q.trim().split(/\s+/).filter(Boolean);
-    for (const term of terms) {
-      clauses.push('(j.title ILIKE ? OR j.department ILIKE ? OR c.company_name ILIKE ?)');
-      const pattern = `%${term}%`;
-      params.push(pattern, pattern, pattern);
-      needsJoin = true;
+    if (isPostgres) {
+      // Use GIN-indexed search_vector for fast full-text search
+      const tsquery = filters.q.trim().split(/\s+/).filter(Boolean).join(' & ');
+      clauses.push("j.search_vector @@ to_tsquery('english', ?)");
+      params.push(tsquery);
+    } else {
+      const terms = filters.q.trim().split(/\s+/).filter(Boolean);
+      for (const term of terms) {
+        clauses.push('(j.title ILIKE ? OR j.department ILIKE ? OR c.company_name ILIKE ?)');
+        const pattern = `%${term}%`;
+        params.push(pattern, pattern, pattern);
+        needsJoin = true;
+      }
     }
   }
 
@@ -101,7 +108,12 @@ const jobsRepo = {
     const { clauses, params, needsJoin } = buildFilters(filters);
 
     // Always join companies for company data in response
-    let sql = `SELECT j.*, c.domain, c.ats_slug, c.company_name, c.logo_url
+    // Exclude description and raw_data from listings for performance
+    let sql = `SELECT j.id, j.external_id, j.company_id, j.ats, j.title, j.department,
+        j.location, j.workplace_type, j.employment_type, j.salary_min, j.salary_max,
+        j.salary_currency, j.salary_interval, j.url, j.posted_at, j.first_seen_at,
+        j.is_remote, j.remote_worldwide, j.visa_sponsorship, j.experience_level,
+        c.domain, c.ats_slug, c.company_name, c.logo_url
       FROM jobs j JOIN companies c ON j.company_id = c.id
       WHERE ${clauses.join(' AND ')}
       ORDER BY j.first_seen_at DESC`;
@@ -121,6 +133,17 @@ const jobsRepo = {
 
   async countActive(filters = {}) {
     const { clauses, params, needsJoin } = buildFilters(filters);
+
+    // For unfiltered counts on Postgres, use fast estimated count
+    const isUnfiltered = clauses.length === 1 && clauses[0] === 'j.removed_at IS NULL';
+    if (isUnfiltered && isPostgres) {
+      const { rows } = await query(
+        "SELECT reltuples::bigint AS count FROM pg_class WHERE relname = 'jobs'"
+      );
+      const estimate = parseInt(rows[0]?.count, 10);
+      // Use estimate if reasonable (> 0), otherwise fall back to exact
+      if (estimate > 0) return estimate;
+    }
 
     let sql;
     if (needsJoin) {
