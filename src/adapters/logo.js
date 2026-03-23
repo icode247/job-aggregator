@@ -40,7 +40,12 @@ const LOGO_PATTERNS = {
   zoho: [
     /(https:\/\/[^"'\s)]*zohorecruit[^"'\s)]*viewCareerImage[^"'\s)]+)/,
   ],
-  icims: [],
+  icims: [
+    // iCIMS AppInert servlet logo (hosted on icims CDN)
+    /(https?:\/\/[^"'\s)]*icims[^"'\s)]*servlet\/icims2\?module=AppInert&action=download[^"'\s)]+)/i,
+    // iCIMS S3 CDN logos
+    /(https?:\/\/[^"'\s)]*\.i\.icims\.com\/[^"'\s)]+\.(?:png|jpg|svg))/i,
+  ],
   oracle: [],
   bamboohr: [],
   taleo: [],
@@ -74,6 +79,89 @@ function googleFaviconUrl(domain) {
   return `https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain}&size=128`;
 }
 
+/**
+ * Extract the real company domain from ATS-mangled domains/slugs.
+ *
+ * Many enterprise ATS platforms use opaque tenant IDs or prefixed slugs
+ * as hostnames, so the stored `domain` is useless for logo lookups:
+ *   - Oracle:  "ebqb.us2.CX.oraclecloud.com" or "fa-ewgu-saasfaprod1.ocs.CX_2001.com"
+ *   - iCIMS:   "careers-snapon.icims.com" or "careers-snapon.com"
+ *   - Taleo:   "cwt.taleo.net"
+ *   - SuccessFactors: "careersiemens.successfactors.eu"
+ *
+ * This classifier attempts to recover the real company domain.
+ */
+function classifyCompanyDomain(ats, atsSlug, domain) {
+  // ── iCIMS ─────────────────────────────────────────────────────
+  // Slugs: "careers-snapon", "uscareers-yelp", "management-davidsonhospitality"
+  // Extract the company name after the prefix, then guess domain
+  if (ats === 'icims') {
+    const slug = atsSlug || '';
+    const companyPart = slug
+      .replace(/^(?:general[-]?|us|emea|europe|international|english|carolina(?:poly)?)?careers?\d*[-]/i, '')
+      .replace(/^(?:management|application|externalsp|uscareershub|careersita)[-]/i, '')
+      .replace(/[-]/g, '');
+    if (companyPart && companyPart !== slug) {
+      return `${companyPart}.com`;
+    }
+    // If no prefix was stripped, still clean up .icims.com domains
+    if (domain && domain.endsWith('.icims.com')) {
+      const base = domain.replace('.icims.com', '').replace(/^careers[-.]?/, '');
+      if (base) return `${base}.com`;
+    }
+  }
+
+  // ── Oracle ────────────────────────────────────────────────────
+  // Slugs: "ebqb.us2.CX", "full:fa-ewdg-saasfaprod1.fa.ocs.oraclecloud.com/CynclyJobs"
+  // The domain from createFromCrawl is garbage (oraclecloud tenant hash)
+  if (ats === 'oracle') {
+    const isGarbageDomain = !domain || domain.includes('oraclecloud') || /CX[_\d]*\b/.test(domain)
+      || domain.includes('saasfaprod') || /^[a-z]{2,4}\.[a-z]{2,3}\.[A-Z]/.test(domain)
+      || /^fa-/.test(domain);
+    // If domain already looks real, keep it
+    if (!isGarbageDomain) return domain;
+
+    const slug = atsSlug || '';
+    // Full: pattern — extract company name from the path suffix
+    // "full:fa-ewdg-saasfaprod1.fa.ocs.oraclecloud.com/CynclyJobs"
+    const fullMatch = slug.match(/\/([A-Za-z][A-Za-z0-9-]+?)(?:Jobs|Careers|Career|CareerSite|Recruitment[-]?System)?$/i);
+    if (fullMatch) {
+      const name = fullMatch[1].replace(/[-]/g, '').toLowerCase();
+      return `${name}.com`;
+    }
+    // Short slug with company name after dots: "Efds.em5.Ford-Model-e", "fa-ewcd-saasfaprod1.ocs.JGCGroup"
+    const parts = slug.split('.');
+    const lastPart = parts[parts.length - 1];
+    if (lastPart && !lastPart.match(/^(CX|CX_\d+|us\d|em\d|fa|ap\d|ca\d|ocs)$/i)) {
+      const name = lastPart.replace(/[-_]?(careers?|jobs?|jobsearch)$/i, '').replace(/[-_]/g, '').toLowerCase();
+      if (name && name.length > 1) return `${name}.com`;
+    }
+    // Opaque tenant ID (e.g. eckb.us2.CX_1001) — no company info available
+    // Return null so we don't use a garbage favicon
+    return null;
+  }
+
+  // ── Taleo ─────────────────────────────────────────────────────
+  // Domain is "cwt.taleo.net" — strip the taleo.net suffix
+  if (ats === 'taleo') {
+    if (domain && domain.endsWith('.taleo.net')) {
+      const base = domain.replace('.taleo.net', '');
+      if (base) return `${base}.com`;
+    }
+  }
+
+  // ── SuccessFactors ────────────────────────────────────────────
+  // Domain: "careersiemens.successfactors.eu"
+  if (ats === 'successfactors') {
+    if (domain && domain.includes('successfactors')) {
+      const base = domain.split('.')[0].replace(/^career[s]?/i, '');
+      if (base) return `${base}.com`;
+    }
+  }
+
+  return domain;
+}
+
 async function fetchLogoUrl(ats, atsSlug, domain) {
   const pageUrls = {
     lever: `https://jobs.lever.co/${atsSlug}`,
@@ -88,7 +176,7 @@ async function fetchLogoUrl(ats, atsSlug, domain) {
     jazzhr: `https://${atsSlug}.applytojob.com`,
     workday: null, // Logo comes from adapter meta
     zoho: `https://${atsSlug}.zohorecruit.com/jobs/Careers`,
-    icims: null, // Logo comes from adapter meta
+    icims: `https://${atsSlug}.icims.com/jobs/search`,
     oracle: null,
     bamboohr: `https://${atsSlug}.bamboohr.com/careers`,
     taleo: null,
@@ -104,6 +192,7 @@ async function fetchLogoUrl(ats, atsSlug, domain) {
       const res = await fetch(pageUrl, { redirect: 'follow', signal: AbortSignal.timeout(10000) });
       if (res.ok) {
         const html = await res.text();
+        const candidates = [];
 
         // 1. Try ATS-specific patterns
         const atsPatterns = LOGO_PATTERNS[ats] || [];
@@ -112,19 +201,35 @@ async function fetchLogoUrl(ats, atsSlug, domain) {
           if (match) {
             let url = match[1] || match[0];
             if (url.startsWith('//')) url = 'https:' + url;
-            logger.info({ ats, atsSlug, logoUrl: url }, 'Logo found via ATS pattern');
-            return url;
+            else if (url.startsWith('/')) url = new URL(url, pageUrl).href;
+            candidates.push(url);
           }
         }
 
         // 2. Try generic img/meta patterns
         for (const regex of GENERIC_PATTERNS) {
           const match = html.match(regex);
-          if (match && match[1] && !match[1].includes('sr-logo/') && !match[1].includes('lever-logo')) {
+          if (match && match[1] && !match[1].includes('sr-logo/') && !match[1].includes('lever-logo')
+              && !match[1].startsWith('data:')) {
             let url = match[1];
             if (url.startsWith('//')) url = 'https:' + url;
-            logger.info({ ats, atsSlug, logoUrl: url }, 'Logo found via generic pattern');
-            return url;
+            else if (url.startsWith('/')) url = new URL(url, pageUrl).href;
+            candidates.push(url);
+          }
+        }
+
+        // Validate candidates — only accept URLs that return an image content-type
+        for (const candidateUrl of candidates) {
+          try {
+            const headRes = await fetch(candidateUrl, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(5000) });
+            const ct = headRes.headers.get('content-type') || '';
+            if (headRes.ok && ct.startsWith('image/')) {
+              logger.info({ ats, atsSlug, logoUrl: candidateUrl }, 'Logo found and validated via scrape');
+              return candidateUrl;
+            }
+            logger.debug({ ats, atsSlug, candidateUrl, contentType: ct }, 'Logo candidate rejected (not an image)');
+          } catch {
+            logger.debug({ ats, atsSlug, candidateUrl }, 'Logo candidate HEAD check failed');
           }
         }
       }
@@ -133,9 +238,16 @@ async function fetchLogoUrl(ats, atsSlug, domain) {
     }
   }
 
-  // 3. Clearbit Logo API — high-quality company logos
-  if (domain) {
-    const logoUrl = clearbitLogoUrl(domain);
+  // 3. Classify domain — extract real company domain from ATS-mangled slugs
+  const realDomain = classifyCompanyDomain(ats, atsSlug, domain);
+  if (realDomain && realDomain !== domain) {
+    logger.info({ ats, atsSlug, oldDomain: domain, realDomain }, 'Classified real company domain');
+  }
+  const logoDomain = realDomain || domain;
+
+  // 4. Clearbit Logo API — high-quality company logos
+  if (logoDomain) {
+    const logoUrl = clearbitLogoUrl(logoDomain);
     try {
       const res = await fetch(logoUrl, { method: 'HEAD', signal: AbortSignal.timeout(5000) });
       if (res.ok) {
@@ -145,9 +257,30 @@ async function fetchLogoUrl(ats, atsSlug, domain) {
     } catch { /* clearbit failed */ }
   }
 
-  // 4. Google favicon as last-resort fallback
-  if (domain) {
-    return googleFaviconUrl(domain);
+  // 5. Google favicon as last-resort fallback — validate and try TLD variants
+  if (logoDomain) {
+    const baseName = logoDomain.replace(/\.\w+$/, ''); // strip TLD
+    const candidates = [logoDomain];
+    // If the classified domain is .com, also try .org and .edu
+    if (logoDomain.endsWith('.com')) {
+      candidates.push(`${baseName}.org`, `${baseName}.edu`);
+    }
+    for (const candidate of candidates) {
+      const favUrl = googleFaviconUrl(candidate);
+      try {
+        const res = await fetch(favUrl, { signal: AbortSignal.timeout(5000) });
+        if (res.ok) {
+          const buf = await res.arrayBuffer();
+          // Google returns a ~726-byte generic globe icon for unknown domains
+          if (buf.byteLength > 750) {
+            logger.info({ ats, atsSlug, domain: candidate }, 'Favicon validated');
+            return googleFaviconUrl(candidate);
+          }
+        }
+      } catch { /* continue to next candidate */ }
+    }
+    // All candidates returned generic globe — use .com anyway as best guess
+    return googleFaviconUrl(logoDomain);
   }
 
   return null;
