@@ -13,10 +13,12 @@ async function registerSchedules(discoveryQueue, syncQueue, crawlQueue) {
     jobId: 'sync-fanout',
   });
 
-  await crawlQueue.add('crawl-fanout', { fanout: true }, {
-    repeat: { every: config.CRAWL_INTERVAL_MS },
-    jobId: 'crawl-fanout',
-  });
+  if (crawlQueue) {
+    await crawlQueue.add('crawl-fanout', { fanout: true }, {
+      repeat: { every: config.CRAWL_INTERVAL_MS },
+      jobId: 'crawl-fanout',
+    });
+  }
 
   logger.info('Repeatable schedules registered');
 }
