@@ -181,6 +181,9 @@ async function fetchTaleoDescription(job) {
   // Try JSON-LD first
   const ld = extractJsonLdDescription(html);
   if (ld) return ld;
+  // Taleo server-rendered pages: description in <span class="text"> inside editablesection
+  const taleoDesc = extractTaleoDescription(html);
+  if (taleoDesc) return taleoDesc;
   // Extract from !*! delimited URL-encoded HTML in pipe data
   const PIPE_SEP = '!|!';
   if (html.includes('!*!') && html.includes(PIPE_SEP)) {
@@ -209,6 +212,47 @@ async function fetchTaleoDescription(job) {
   return null;
 }
 
+/**
+ * Extract description from Taleo server-rendered HTML.
+ * Taleo uses <span class="text"> inside class="editablesection" for the main description.
+ * We find the longest text span which is the job description (other spans are short metadata).
+ */
+function extractTaleoDescription(html) {
+  if (!html || !html.includes('editablesection')) return null;
+  // Find the editablesection block
+  const sectionMatch = html.match(/class="editablesection"[^>]*>([\s\S]*?)<\/div>\s*<div class="staticcontentlinepanel"/i);
+  if (sectionMatch?.[1] && sectionMatch[1].length > 100) return sectionMatch[1].trim();
+  // Fallback: grab all <span class="text"> elements and use the longest one
+  const textSpans = [];
+  const spanRegex = /class="text"[^>]*>([\s\S]*?)<\/span>/gi;
+  let m;
+  while ((m = spanRegex.exec(html)) !== null) {
+    if (m[1] && m[1].length > 200) textSpans.push(m[1]);
+  }
+  if (textSpans.length > 0) {
+    textSpans.sort((a, b) => b.length - a.length);
+    return textSpans[0].trim();
+  }
+  return null;
+}
+
+/**
+ * Extract description from Oracle CX rendered HTML (Knockout.js).
+ * Oracle uses multiple div.job-details__description-content sections for
+ * description, responsibilities, and qualifications.
+ */
+function extractOracleRenderedDescription(html) {
+  if (!html || !html.includes('job-details__description-content')) return null;
+  const sections = [];
+  const sectionRegex = /class="job-details__description-content[^"]*"[^>]*>([\s\S]*?)<\/div>\s*(?:<\/div>|$)/gi;
+  let m;
+  while ((m = sectionRegex.exec(html)) !== null) {
+    const content = m[1].trim();
+    if (content.length > 50) sections.push(content);
+  }
+  return sections.length > 0 ? sections.join('\n') : null;
+}
+
 async function fetchOracleDescription(job) {
   // Parse tenant.region.siteNumber from ats_slug
   const parts = job.ats_slug.split('.');
@@ -218,22 +262,38 @@ async function fetchOracleDescription(job) {
   const siteNumber = parts.slice(2).join('.') || null;
   if (!siteNumber) return null;
   const jobId = job.external_id.replace('oracle_', '');
-  const url = `https://${tenant}.fa.${region}.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitionDetails?onlyData=true&expand=all&finder=ById;Id=${jobId},siteNumber=${siteNumber}`;
-  const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-  if (!res.ok) return null;
-  const data = await res.json();
-  const item = data.items?.[0];
-  if (!item) return null;
-  const descParts = [
-    item.ExternalDescriptionStr,
-    item.ExternalQualificationsStr,
-    item.ExternalResponsibilitiesStr,
-    // Fallback to corporate/org descriptions when external fields are empty
-    item.CorporateDescriptionStr,
-    item.OrganizationDescriptionStr,
-    item.ShortDescriptionStr,
-  ].filter(Boolean);
-  return descParts.length > 0 ? descParts.join('\n') : null;
+
+  // Strategy 1: REST API (fast, no proxy needed)
+  try {
+    const url = `https://${tenant}.fa.${region}.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitionDetails?onlyData=true&expand=all&finder=ById;Id=${jobId},siteNumber=${siteNumber}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (res.ok) {
+      const data = await res.json();
+      const item = data.items?.[0];
+      if (item) {
+        const descParts = [
+          item.ExternalDescriptionStr,
+          item.ExternalQualificationsStr,
+          item.ExternalResponsibilitiesStr,
+          item.CorporateDescriptionStr,
+          item.OrganizationDescriptionStr,
+          item.ShortDescriptionStr,
+        ].filter(Boolean);
+        if (descParts.length > 0) return descParts.join('\n');
+      }
+    }
+  } catch { /* API failed, try proxy */ }
+
+  // Strategy 2: Render page via proxy and extract from Knockout.js-rendered HTML
+  if (job.url) {
+    try {
+      const html = await fetchUnlockedHtml(job.url);
+      const oracleDesc = extractOracleRenderedDescription(html);
+      if (oracleDesc) return oracleDesc;
+    } catch { /* proxy failed */ }
+  }
+
+  return null;
 }
 
 async function fetchGreenhouseDescription(job) {
@@ -420,6 +480,15 @@ async function fetchSuccessFactorsDescription(job) {
  */
 function extractBodyDescription(html) {
   if (!html) return null;
+
+  // Oracle CX rendered pages (Knockout.js)
+  const oracleDesc = extractOracleRenderedDescription(html);
+  if (oracleDesc) return oracleDesc;
+
+  // Taleo server-rendered pages
+  const taleoDesc = extractTaleoDescription(html);
+  if (taleoDesc) return taleoDesc;
+
   // Common job description selectors (class or id)
   const patterns = [
     /class="job[_-]?description"[^>]*>([\s\S]*?)<\/div>/i,
