@@ -4,11 +4,11 @@ const metrics = require('./utils/metrics');
 const { createRedisConnection } = require('./queues/connection');
 const { createDiscoveryQueue, createDiscoveryWorker } = require('./queues/discovery.queue');
 const { createSyncQueue, createSyncWorker } = require('./queues/sync.queue');
-// const { createCrawlQueue, createCrawlWorker } = require('./queues/crawl.queue');  // DISABLED — prioritizing sync
-const { registerSchedules, fanoutDiscovery, fanoutSync } = require('./queues/scheduler');
+const { createCrawlQueue, createCrawlWorker } = require('./queues/crawl.queue');
+const { registerSchedules, fanoutDiscovery, fanoutSync, fanoutCrawl } = require('./queues/scheduler');
 const { backfillDescriptions } = require('./tasks/backfill-descriptions');
 const { backfillClassifications } = require('./tasks/backfill-classifications');
-// const { crawlWorkableMarketplace } = require('./tasks/crawl-workable-marketplace');  // DISABLED — prioritizing sync
+const { crawlWorkableMarketplace } = require('./tasks/crawl-workable-marketplace');
 
 async function main() {
   await migrate();
@@ -16,9 +16,11 @@ async function main() {
 
   const discoveryQueue = createDiscoveryQueue();
   const syncQueue = createSyncQueue();
+  const crawlQueue = createCrawlQueue();
 
   const discoveryWorker = createDiscoveryWorker(syncQueue);
   const syncWorker = createSyncWorker();
+  const crawlWorker = createCrawlWorker(syncQueue);
 
   discoveryWorker.on('completed', async (job) => {
     if (job.data.fanout) await fanoutDiscovery(discoveryQueue);
@@ -28,6 +30,10 @@ async function main() {
     if (job.data.fanout) await fanoutSync(syncQueue);
   });
 
+  crawlWorker.on('completed', async (job) => {
+    if (job.data.fanout) await fanoutCrawl(crawlQueue);
+  });
+
   // Clean stale jobs to free Redis memory
   await Promise.allSettled([
     syncQueue.drain().catch(() => {}),
@@ -35,16 +41,19 @@ async function main() {
     syncQueue.clean(0, 1000, 'failed'),
     discoveryQueue.clean(0, 500, 'completed'),
     discoveryQueue.clean(0, 500, 'failed'),
+    crawlQueue.clean(0, 500, 'completed'),
+    crawlQueue.clean(0, 500, 'failed'),
   ]);
   logger.info('Cleaned stale queue jobs to free Redis memory');
 
-  await registerSchedules(discoveryQueue, syncQueue);
+  await registerSchedules(discoveryQueue, syncQueue, crawlQueue);
 
   // Stagger fanout to avoid boot-time spike
   setTimeout(() => fanoutDiscovery(discoveryQueue).catch(e => logger.error({ err: e.message }, 'Discovery fanout error')), 30000);
   setTimeout(() => fanoutSync(syncQueue).catch(e => logger.error({ err: e.message }, 'Sync fanout error')), 60000);
+  setTimeout(() => fanoutCrawl(crawlQueue).catch(e => logger.error({ err: e.message }, 'Crawl fanout error')), 90000);
 
-  logger.info('Worker started — processing discovery and sync queues (crawl disabled)');
+  logger.info('Worker started — processing discovery, sync, and crawl queues');
 
   // Backfill descriptions every 3 minutes (concurrent fetching per ATS)
   let allBackfillRunning = false;
@@ -70,16 +79,24 @@ async function main() {
     } catch (err) {
       logger.error({ err: err.message }, 'Classification backfill error');
     }
-    setTimeout(runClassificationBackfill, 60 * 1000); // Every 1 minute during backlog clearance
+    setTimeout(runClassificationBackfill, 60 * 1000);
   }
-  setTimeout(runClassificationBackfill, 2 * 60 * 1000); // Start 2 minutes after boot
+  setTimeout(runClassificationBackfill, 2 * 60 * 1000);
 
-  // DISABLED — Workable marketplace crawl (was every 6 hours)
-  // Re-enable when ready to resume company discovery. See docs/revert-sync-priority.md
+  // Crawl Workable marketplace (jobs.workable.com) every 6 hours
+  async function runWorkableMarketplace() {
+    try {
+      const added = await crawlWorkableMarketplace();
+      logger.info({ added }, 'Workable marketplace crawl cycle complete');
+    } catch (err) {
+      logger.error({ err: err.message }, 'Workable marketplace crawl error');
+    }
+    setTimeout(runWorkableMarketplace, 6 * 60 * 60 * 1000);
+  }
+  setTimeout(runWorkableMarketplace, 3 * 60 * 1000);
 
   async function shutdown(signal) {
     logger.info({ signal }, 'Shutting down worker');
-    // Force exit after 20s to stay within Heroku's 30s SIGTERM window
     const forceTimer = setTimeout(() => {
       logger.warn('Forcing exit after 20s shutdown timeout');
       process.exit(1);
@@ -87,10 +104,12 @@ async function main() {
     forceTimer.unref();
     try {
       await Promise.allSettled([
+        crawlWorker.close(),
         discoveryWorker.close(),
         syncWorker.close(),
       ]);
       await Promise.allSettled([
+        crawlQueue.close(),
         discoveryQueue.close(),
         syncQueue.close(),
       ]);

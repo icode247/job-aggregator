@@ -26,7 +26,7 @@ module.exports = {
   // Queue settings
   DISCOVERY_INTERVAL_MS: 1000 * 60 * 60 * 24 * 14, // 14 days
   SYNC_INTERVAL_MS: 1000 * 60 * 5,                 // 5 minutes (was 15)
-  DISCOVERY_RATE_LIMIT: { max: 10, duration: 60000 },   // 10/min (reduced from 50 — prioritizing sync)
+  DISCOVERY_RATE_LIMIT: { max: 50, duration: 60000 },  // 50/min
   SYNC_RATE_LIMIT: { max: 500, duration: 60000 },      // 500/min (was 300)
 
   // Crawl settings — crawl worker disabled, keeping config for revert
