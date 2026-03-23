@@ -313,7 +313,10 @@ async function fetchOracleDescription(job) {
       const hasDescContent = html?.includes('job-details__description-content') || false;
       const oracleDesc = extractOracleRenderedDescription(html);
       if (oracleDesc) return oracleDesc;
-      logger.warn({ jobId: job.id, slug: job.ats_slug, htmlLen, hasDescContent }, 'Oracle proxy: rendered but extraction failed');
+      // Log a snippet of the HTML to understand the page structure
+      const snippet = html ? html.replace(/\s+/g, ' ').slice(0, 500) : '';
+      const descDivs = (html?.match(/class="[^"]*description[^"]*"/gi) || []).slice(0, 10);
+      logger.warn({ jobId: job.id, slug: job.ats_slug, htmlLen, hasDescContent, descDivs, snippet }, 'Oracle proxy: rendered but extraction failed');
     } catch (err) {
       logger.warn({ jobId: job.id, slug: job.ats_slug, err: err.message }, 'Oracle proxy: fetch failed');
     }
