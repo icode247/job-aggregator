@@ -102,9 +102,15 @@ async function fetchSmartRecruitersDescription(job) {
     `https://api.smartrecruiters.com/v1/companies/${encodeURIComponent(job.ats_slug)}/postings/${postingId}`,
     { signal: AbortSignal.timeout(10000) }
   );
-  if (!res.ok) return null;
+  if (!res.ok) {
+    logger.warn({ jobId: job.id, slug: job.ats_slug, status: res.status }, 'SmartRecruiters API: non-200');
+    return null;
+  }
   const detail = await res.json();
-  if (!detail?.jobAd?.sections) return null;
+  if (!detail?.jobAd?.sections) {
+    logger.warn({ jobId: job.id, slug: job.ats_slug, hasJobAd: !!detail?.jobAd }, 'SmartRecruiters: no jobAd.sections');
+    return null;
+  }
   const parts = [];
   for (const section of Object.values(detail.jobAd.sections)) {
     if (section.text) parts.push(section.text);
@@ -256,17 +262,25 @@ function extractOracleRenderedDescription(html) {
 async function fetchOracleDescription(job) {
   // Parse tenant.region.siteNumber from ats_slug
   const parts = job.ats_slug.split('.');
-  if (parts.length < 2) return null;
+  if (parts.length < 2) {
+    logger.debug({ jobId: job.id, slug: job.ats_slug }, 'Oracle: slug has < 2 parts');
+    return null;
+  }
   const tenant = parts[0];
   const region = parts[1];
   const siteNumber = parts.slice(2).join('.') || null;
-  if (!siteNumber) return null;
+  if (!siteNumber) {
+    logger.debug({ jobId: job.id, slug: job.ats_slug }, 'Oracle: no siteNumber in slug');
+    return null;
+  }
   const jobId = job.external_id.replace('oracle_', '');
 
   // Strategy 1: REST API (fast, no proxy needed)
+  let apiStatus = null;
   try {
     const url = `https://${tenant}.fa.${region}.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitionDetails?onlyData=true&expand=all&finder=ById;Id=${jobId},siteNumber=${siteNumber}`;
     const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    apiStatus = res.status;
     if (res.ok) {
       const data = await res.json();
       const item = data.items?.[0];
@@ -280,17 +294,29 @@ async function fetchOracleDescription(job) {
           item.ShortDescriptionStr,
         ].filter(Boolean);
         if (descParts.length > 0) return descParts.join('\n');
+        logger.warn({ jobId: job.id, slug: job.ats_slug }, 'Oracle API: 200 but all description fields empty');
+      } else {
+        logger.warn({ jobId: job.id, slug: job.ats_slug }, 'Oracle API: 200 but no items returned');
       }
+    } else {
+      logger.warn({ jobId: job.id, slug: job.ats_slug, status: apiStatus }, 'Oracle API: non-200 response');
     }
-  } catch { /* API failed, try proxy */ }
+  } catch (err) {
+    logger.warn({ jobId: job.id, slug: job.ats_slug, err: err.message, apiStatus }, 'Oracle API: request failed');
+  }
 
   // Strategy 2: Render page via proxy and extract from Knockout.js-rendered HTML
   if (job.url) {
     try {
       const html = await fetchUnlockedHtml(job.url);
+      const htmlLen = html?.length || 0;
+      const hasDescContent = html?.includes('job-details__description-content') || false;
       const oracleDesc = extractOracleRenderedDescription(html);
       if (oracleDesc) return oracleDesc;
-    } catch { /* proxy failed */ }
+      logger.warn({ jobId: job.id, slug: job.ats_slug, htmlLen, hasDescContent }, 'Oracle proxy: rendered but extraction failed');
+    } catch (err) {
+      logger.warn({ jobId: job.id, slug: job.ats_slug, err: err.message }, 'Oracle proxy: fetch failed');
+    }
   }
 
   return null;
