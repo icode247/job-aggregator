@@ -88,7 +88,15 @@ function createSyncWorker() {
           meta.companyName = atsSlug.charAt(0).toUpperCase() + atsSlug.slice(1);
         }
 
-        if (!company?.logo_url || company.logo_url.includes('clearbit.com')) {
+        const needsLogoRefresh = !company?.logo_url
+          || company.logo_url.includes('clearbit.com')
+          || (company.logo_url.includes('gstatic.com/faviconV2') && (
+            company.logo_url.includes('icims.com') || company.logo_url.includes('oraclecloud')
+            || company.logo_url.includes('taleo.net') || company.logo_url.includes('successfactors')
+            || company.logo_url.includes('.CX') || company.logo_url.includes('saasfaprod')
+            || company.logo_url.includes('careers-')
+          ));
+        if (needsLogoRefresh) {
           // Use logo from adapter meta first, fall back to scraping career page
           if (!meta.logoUrl) {
             meta.logoUrl = await fetchLogoUrl(ats, atsSlug, domain);
