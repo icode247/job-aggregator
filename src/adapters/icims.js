@@ -239,7 +239,9 @@ async function enrichWithDetails(jobs, portalUrl) {
 
 async function fetchJobDetail(url) {
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    // iCIMS detail pages are iframe wrappers — the actual content lives at ?in_iframe=1
+    const detailUrl = url.includes('?') ? `${url}&in_iframe=1` : `${url}?in_iframe=1`;
+    const res = await fetch(detailUrl, { signal: AbortSignal.timeout(10000) });
     if (!res.ok) return null;
     const html = await res.text();
 
@@ -248,12 +250,26 @@ async function fetchJobDetail(url) {
     const titleMatch = html.match(/<h1[^>]*class="[^"]*iCIMS_Header[^"]*"[^>]*>([^<]+)/i);
     if (titleMatch) title = titleMatch[1].trim();
 
-    // Metadata from <dd class="iCIMS_JobHeaderData"> pairs
+    // Metadata from <dt>...<dd class="iCIMS_JobHeaderData"> pairs
+    // Labels may be plain text in <dt> OR inside <span class="sr-only"> within <dt>
+    // Values are typically inside a <span> within the <dd>
     const meta = {};
-    const metaRegex = /<dt[^>]*>([^<]+)<\/dt>\s*<dd[^>]*class="[^"]*iCIMS_JobHeaderData[^"]*"[^>]*>([^<]+)/gi;
+    const pairRegex = /<dt[^>]*>([\s\S]*?)<\/dt>\s*<dd[^>]*class="[^"]*iCIMS_JobHeaderData[^"]*"[^>]*>([\s\S]*?)<\/dd>/gi;
     let m;
-    while ((m = metaRegex.exec(html)) !== null) {
-      meta[m[1].trim().toLowerCase()] = m[2].trim();
+    while ((m = pairRegex.exec(html)) !== null) {
+      // Extract label: try sr-only span first, then plain text
+      let label = '';
+      const srMatch = m[1].match(/<span[^>]*class="[^"]*sr-only[^"]*"[^>]*>([^<]+)/i);
+      if (srMatch) {
+        label = srMatch[1].trim();
+      } else {
+        label = m[1].replace(/<[^>]+>/g, '').trim();
+      }
+      // Extract value: strip tags, get text
+      const value = m[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (label && value) {
+        meta[label.toLowerCase()] = value;
+      }
     }
 
     // Description from .iCIMS_Expandable_Text sections
@@ -264,23 +280,51 @@ async function fetchJobDetail(url) {
       if (text.length > 10) descParts.push(text);
     }
 
-    // Fallback: try JSON-LD
-    if (descParts.length === 0) {
-      const ldMatch = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/i);
-      if (ldMatch) {
-        try {
-          const ld = JSON.parse(ldMatch[1]);
-          if (ld.description) descParts.push(ld.description.replace(/<[^>]+>/g, ' ').trim());
-        } catch { /* invalid JSON-LD */ }
-      }
+    // Try JSON-LD for structured data (description, location, employment type)
+    let ld = null;
+    const ldMatch = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/i);
+    if (ldMatch) {
+      try { ld = JSON.parse(ldMatch[1]); } catch { /* invalid JSON-LD */ }
+    }
+
+    // Fallback description from JSON-LD
+    if (descParts.length === 0 && ld?.description) {
+      descParts.push(ld.description.replace(/<[^>]+>/g, ' ').trim());
+    }
+
+    // Build location from meta fields or JSON-LD
+    // iCIMS portals use varied field names — match any key containing "location"
+    let location = null;
+    const locationKey = Object.keys(meta).find(k => k.includes('location') && !k.includes('type'));
+    if (locationKey) location = meta[locationKey];
+    if (!location) location = meta['city'] || meta['posted locations'] || null;
+    if (!location && ld?.jobLocation) {
+      const jl = Array.isArray(ld.jobLocation) ? ld.jobLocation : [ld.jobLocation];
+      const parts = jl.map(loc => {
+        const addr = loc?.address;
+        if (!addr) return loc?.name || null;
+        return [addr.addressLocality, addr.addressRegion, addr.addressCountry].filter(Boolean).join(', ');
+      }).filter(Boolean);
+      if (parts.length > 0) location = parts.join('; ');
+    }
+
+    // Employment type from meta or JSON-LD
+    let employment_type = meta['type'] || meta['job type'] || meta['schedule']
+      || meta['employment type'] || null;
+    if (!employment_type && ld?.employmentType) {
+      employment_type = Array.isArray(ld.employmentType)
+        ? ld.employmentType.join(', ') : ld.employmentType;
     }
 
     return {
       title,
       description: descParts.length > 0 ? descParts.join('\n\n') : null,
-      department: meta['category'] || meta['department'] || null,
-      location: meta['location'] || meta['locations'] || null,
-      employment_type: meta['type'] || meta['job type'] || meta['schedule'] || null,
+      department: meta['category'] || meta['department'] || meta['job category']
+        || (Object.keys(meta).find(k => k.includes('category') || k.includes('department'))
+          ? meta[Object.keys(meta).find(k => k.includes('category') || k.includes('department'))]
+          : null),
+      location,
+      employment_type,
     };
   } catch {
     return null;
