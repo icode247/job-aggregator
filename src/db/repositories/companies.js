@@ -23,10 +23,9 @@ const companiesRepo = {
       SELECT id, ats, ats_slug FROM companies
       WHERE status = 'active'
         AND ats IS NOT NULL
+        AND ats IN ('ashby','workable','greenhouse','recruitee','breezy','lever')
         AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '30 minutes')
-      ORDER BY
-        CASE WHEN ats IN ('ashby','workable','greenhouse','recruitee','breezy','lever') THEN 0 ELSE 1 END,
-        last_synced_at ASC NULLS FIRST
+      ORDER BY last_synced_at ASC NULLS FIRST
       LIMIT 5000
     `);
     return rows;
