@@ -544,12 +544,12 @@ async function processJob(job, ats) {
       metrics.increment(`backfill.filled.${ats}`);
       return 'filled';
     } else {
-      await query('UPDATE jobs SET description = ? WHERE id = ?', ['', job.id]);
+      // Leave description as NULL so it gets retried next cycle
       metrics.increment(`backfill.failed.${ats}`);
       return 'failed';
     }
   } catch (err) {
-    await query('UPDATE jobs SET description = ? WHERE id = ?', ['', job.id]);
+    // Leave description as NULL so it gets retried next cycle
     metrics.increment(`backfill.failed.${ats}`);
     logger.warn({ jobId: job.id, ats: job.ats, slug: job.ats_slug, err: err.message }, 'Backfill fetch failed');
     return 'failed';

@@ -122,6 +122,11 @@ async function migrate() {
       .catch(() => {});
   }
 
+  // Reset empty-string descriptions back to NULL so backfill retries them
+  exec(`UPDATE jobs SET description = NULL WHERE description = '' AND removed_at IS NULL`)
+    .then(r => { if (r?.rowCount) logger.info({ rows: r.rowCount }, 'Reset empty descriptions to NULL for backfill retry'); })
+    .catch(() => {});
+
   logger.info({ engine: isPostgres ? 'postgresql' : 'sqlite' }, 'Database schema migrated');
 }
 
