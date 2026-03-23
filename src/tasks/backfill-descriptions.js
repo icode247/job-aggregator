@@ -259,6 +259,9 @@ function extractOracleRenderedDescription(html) {
   return sections.length > 0 ? sections.join('\n') : null;
 }
 
+// Oracle tenants known to have no public descriptions (empty API + empty rendered HTML)
+const ORACLE_SKIP_TENANTS = new Set(['hcbt']);
+
 async function fetchOracleDescription(job) {
   // Parse tenant.region.siteNumber from ats_slug
   const parts = job.ats_slug.split('.');
@@ -268,6 +271,10 @@ async function fetchOracleDescription(job) {
   }
   const tenant = parts[0];
   const region = parts[1];
+
+  if (ORACLE_SKIP_TENANTS.has(tenant)) {
+    return 'SKIP';
+  }
   const siteNumber = parts.slice(2).join('.') || null;
   if (!siteNumber) {
     logger.debug({ jobId: job.id, slug: job.ats_slug }, 'Oracle: no siteNumber in slug');
@@ -313,10 +320,7 @@ async function fetchOracleDescription(job) {
       const hasDescContent = html?.includes('job-details__description-content') || false;
       const oracleDesc = extractOracleRenderedDescription(html);
       if (oracleDesc) return oracleDesc;
-      // Log a snippet of the HTML to understand the page structure
-      const snippet = html ? html.replace(/\s+/g, ' ').slice(0, 500) : '';
-      const descDivs = (html?.match(/class="[^"]*description[^"]*"/gi) || []).slice(0, 10);
-      logger.warn({ jobId: job.id, slug: job.ats_slug, htmlLen, hasDescContent, descDivs, snippet }, 'Oracle proxy: rendered but extraction failed');
+      logger.warn({ jobId: job.id, slug: job.ats_slug, htmlLen, hasDescContent }, 'Oracle proxy: rendered but extraction failed');
     } catch (err) {
       logger.warn({ jobId: job.id, slug: job.ats_slug, err: err.message }, 'Oracle proxy: fetch failed');
     }
@@ -637,6 +641,11 @@ async function fetchDescription(job) {
 async function processJob(job, ats) {
   try {
     const description = await fetchDescription(job);
+    if (description === 'SKIP') {
+      // Tenant has no public descriptions — mark as unavailable so we stop retrying
+      await query("UPDATE jobs SET description = 'N/A' WHERE id = ?", [job.id]);
+      return 'skipped';
+    }
     if (description) {
       await query('UPDATE jobs SET description = ? WHERE id = ?', [description, job.id]);
       metrics.increment(`backfill.filled.${ats}`);
