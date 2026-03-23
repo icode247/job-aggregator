@@ -14,7 +14,7 @@ const ATS_CONFIG = {
   icims:           { batchSize: 500, concurrency: 20 },
   workday:         { batchSize: 200, concurrency: 10 },
   workable:        { batchSize: 200, concurrency: 10 },
-  oracle:          { batchSize: 200, concurrency: 10 },
+  oracle:          { batchSize: 200, concurrency: 2 },  // Low: relies on Browserless Paid which rate-limits
   taleo:           { batchSize: 100, concurrency: 10 },
   smartrecruiters: { batchSize: 200, concurrency: 15 },
   bamboohr:        { batchSize: 100, concurrency: 10 },
