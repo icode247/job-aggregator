@@ -8,8 +8,32 @@ const logger = require('../logger');
 const disabledProviders = new Set();
 
 /**
+ * Concurrency limiter for Browserless Paid (max 5 concurrent browsers).
+ * Callers wait in a queue instead of hammering the API and getting 429.
+ */
+const BROWSERLESS_PAID_MAX_CONCURRENT = 5;
+let browserlessPaidActive = 0;
+const browserlessPaidQueue = [];
+
+function acquireBrowserlessSlot() {
+  if (browserlessPaidActive < BROWSERLESS_PAID_MAX_CONCURRENT) {
+    browserlessPaidActive++;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => browserlessPaidQueue.push(resolve));
+}
+
+function releaseBrowserlessSlot() {
+  if (browserlessPaidQueue.length > 0) {
+    const next = browserlessPaidQueue.shift();
+    next();
+  } else {
+    browserlessPaidActive--;
+  }
+}
+
+/**
  * Browserless /content API — renders JS and returns full HTML.
- * Uses 1 unit per request. Max 2 concurrent (free), 1 min session timeout.
  */
 async function fetchViaBrowserless(url, token, label) {
   const response = await fetch(
@@ -56,14 +80,13 @@ async function fetchViaScraperAPI(url) {
  * Fetch rendered HTML via proxy chain:
  * 1. Browserless Free (1K units/mo, $0)
  * 2. ScraperAPI (pay-as-you-go)
- * 3. Browserless Paid (20K units/mo, $35)
+ * 3. Browserless Paid (20K units/mo, $35) — capped at 5 concurrent
  *
  * Circuit breaker: 401 disables a provider for the rest of the process.
  * 429 is transient and retried next cycle.
  */
 async function fetchUnlockedHtml(url) {
   let tried = 0;
-  let lastErr = null;
 
   // 1. Browserless Free
   if (config.BROWSERLESS_FREE_TOKEN && !disabledProviders.has('browserless-free')) {
@@ -71,7 +94,6 @@ async function fetchUnlockedHtml(url) {
     try {
       return await fetchViaBrowserless(url, config.BROWSERLESS_FREE_TOKEN, 'free');
     } catch (err) {
-      lastErr = err;
       if (err.status === 401) {
         disabledProviders.add('browserless-free');
         logger.warn('Browserless free: 401 quota/auth — disabled for this session');
@@ -87,7 +109,6 @@ async function fetchUnlockedHtml(url) {
     try {
       return await fetchViaScraperAPI(url);
     } catch (err) {
-      lastErr = err;
       if (err.status === 401) {
         disabledProviders.add('scraperapi');
         logger.warn('ScraperAPI: 401 auth — disabled for this session');
@@ -97,19 +118,21 @@ async function fetchUnlockedHtml(url) {
     }
   }
 
-  // 3. Browserless Paid
+  // 3. Browserless Paid — wait for a slot (max 5 concurrent)
   if (config.BROWSERLESS_PAID_TOKEN && !disabledProviders.has('browserless-paid')) {
     tried++;
+    await acquireBrowserlessSlot();
     try {
       return await fetchViaBrowserless(url, config.BROWSERLESS_PAID_TOKEN, 'paid');
     } catch (err) {
-      lastErr = err;
       if (err.status === 401) {
         disabledProviders.add('browserless-paid');
         logger.warn('Browserless paid: 401 quota/auth — disabled for this session');
       } else {
         logger.debug({ url: url.slice(0, 100), err: err.message }, 'Browserless paid failed');
       }
+    } finally {
+      releaseBrowserlessSlot();
     }
   }
 
