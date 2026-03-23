@@ -53,34 +53,39 @@ async function fetchViaScraperAPI(url) {
  * 3. Browserless Paid (20K units/mo, $35)
  */
 async function fetchUnlockedHtml(url) {
+  let tried = 0;
+
   // 1. Browserless Free
   if (config.BROWSERLESS_FREE_TOKEN) {
+    tried++;
     try {
       return await fetchViaBrowserless(url, config.BROWSERLESS_FREE_TOKEN, 'free');
     } catch (err) {
-      logger.debug({ url, err: err.message }, 'Browserless free failed');
+      logger.warn({ url: url.slice(0, 100), err: err.message }, 'Browserless free failed');
     }
   }
 
   // 2. ScraperAPI
   if (config.SCRAPER_API_KEY) {
+    tried++;
     try {
       return await fetchViaScraperAPI(url);
     } catch (err) {
-      logger.debug({ url, err: err.message }, 'ScraperAPI failed');
+      logger.warn({ url: url.slice(0, 100), err: err.message }, 'ScraperAPI failed');
     }
   }
 
   // 3. Browserless Paid
   if (config.BROWSERLESS_PAID_TOKEN) {
+    tried++;
     try {
       return await fetchViaBrowserless(url, config.BROWSERLESS_PAID_TOKEN, 'paid');
     } catch (err) {
-      logger.debug({ url, err: err.message }, 'Browserless paid failed');
+      logger.warn({ url: url.slice(0, 100), err: err.message }, 'Browserless paid failed');
     }
   }
 
-  throw new Error('No proxy service configured');
+  throw new Error(tried === 0 ? 'No proxy service configured' : `All ${tried} proxy providers failed`);
 }
 
 module.exports = { fetchUnlockedHtml };
