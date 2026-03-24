@@ -6,29 +6,27 @@
  */
 const { query } = require('../db/connection');
 const { discoverConfig } = require('../adapters/workday');
-const { fetchUnlockedHtml } = require('../adapters/brightdata');
 const logger = require('../logger');
 const metrics = require('../utils/metrics');
 
+// Only ATS platforms that return descriptions without Browserless.
+// Priority order: Ashby, Breezy, Greenhouse, Workable first, then rest.
 const ATS_CONFIG = {
-  icims:           { batchSize: 500, concurrency: 20 },
-  workday:         { batchSize: 200, concurrency: 10 },
+  ashby:           { batchSize: 100, concurrency: 10 },
+  breezy:          { batchSize: 100, concurrency: 10 },
+  greenhouse:      { batchSize: 200, concurrency: 15 },
   workable:        { batchSize: 200, concurrency: 10 },
-  oracle:          { batchSize: 200, concurrency: 2 },  // Low: relies on Browserless Paid which rate-limits
-  taleo:           { batchSize: 100, concurrency: 10 },
+  lever:           { batchSize: 100, concurrency: 10 },
+  recruitee:       { batchSize: 100, concurrency: 10 },
+  pinpoint:        { batchSize: 100, concurrency: 10 },
   smartrecruiters: { batchSize: 200, concurrency: 15 },
   bamboohr:        { batchSize: 100, concurrency: 10 },
   jazzhr:          { batchSize: 100, concurrency: 10 },
-  breezy:          { batchSize: 100, concurrency: 10 },
-  greenhouse:      { batchSize: 200, concurrency: 15 },
-  lever:           { batchSize: 100, concurrency: 10 },
-  ashby:           { batchSize: 100, concurrency: 10 },
   personio:        { batchSize: 100, concurrency: 5 },
-  recruitee:       { batchSize: 100, concurrency: 10 },
   rippling:        { batchSize: 100, concurrency: 10 },
   zoho:            { batchSize: 100, concurrency: 5 },
-  pinpoint:        { batchSize: 100, concurrency: 10 },
-  successfactors:  { batchSize: 100, concurrency: 5 },
+  // Paused — require Browserless (not used):
+  // icims, oracle, taleo, workday, successfactors
 };
 
 // Cache workday configs per slug with TTL (1 hour)
@@ -564,20 +562,6 @@ function extractDescriptionFromHtml(html) {
   return null;
 }
 
-/**
- * Proxy fallback: fetch the job URL via proxy chain (Browserless → ScraperAPI → Brightdata)
- * and extract description from the rendered HTML.
- */
-async function fetchViaProxy(job) {
-  if (!job.url) return null;
-  try {
-    const html = await fetchUnlockedHtml(job.url);
-    return extractDescriptionFromHtml(html);
-  } catch (err) {
-    logger.debug({ jobId: job.id, err: err.message }, 'Proxy fallback failed');
-    return null;
-  }
-}
 
 async function fetchDescription(job) {
   const rawData = typeof job.raw_data === 'string' ? JSON.parse(job.raw_data) : job.raw_data;
@@ -623,14 +607,8 @@ async function fetchDescription(job) {
       description = await fetchSuccessFactorsDescription(job); break;
   }
 
-  // Proxy fallback: if ATS fetcher returned nothing and job has a URL
-  if (!description && job.url) {
-    description = await fetchViaProxy(job);
-    if (description) {
-      metrics.increment(`backfill.proxy_fallback.${job.ats}`);
-    }
-  }
-
+  // No Browserless proxy fallback — all active ATS platforms return descriptions
+  // via their own APIs. If the ATS fetcher returned nothing, we just retry next cycle.
   return description;
 }
 

@@ -13,12 +13,8 @@ module.exports = {
   // Auth
   API_SECRET: process.env.API_SECRET || '',
 
-  // ScraperAPI
+  // ScraperAPI (not currently used — Browserless removed)
   SCRAPER_API_KEY: process.env.SCRAPER_API_KEY || '',
-
-  // Browserless
-  BROWSERLESS_FREE_TOKEN: process.env.BROWSERLESS_FREE_TOKEN || '',
-  BROWSERLESS_PAID_TOKEN: process.env.BROWSERLESS_PAID_TOKEN || '',
 
   // Hugging Face Inference API
   HF_API_TOKEN: process.env.HF_API_TOKEN || '',
@@ -26,11 +22,11 @@ module.exports = {
   // Queue settings
   DISCOVERY_INTERVAL_MS: 1000 * 60 * 60 * 24 * 14, // 14 days
   SYNC_INTERVAL_MS: 1000 * 60 * 5,                 // 5 minutes (was 15)
-  DISCOVERY_RATE_LIMIT: { max: 50, duration: 60000 },  // 50/min
-  SYNC_RATE_LIMIT: { max: 500, duration: 60000 },      // 500/min (was 300)
+  DISCOVERY_RATE_LIMIT: { max: 5, duration: 60000 },   // 5/min
+  SYNC_RATE_LIMIT: { max: 50, duration: 60000 },       // 50/min (Basic dyno safe)
 
   // Crawl settings — crawl worker disabled, keeping config for revert
-  CRAWL_RATE_LIMIT: { max: 10, duration: 60000 },      // 10/min (was 6)
+  CRAWL_RATE_LIMIT: { max: 3, duration: 60000 },       // 3/min
   CRAWL_INTERVAL_MS: 1000 * 60 * 60 * 24, // 1 day
   CRAWL_GOOGLE_MAX_PAGES: parseInt(process.env.CRAWL_GOOGLE_MAX_PAGES, 10) || 10,
   CRAWL_DICTIONARY_PATH: process.env.CRAWL_DICTIONARY_PATH || path.join(__dirname, '..', 'data', 'company-names.txt'),

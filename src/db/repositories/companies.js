@@ -23,7 +23,7 @@ const companiesRepo = {
       SELECT id, ats, ats_slug FROM companies
       WHERE status = 'active'
         AND ats IS NOT NULL
-        AND ats IN ('ashby','workable','greenhouse','recruitee','breezy','lever')
+        AND ats IN ('ashby','breezy','greenhouse','workable','lever','recruitee','pinpoint','smartrecruiters','bamboohr','jazzhr','personio','rippling','zoho')
         AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '30 minutes')
       ORDER BY last_synced_at ASC NULLS FIRST
       LIMIT 5000

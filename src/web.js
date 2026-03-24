@@ -13,20 +13,16 @@ async function main() {
   // Run migrations after port is bound (non-blocking)
   migrate().catch(err => logger.error({ err: err.message }, 'Migration error'));
 
-  // Connect queues lazily (non-blocking)
-  let crawlQueue = null;
+  // Connect sync queue lazily (non-blocking)
   let syncQueue = null;
   setImmediate(async () => {
     try {
-      const { createCrawlQueue } = require('./queues/crawl.queue');
       const { createSyncQueue } = require('./queues/sync.queue');
-      crawlQueue = createCrawlQueue();
       syncQueue = createSyncQueue();
-      app.set('crawlQueue', crawlQueue);
       app.set('syncQueue', syncQueue);
-      logger.info('Queue connections established');
+      logger.info('Queue connection established');
     } catch (err) {
-      logger.error({ err: err.message }, 'Failed to connect queues (non-fatal)');
+      logger.error({ err: err.message }, 'Failed to connect queue (non-fatal)');
     }
   });
 
@@ -36,7 +32,6 @@ async function main() {
     forceTimer.unref();
     server.close(async () => {
       try {
-        if (crawlQueue) await crawlQueue.close();
         if (syncQueue) await syncQueue.close();
         await closeDb();
       } catch { /* ignore */ }

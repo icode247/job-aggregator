@@ -5,14 +5,12 @@ const { createRedisConnection } = require('../../queues/connection');
 
 const router = Router();
 
-// Lazy-init read-only queue instances for health checks
+// Lazy-init read-only queue instance for health checks
 let queues;
 function getQueues() {
   if (!queues) {
     queues = {
-      discovery: new Queue('discovery', { connection: createRedisConnection() }),
       sync: new Queue('sync', { connection: createRedisConnection() }),
-      crawl: new Queue('crawl', { connection: createRedisConnection() }),
     };
   }
   return queues;
@@ -30,12 +28,10 @@ async function getQueueCounts(queue) {
 router.get('/health', async (req, res) => {
   const q = getQueues();
 
-  const [activeCount, totalJobs, discovery, sync, crawl] = await Promise.all([
+  const [activeCount, totalJobs, sync] = await Promise.all([
     companiesRepo.countActive(),
     jobsRepo.countActive(),
-    getQueueCounts(q.discovery),
     getQueueCounts(q.sync),
-    getQueueCounts(q.crawl),
   ]);
 
   res.json({
@@ -43,9 +39,7 @@ router.get('/health', async (req, res) => {
     companies_tracked: activeCount,
     total_active_jobs: totalJobs,
     queue_health: {
-      discovery: { waiting: discovery.waiting, active: discovery.active, failed: discovery.failed, delayed: discovery.delayed },
       sync: { waiting: sync.waiting, active: sync.active, failed: sync.failed, delayed: sync.delayed },
-      crawl: { waiting: crawl.waiting, active: crawl.active, failed: crawl.failed, delayed: crawl.delayed },
     },
   });
 });
