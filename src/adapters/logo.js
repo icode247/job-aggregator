@@ -150,6 +150,17 @@ function classifyCompanyDomain(ats, atsSlug, domain) {
     }
   }
 
+  // ── SmartRecruiters ──────────────────────────────────────────
+  // Domain is often "careers.smartrecruiters.com" (generic) or slug-based garbage
+  // like "aecom2.com", "abercrombieandfi.com". Use company_name to guess real domain.
+  if (ats === 'smartrecruiters') {
+    // Always reclassify — SR domains are either generic (careers.smartrecruiters.com)
+    // or slug-derived garbage (aecom2.com, abercrombieandfi.com)
+    const slug = (atsSlug || '').replace(/\d+$/, '').toLowerCase();
+    if (slug && slug.length > 2) return `${slug}.com`;
+    return null;
+  }
+
   // ── SuccessFactors ────────────────────────────────────────────
   // Domain: "careersiemens.successfactors.eu"
   if (ats === 'successfactors') {
@@ -261,9 +272,9 @@ async function fetchLogoUrl(ats, atsSlug, domain) {
   if (logoDomain) {
     const baseName = logoDomain.replace(/\.\w+$/, ''); // strip TLD
     const candidates = [logoDomain];
-    // If the classified domain is .com, also try .org and .edu
+    // If the classified domain is .com, try common TLD alternatives
     if (logoDomain.endsWith('.com')) {
-      candidates.push(`${baseName}.org`, `${baseName}.edu`);
+      candidates.push(`${baseName}.io`, `${baseName}.org`, `${baseName}.co`, `${baseName}.ai`, `${baseName}.edu`, `${baseName}.net`);
     }
     for (const candidate of candidates) {
       const favUrl = googleFaviconUrl(candidate);

@@ -95,6 +95,7 @@ function createSyncWorker() {
             || company.logo_url.includes('taleo.net') || company.logo_url.includes('successfactors')
             || company.logo_url.includes('.CX') || company.logo_url.includes('saasfaprod')
             || company.logo_url.includes('careers-')
+            || company.logo_url.includes('smartrecruiters.com')
           ));
         if (needsLogoRefresh) {
           // Use logo from adapter meta first, fall back to scraping career page
