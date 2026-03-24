@@ -23,7 +23,7 @@ module.exports = {
   DISCOVERY_INTERVAL_MS: 1000 * 60 * 60 * 24 * 14, // 14 days
   SYNC_INTERVAL_MS: 1000 * 60 * 5,                 // 5 minutes (was 15)
   DISCOVERY_RATE_LIMIT: { max: 5, duration: 60000 },   // 5/min
-  SYNC_RATE_LIMIT: { max: 50, duration: 60000 },       // 50/min (Basic dyno safe)
+  SYNC_RATE_LIMIT: { max: 150, duration: 60000 },      // 150/min — 12K companies need throughput
 
   // Crawl settings — crawl worker disabled, keeping config for revert
   CRAWL_RATE_LIMIT: { max: 3, duration: 60000 },       // 3/min

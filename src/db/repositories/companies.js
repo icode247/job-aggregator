@@ -25,7 +25,17 @@ const companiesRepo = {
         AND ats IS NOT NULL
         AND ats IN ('ashby','breezy','greenhouse','workable','lever','recruitee','pinpoint','smartrecruiters','bamboohr','jazzhr','personio','rippling','zoho')
         AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '30 minutes')
-      ORDER BY last_synced_at ASC NULLS FIRST
+      ORDER BY
+        CASE ats
+          WHEN 'ashby' THEN 1
+          WHEN 'breezy' THEN 2
+          WHEN 'greenhouse' THEN 3
+          WHEN 'workable' THEN 4
+          WHEN 'lever' THEN 5
+          WHEN 'recruitee' THEN 6
+          ELSE 7
+        END,
+        last_synced_at ASC NULLS FIRST
       LIMIT 5000
     `);
     return rows;
