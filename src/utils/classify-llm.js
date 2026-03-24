@@ -93,10 +93,10 @@ async function classifyJobWithLLM(job) {
     const result = await classifyWithHF(job);
     if (result) return result;
   } catch (err) {
-    logger.debug({ jobId: job.id, err: err.message }, 'LLM classification failed, using regex');
+    logger.debug({ jobId: job.id, err: err.message }, 'LLM classification failed');
   }
-  // Fallback to regex
-  return classifyJob(job);
+  // No regex fallback — return null fields so job gets retried next cycle
+  return { is_remote: null, remote_worldwide: null, visa_sponsorship: null, experience_level: null };
 }
 
 module.exports = { classifyJobWithLLM, classifyWithHF, parseResponse };
