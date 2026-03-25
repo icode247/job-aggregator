@@ -90,6 +90,7 @@ function createSyncWorker() {
 
         const needsLogoRefresh = !company?.logo_url
           || company.logo_url.includes('clearbit.com')
+          || company.logo_url.includes('sr-company-logo-prod')
           || (company.logo_url.includes('gstatic.com/faviconV2') && (
             company.logo_url.includes('icims.com') || company.logo_url.includes('oraclecloud')
             || company.logo_url.includes('taleo.net') || company.logo_url.includes('successfactors')

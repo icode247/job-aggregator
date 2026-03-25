@@ -293,12 +293,19 @@ async function fetchLogoUrl(ats, atsSlug, domain) {
           }
         }
 
-        // Validate candidates — only accept URLs that return an image content-type
+        // Validate candidates — only accept URLs that return an image with decent size
+        // Tiny logos (<3KB) are usually low-quality thumbnails (e.g. SmartRecruiters 47x60)
+        const MIN_LOGO_BYTES = 3000;
         for (const candidateUrl of candidates) {
           try {
             const headRes = await fetch(candidateUrl, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(5000) });
             const ct = headRes.headers.get('content-type') || '';
+            const cl = parseInt(headRes.headers.get('content-length') || '0', 10);
             if (headRes.ok && ct.startsWith('image/')) {
+              if (cl > 0 && cl < MIN_LOGO_BYTES) {
+                logger.debug({ ats, atsSlug, candidateUrl, contentLength: cl }, 'Logo candidate rejected (too small, likely low-res thumbnail)');
+                continue;
+              }
               logger.info({ ats, atsSlug, logoUrl: candidateUrl }, 'Logo found and validated via scrape');
               return candidateUrl;
             }
