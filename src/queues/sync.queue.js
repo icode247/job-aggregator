@@ -96,6 +96,14 @@ function createSyncWorker() {
             || company.logo_url.includes('.CX') || company.logo_url.includes('saasfaprod')
             || company.logo_url.includes('careers-')
             || company.logo_url.includes('smartrecruiters.com')
+            || company.logo_url.includes('lever.co')
+            || company.logo_url.includes('greenhouse.io')
+            || company.logo_url.includes('bamboohr.com')
+            || company.logo_url.includes('ashbyhq.com')
+            || company.logo_url.includes('workable.com')
+            || company.logo_url.includes('recruitee.com')
+            || company.logo_url.includes('breezy.hr')
+            || company.logo_url.includes('applytojob.com')
           ));
         if (needsLogoRefresh) {
           // Use logo from adapter meta first, fall back to scraping career page

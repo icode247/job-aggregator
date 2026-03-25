@@ -92,6 +92,70 @@ function googleFaviconUrl(domain) {
  * This classifier attempts to recover the real company domain.
  */
 function classifyCompanyDomain(ats, atsSlug, domain) {
+  // ── Lever ───────────────────────────────────────────────────────
+  // Domain is "jobs.lever.co" (generic) — use slug to guess real domain
+  if (ats === 'lever') {
+    const slug = (atsSlug || '').toLowerCase().replace(/[-_]/g, '');
+    if (slug) return `${slug}.com`;
+    return null;
+  }
+
+  // ── Greenhouse ──────────────────────────────────────────────────
+  // Domain is "job-boards.greenhouse.io" (generic) — use slug to guess real domain
+  if (ats === 'greenhouse') {
+    const slug = (atsSlug || '').toLowerCase().replace(/[-_]/g, '');
+    if (slug) return `${slug}.com`;
+    return null;
+  }
+
+  // ── BambooHR ────────────────────────────────────────────────────
+  // Domain is "{slug}.bamboohr.com" — strip the bamboohr suffix
+  if (ats === 'bamboohr') {
+    const slug = (atsSlug || '').toLowerCase().replace(/[-_]/g, '');
+    if (slug) return `${slug}.com`;
+    return null;
+  }
+
+  // ── Ashby ───────────────────────────────────────────────────────
+  // Domain is "jobs.ashbyhq.com" (generic) — use slug to guess real domain
+  if (ats === 'ashby') {
+    const slug = (atsSlug || '').toLowerCase().replace(/[-_]/g, '');
+    if (slug) return `${slug}.com`;
+    return null;
+  }
+
+  // ── Workable ────────────────────────────────────────────────────
+  // Domain is "apply.workable.com" (generic) — use slug
+  if (ats === 'workable') {
+    const slug = (atsSlug || '').toLowerCase().replace(/[-_]/g, '');
+    if (slug) return `${slug}.com`;
+    return null;
+  }
+
+  // ── Recruitee ───────────────────────────────────────────────────
+  // Domain is "{slug}.recruitee.com" — use slug
+  if (ats === 'recruitee') {
+    const slug = (atsSlug || '').toLowerCase().replace(/[-_]/g, '');
+    if (slug) return `${slug}.com`;
+    return null;
+  }
+
+  // ── Breezy ──────────────────────────────────────────────────────
+  // Domain is "{slug}.breezy.hr" — use slug
+  if (ats === 'breezy') {
+    const slug = (atsSlug || '').toLowerCase().replace(/[-_]/g, '');
+    if (slug) return `${slug}.com`;
+    return null;
+  }
+
+  // ── JazzHR ──────────────────────────────────────────────────────
+  // Domain is "{slug}.applytojob.com" — use slug
+  if (ats === 'jazzhr') {
+    const slug = (atsSlug || '').toLowerCase().replace(/[-_]/g, '');
+    if (slug) return `${slug}.com`;
+    return null;
+  }
+
   // ── iCIMS ─────────────────────────────────────────────────────
   // Slugs: "careers-snapon", "uscareers-yelp", "management-davidsonhospitality"
   // Extract the company name after the prefix, then guess domain
