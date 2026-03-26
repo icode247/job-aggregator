@@ -17,8 +17,9 @@ const companiesRepo = {
   },
 
   async findDueForSync() {
-    // Prioritize: high-quality ATS first (ashby, workable, greenhouse, recruitee, breezy, lever),
-    // then never-synced, then oldest-synced (stale > 30min)
+    // Round-robin by staleness: never-synced first, then oldest-synced.
+    // No ATS preference — ensures all platforms get fair share of sync cycles.
+    // Stale threshold: 30 min for all platforms.
     const { rows } = await query(`
       SELECT id, ats, ats_slug FROM companies
       WHERE status = 'active'
@@ -26,17 +27,8 @@ const companiesRepo = {
         AND ats IN ('ashby','breezy','greenhouse','workable','lever','recruitee','pinpoint','smartrecruiters','bamboohr','jazzhr','personio','rippling','zoho')
         AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '30 minutes')
       ORDER BY
-        CASE ats
-          WHEN 'ashby' THEN 1
-          WHEN 'breezy' THEN 2
-          WHEN 'greenhouse' THEN 3
-          WHEN 'workable' THEN 4
-          WHEN 'lever' THEN 5
-          WHEN 'recruitee' THEN 6
-          ELSE 7
-        END,
         last_synced_at ASC NULLS FIRST
-      LIMIT 5000
+      LIMIT 3000
     `);
     return rows;
   },

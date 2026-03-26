@@ -47,9 +47,9 @@ async function main() {
     } finally {
       allBackfillRunning = false;
     }
-    setTimeout(runAllBackfill, 3 * 60 * 1000);
+    setTimeout(runAllBackfill, 15 * 60 * 1000);
   }
-  setTimeout(runAllBackfill, 2 * 60 * 1000);
+  setTimeout(runAllBackfill, 5 * 60 * 1000);
 
   // Backfill classifications (visa, remote, experience) every 5 minutes
   async function runClassificationBackfill() {
