@@ -172,13 +172,9 @@ const jobsRepo = {
     let removed = 0;
     let skippedRemoval = false;
 
-    // Filter out jobs older than 3 months if they have a posted date
-    const THREE_MONTHS_AGO = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
-    const freshJobs = incomingJobs.filter(job => {
-      if (!job.posted_at) return true; // Keep jobs without dates (can't determine age)
-      const posted = new Date(job.posted_at);
-      return !isNaN(posted.getTime()) && posted >= THREE_MONTHS_AGO;
-    });
+    // Trust the ATS — if a job is still listed, it's still active.
+    // Freshness filtering is handled by the API/frontend, not the sync.
+    const freshJobs = incomingJobs;
 
     await transaction(async (tx) => {
       const { rows: existingJobs } = await tx.query(
