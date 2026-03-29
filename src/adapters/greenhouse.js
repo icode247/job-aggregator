@@ -23,13 +23,37 @@ async function fetchJobs(clientname) {
 }
 
 async function fetchCompanyMeta(clientname) {
-  const res = await fetch(`https://api.greenhouse.io/v1/boards/${encodeURIComponent(clientname)}`);
-  if (!res.ok) return null;
-  const data = await res.json();
-  return {
-    companyName: data.name || null,
-    logoUrl: data.logo || null,
-  };
+  // Try the board page SSR data which has the logo in __remixContext
+  try {
+    const pageRes = await fetch(`https://job-boards.greenhouse.io/${encodeURIComponent(clientname)}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    });
+    if (pageRes.ok) {
+      const html = await pageRes.text();
+      // Extract logo from __remixContext boardConfiguration
+      const remixMatch = html.match(/"logo"\s*:\s*\{\s*"href"\s*:\s*"([^"]+)"/);
+      if (remixMatch) return { companyName: null, logoUrl: remixMatch[1] };
+
+      // Fallback: look for S3 CDN logo pattern
+      const cdnMatch = html.match(/https:\/\/s\d+-recruiting\.cdn\.greenhouse\.io\/external_greenhouse_job_boards\/logos\/[^"'\s]+/);
+      if (cdnMatch) return { companyName: null, logoUrl: cdnMatch[0] };
+
+      // Fallback: recruiting.cdn pattern without s{N} prefix
+      const cdnMatch2 = html.match(/https:\/\/recruiting\.cdn\.greenhouse\.io\/external_greenhouse_job_boards\/logos\/[^"'\s]+/);
+      if (cdnMatch2) return { companyName: null, logoUrl: cdnMatch2[0] };
+    }
+  } catch { /* fall through to API */ }
+
+  // Fallback to boards API
+  try {
+    const res = await fetch(`https://api.greenhouse.io/v1/boards/${encodeURIComponent(clientname)}`);
+    if (res.ok) {
+      const data = await res.json();
+      return { companyName: data.name || null, logoUrl: data.logo || null };
+    }
+  } catch {}
+
+  return null;
 }
 
 module.exports = { fetchJobs, fetchCompanyMeta };

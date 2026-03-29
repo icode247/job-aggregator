@@ -57,4 +57,33 @@ async function fetchJobs(clientname) {
   return { jobs, meta: { companyName, logoUrl } };
 }
 
-module.exports = { fetchJobs };
+async function fetchCompanyMeta(clientname) {
+  // Try widget API first — returns S3 logo URL
+  try {
+    const res = await fetch(
+      `https://apply.workable.com/api/v1/widget/accounts/${encodeURIComponent(clientname)}`,
+      { signal: AbortSignal.timeout(5000) }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      if (data.logo) return { companyName: data.name || null, logoUrl: data.logo };
+    }
+  } catch {}
+
+  // Fallback: scrape the careers page for workablehr S3 logo
+  try {
+    const res = await fetch(`https://apply.workable.com/${encodeURIComponent(clientname)}/`, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) {
+      const html = await res.text();
+      const match = html.match(/https:\/\/workablehr\.s3[^"'\s]*logo[^"'\s]*/);
+      if (match) return { companyName: null, logoUrl: match[0] };
+    }
+  } catch {}
+
+  return null;
+}
+
+module.exports = { fetchJobs, fetchCompanyMeta };

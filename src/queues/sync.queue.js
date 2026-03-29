@@ -77,38 +77,28 @@ function createSyncWorker() {
         const company = await companiesRepo.findById(companyId);
         const domain = company?.domain;
 
-        if (ats === 'greenhouse' && adapter.fetchCompanyMeta) {
-          const ghMeta = await adapter.fetchCompanyMeta(atsSlug);
-          if (ghMeta) {
-            meta.companyName = meta.companyName || ghMeta.companyName;
-          }
+        // Fetch company meta (name + logo) from adapter if available
+        if (adapter.fetchCompanyMeta) {
+          try {
+            const adapterMeta = await adapter.fetchCompanyMeta(atsSlug);
+            if (adapterMeta) {
+              meta.companyName = meta.companyName || adapterMeta.companyName;
+              if (adapterMeta.logoUrl) meta.logoUrl = adapterMeta.logoUrl;
+            }
+          } catch {}
         }
 
         if (!meta.companyName && atsSlug) {
           meta.companyName = atsSlug.charAt(0).toUpperCase() + atsSlug.slice(1);
         }
 
-        const needsLogoRefresh = !company?.logo_url
-          || company.logo_url.includes('clearbit.com')
-          || company.logo_url.includes('sr-company-logo-prod')
-          || (company.logo_url.includes('gstatic.com/faviconV2') && (
-            company.logo_url.includes('icims.com') || company.logo_url.includes('oraclecloud')
-            || company.logo_url.includes('taleo.net') || company.logo_url.includes('successfactors')
-            || company.logo_url.includes('.CX') || company.logo_url.includes('saasfaprod')
-            || company.logo_url.includes('careers-')
-            || company.logo_url.includes('smartrecruiters.com')
-            || company.logo_url.includes('lever.co')
-            || company.logo_url.includes('greenhouse.io')
-            || company.logo_url.includes('bamboohr.com')
-            || company.logo_url.includes('ashbyhq.com')
-            || company.logo_url.includes('workable.com')
-            || company.logo_url.includes('recruitee.com')
-            || company.logo_url.includes('breezy.hr')
-            || company.logo_url.includes('applytojob.com')
-          ));
-        if (needsLogoRefresh) {
-          // Use logo from adapter meta first, fall back to scraping career page
-          if (!meta.logoUrl) {
+        // Only fall back to generic logo scraping if adapter didn't provide one
+        if (!meta.logoUrl) {
+          const needsLogoRefresh = !company?.logo_url
+            || company.logo_url.includes('clearbit.com')
+            || company.logo_url.includes('sr-company-logo-prod')
+            || company.logo_url.includes('gstatic.com/faviconV2');
+          if (needsLogoRefresh) {
             meta.logoUrl = await fetchLogoUrl(ats, atsSlug, domain);
           }
         }

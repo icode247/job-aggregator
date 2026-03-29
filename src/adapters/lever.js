@@ -49,13 +49,24 @@ async function fetchJobs(clientname) {
     };
   });
 
-  return {
-    jobs,
-    meta: {
-      companyName: null,
-      logoUrl: null,
-    },
-  };
+  return { jobs, meta: {} };
 }
 
-module.exports = { fetchJobs };
+async function fetchCompanyMeta(clientname) {
+  // Lever logos are on the hosted page HTML as S3 URLs
+  try {
+    const res = await fetch(`https://jobs.lever.co/${encodeURIComponent(clientname)}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    });
+    if (res.ok) {
+      const html = await res.text();
+      // Pattern: lever-client-logos.s3.amazonaws.com/... or lever-client-logos.s3.us-west-2.amazonaws.com/...
+      const match = html.match(/https:\/\/lever-client-logos\.s3[^"'\s]+/);
+      if (match) return { companyName: null, logoUrl: match[0] };
+    }
+  } catch {}
+
+  return null;
+}
+
+module.exports = { fetchJobs, fetchCompanyMeta };

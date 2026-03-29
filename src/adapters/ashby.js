@@ -31,4 +31,33 @@ async function fetchJobs(clientname) {
   };
 }
 
-module.exports = { fetchJobs };
+async function fetchCompanyMeta(clientname) {
+  // First try the posting API which may have the logo
+  try {
+    const res = await fetch(`https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(clientname)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.organizationLogo) return { companyName: data.organizationName, logoUrl: data.organizationLogo };
+    }
+  } catch {}
+
+  // Fallback: scrape the hosted page for org-theme-logo or org-theme-social images
+  try {
+    const res = await fetch(`https://jobs.ashbyhq.com/${encodeURIComponent(clientname)}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    });
+    if (res.ok) {
+      const html = await res.text();
+      // Prefer org-theme-logo over org-theme-social
+      const logoMatch = html.match(/https:\/\/app\.ashbyhq\.com\/api\/images\/org-theme-logo\/[^"'\s]+/);
+      if (logoMatch) return { companyName: null, logoUrl: logoMatch[0] };
+
+      const socialMatch = html.match(/https:\/\/app\.ashbyhq\.com\/api\/images\/org-theme-social\/[^"'\s]+/);
+      if (socialMatch) return { companyName: null, logoUrl: socialMatch[0] };
+    }
+  } catch {}
+
+  return null;
+}
+
+module.exports = { fetchJobs, fetchCompanyMeta };
