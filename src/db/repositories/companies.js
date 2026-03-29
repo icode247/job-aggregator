@@ -28,7 +28,7 @@ const companiesRepo = {
         AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '30 minutes')
       ORDER BY
         last_synced_at ASC NULLS FIRST
-      LIMIT 3000
+      LIMIT 1500
     `);
     return rows;
   },
