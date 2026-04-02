@@ -12,17 +12,45 @@ function buildFilters(filters = {}) {
 
   // Role / Keywords — use full-text search on Postgres, ILIKE fallback on SQLite
   if (filters.q) {
+    // Support comma-separated role queries: "Senior Developer, technical writer"
+    // Each comma-separated term is a separate role query, OR'd together
+    const roles = filters.q.split(',').map(r => r.trim()).filter(Boolean);
+
     if (isPostgres) {
-      // Use GIN-indexed search_vector for fast full-text search
-      const tsquery = filters.q.trim().split(/\s+/).filter(Boolean).join(' & ');
-      clauses.push("j.search_vector @@ to_tsquery('english', ?)");
-      params.push(tsquery);
+      if (roles.length === 1) {
+        // Single role: AND all words together
+        const tsquery = roles[0].split(/\s+/).filter(Boolean).join(' & ');
+        clauses.push("j.search_vector @@ to_tsquery('english', ?)");
+        params.push(tsquery);
+      } else {
+        // Multiple roles: each role is AND'd internally, roles are OR'd together
+        const tsqueries = roles.map(role => {
+          const words = role.split(/\s+/).filter(Boolean).join(' & ');
+          params.push(words);
+          return "j.search_vector @@ to_tsquery('english', ?)";
+        });
+        clauses.push('(' + tsqueries.join(' OR ') + ')');
+      }
     } else {
-      const terms = filters.q.trim().split(/\s+/).filter(Boolean);
-      for (const term of terms) {
-        clauses.push('(j.title ILIKE ? OR j.department ILIKE ? OR c.company_name ILIKE ?)');
-        const pattern = `%${term}%`;
-        params.push(pattern, pattern, pattern);
+      if (roles.length === 1) {
+        const terms = roles[0].split(/\s+/).filter(Boolean);
+        for (const term of terms) {
+          clauses.push('(j.title ILIKE ? OR j.department ILIKE ? OR c.company_name ILIKE ?)');
+          const pattern = `%${term}%`;
+          params.push(pattern, pattern, pattern);
+          needsJoin = true;
+        }
+      } else {
+        const roleClauses = roles.map(role => {
+          const terms = role.split(/\s+/).filter(Boolean);
+          const termClauses = terms.map(term => {
+            const pattern = `%${term}%`;
+            params.push(pattern, pattern, pattern);
+            return '(j.title ILIKE ? OR j.department ILIKE ? OR c.company_name ILIKE ?)';
+          });
+          return '(' + termClauses.join(' AND ') + ')';
+        });
+        clauses.push('(' + roleClauses.join(' OR ') + ')');
         needsJoin = true;
       }
     }
