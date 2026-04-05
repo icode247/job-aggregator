@@ -19,16 +19,16 @@ const companiesRepo = {
   async findDueForSync() {
     // Round-robin by staleness: never-synced first, then oldest-synced.
     // No ATS preference — ensures all platforms get fair share of sync cycles.
-    // Stale threshold: 30 min for all platforms.
+    // Stale threshold: 60 min — job boards rarely update faster than hourly.
     const { rows } = await query(`
       SELECT id, ats, ats_slug FROM companies
       WHERE status = 'active'
         AND ats IS NOT NULL
         AND ats IN ('ashby','breezy','greenhouse','workable','lever','recruitee','pinpoint','smartrecruiters','bamboohr','jazzhr','personio','rippling','zoho')
-        AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '30 minutes')
+        AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '60 minutes')
       ORDER BY
         last_synced_at ASC NULLS FIRST
-      LIMIT 1500
+      LIMIT 5000
     `);
     return rows;
   },
