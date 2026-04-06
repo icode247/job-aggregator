@@ -25,8 +25,7 @@ const ATS_CONFIG = {
   personio:        { batchSize: 50, concurrency: 3 },
   rippling:        { batchSize: 50, concurrency: 5 },
   zoho:            { batchSize: 50, concurrency: 3 },
-  // Paused — require Browserless (not used):
-  // icims, oracle, taleo, workday, successfactors
+  workday:         { batchSize: 50, concurrency: 3 },
 };
 
 // Cache workday configs per slug with TTL (1 hour)
