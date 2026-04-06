@@ -62,6 +62,21 @@ async function main() {
   }
   setTimeout(runClassificationBackfill, 2 * 60 * 1000);
 
+  // Clean up stale jobs older than 30 days — runs every 6 hours
+  async function runStaleJobCleanup() {
+    try {
+      const { query } = require('./db/connection');
+      const { rows } = await query("DELETE FROM jobs WHERE posted_at IS NOT NULL AND posted_at < NOW() - INTERVAL '30 days' RETURNING id");
+      if (rows.length > 0) {
+        logger.info({ deleted: rows.length }, 'Stale job cleanup: removed jobs older than 30 days');
+      }
+    } catch (err) {
+      logger.error({ err: err.message }, 'Stale job cleanup error');
+    }
+    setTimeout(runStaleJobCleanup, 6 * 60 * 60 * 1000);
+  }
+  setTimeout(runStaleJobCleanup, 5 * 60 * 1000);
+
   // Crawl Workable marketplace (jobs.workable.com) every 6 hours — plain HTTP, no Browserless
   async function runWorkableMarketplace() {
     try {
