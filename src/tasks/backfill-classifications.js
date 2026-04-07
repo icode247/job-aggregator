@@ -31,7 +31,7 @@ async function backfillClassifications() {
      WHERE removed_at IS NULL
        AND description IS NOT NULL
        AND description != ''
-       AND (visa_sponsorship IS NULL)
+       AND (visa_sponsorship IS NULL OR visa_sponsorship = '' OR visa_sponsorship = 'unknown')
      ORDER BY first_seen_at DESC
      LIMIT ?`,
     [BATCH_SIZE]
@@ -54,14 +54,14 @@ async function backfillClassifications() {
 
       await query(
         `UPDATE jobs SET
-          visa_sponsorship = ?,
-          experience_level = ?,
-          is_remote = ?,
-          remote_worldwide = ?
+          visa_sponsorship = COALESCE(?, visa_sponsorship, 'unknown'),
+          experience_level = COALESCE(?, experience_level),
+          is_remote = COALESCE(?, is_remote),
+          remote_worldwide = COALESCE(?, remote_worldwide)
         WHERE id = ?`,
         [
-          classification.visa_sponsorship || '',
-          classification.experience_level || '',
+          classification.visa_sponsorship,
+          classification.experience_level,
           classification.is_remote,
           classification.remote_worldwide,
           job.id,
