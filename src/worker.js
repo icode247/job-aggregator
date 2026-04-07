@@ -47,7 +47,7 @@ async function main() {
     } finally {
       allBackfillRunning = false;
     }
-    setTimeout(runAllBackfill, 15 * 60 * 1000);
+    setTimeout(runAllBackfill, 5 * 60 * 1000);
   }
   setTimeout(runAllBackfill, 5 * 60 * 1000);
 

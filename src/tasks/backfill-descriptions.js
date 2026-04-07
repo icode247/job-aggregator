@@ -12,20 +12,20 @@ const metrics = require('../utils/metrics');
 // Only ATS platforms that return descriptions without Browserless.
 // Priority order: Ashby, Breezy, Greenhouse, Workable first, then rest.
 const ATS_CONFIG = {
-  ashby:           { batchSize: 50, concurrency: 5 },
-  breezy:          { batchSize: 50, concurrency: 5 },
-  greenhouse:      { batchSize: 50, concurrency: 5 },
-  workable:        { batchSize: 50, concurrency: 5 },
-  lever:           { batchSize: 50, concurrency: 5 },
-  recruitee:       { batchSize: 50, concurrency: 5 },
-  pinpoint:        { batchSize: 50, concurrency: 5 },
-  smartrecruiters: { batchSize: 50, concurrency: 5 },
-  bamboohr:        { batchSize: 50, concurrency: 5 },
-  jazzhr:          { batchSize: 50, concurrency: 5 },
-  personio:        { batchSize: 50, concurrency: 3 },
-  rippling:        { batchSize: 50, concurrency: 5 },
-  zoho:            { batchSize: 50, concurrency: 3 },
-  workday:         { batchSize: 50, concurrency: 3 },
+  ashby:           { batchSize: 200, concurrency: 15 },
+  breezy:          { batchSize: 200, concurrency: 15 },
+  greenhouse:      { batchSize: 200, concurrency: 15 },
+  workable:        { batchSize: 200, concurrency: 10 },
+  lever:           { batchSize: 200, concurrency: 15 },
+  recruitee:       { batchSize: 200, concurrency: 10 },
+  pinpoint:        { batchSize: 200, concurrency: 15 },
+  smartrecruiters: { batchSize: 200, concurrency: 15 },
+  bamboohr:        { batchSize: 200, concurrency: 15 },
+  jazzhr:          { batchSize: 200, concurrency: 15 },
+  personio:        { batchSize: 100, concurrency: 5 },
+  rippling:        { batchSize: 200, concurrency: 15 },
+  zoho:            { batchSize: 100, concurrency: 5 },
+  workday:         { batchSize: 200, concurrency: 10 },
 };
 
 // Cache workday configs per slug with TTL (1 hour)
