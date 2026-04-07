@@ -16,6 +16,8 @@ const bamboohr = require('./bamboohr');
 const taleo = require('./taleo');
 const pinpoint = require('./pinpoint');
 const successfactors = require('./successfactors');
+const comeet = require('./comeet');
+const paylocity = require('./paylocity');
 
 const adapters = {
   greenhouse,
@@ -36,6 +38,8 @@ const adapters = {
   taleo,
   pinpoint,
   successfactors,
+  comeet,
+  paylocity,
 };
 
 function getAdapter(atsName) {

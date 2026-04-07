@@ -26,6 +26,7 @@ const ATS_CONFIG = {
   rippling:        { batchSize: 200, concurrency: 15 },
   zoho:            { batchSize: 100, concurrency: 5 },
   workday:         { batchSize: 200, concurrency: 10 },
+  comeet:          { batchSize: 100, concurrency: 10 },
 };
 
 // Cache workday configs per slug with TTL (1 hour)
@@ -469,6 +470,21 @@ async function fetchJobviteDescription(job) {
   return ogMatch?.[1]?.length > 50 ? ogMatch[1] : null;
 }
 
+async function fetchComeetDescription(job) {
+  const positionUid = job.external_id.replace('comeet_', '');
+  const slugParts = job.ats_slug.split(':');
+  if (slugParts.length < 2) return null;
+  const [uid, ...tokenParts] = slugParts;
+  const token = tokenParts.join(':');
+  const res = await fetch(
+    `https://www.comeet.co/careers-api/2.0/company/${encodeURIComponent(uid)}/positions/${encodeURIComponent(positionUid)}?token=${encodeURIComponent(token)}`,
+    { signal: AbortSignal.timeout(10000) }
+  );
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.details?.description || data.description || null;
+}
+
 async function fetchPinpointDescription(job) {
   const jobId = job.external_id.replace('pinpoint_', '');
   const res = await fetch(
@@ -604,6 +620,8 @@ async function fetchDescription(job) {
       description = await fetchPinpointDescription(job); break;
     case 'successfactors':
       description = await fetchSuccessFactorsDescription(job); break;
+    case 'comeet':
+      description = await fetchComeetDescription(job); break;
   }
 
   // No Browserless proxy fallback — all active ATS platforms return descriptions
