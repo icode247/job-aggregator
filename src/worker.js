@@ -34,26 +34,25 @@ async function main() {
 
   logger.info('Worker started — processing sync queue only (no discovery/crawl)');
 
-  // Description backfill DISABLED temporarily to reduce worker memory (~200MB savings).
-  // R14 mitigation on Standard-1X (512MB dyno). The live log was showing 171/171
-  // description fetches failing per cycle anyway — pure memory burn for zero output.
-  // Re-enable after upgrading to Standard-2X (or after fixing the upstream fetch failures).
-  // let allBackfillRunning = false;
-  // async function runAllBackfill() {
-  //   if (allBackfillRunning) { logger.warn('Description backfill still running, skipping'); return; }
-  //   allBackfillRunning = true;
-  //   try {
-  //     const filled = await backfillDescriptions();
-  //     logger.info({ filled }, 'Description backfill cycle complete');
-  //   } catch (err) {
-  //     logger.error({ err: err.message }, 'Description backfill error');
-  //   } finally {
-  //     allBackfillRunning = false;
-  //   }
-  //   setTimeout(runAllBackfill, 5 * 60 * 1000);
-  // }
-  // setTimeout(runAllBackfill, 5 * 60 * 1000);
-  logger.info('Description backfill disabled (memory mitigation on Standard-1X dyno)');
+  // Description backfill — re-enabled after fixing the four broken fetchers
+  // (zoho parser, lever multi-field, smartrecruiters/workday SKIP-on-empty).
+  // The 450-job backlog of unfetchable rows was cleared and marked N/A locally,
+  // so the loop now only processes genuinely-new missing-description rows.
+  let allBackfillRunning = false;
+  async function runAllBackfill() {
+    if (allBackfillRunning) { logger.warn('Description backfill still running, skipping'); return; }
+    allBackfillRunning = true;
+    try {
+      const filled = await backfillDescriptions();
+      logger.info({ filled }, 'Description backfill cycle complete');
+    } catch (err) {
+      logger.error({ err: err.message }, 'Description backfill error');
+    } finally {
+      allBackfillRunning = false;
+    }
+    setTimeout(runAllBackfill, 5 * 60 * 1000);
+  }
+  setTimeout(runAllBackfill, 5 * 60 * 1000);
 
   // Backfill classifications (visa, remote, experience) every 5 minutes
   async function runClassificationBackfill() {

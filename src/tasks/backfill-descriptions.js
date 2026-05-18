@@ -66,6 +66,15 @@ async function discoverAllSiteSlugs(slug) {
   return null;
 }
 
+// Realistic browser headers — some Workday tenants block bare scripted requests.
+// (Tenants with stricter permission blocks still return 403 even with these, which
+// we then mark SKIP rather than retrying forever.)
+const WD_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': 'application/json, text/plain, */*',
+  'Accept-Language': 'en-US,en;q=0.9',
+};
+
 async function fetchWorkdayDescription(job, rawData) {
   const cacheKey = job.ats_slug;
   let config = getWdConfig(cacheKey);
@@ -79,18 +88,27 @@ async function fetchWorkdayDescription(job, rawData) {
   const externalPath = rawData?.externalPath;
   if (!externalPath) return null;
 
-  // Try each site slug until one works
+  // Try each site slug until one works. Track whether we got a confirmed
+  // non-retryable response (403 permission, or 200-with-empty-description)
+  // so we can return SKIP instead of null and stop retrying forever.
+  let sawForbidden = false;
+  let sawEmptyDescription = false;
+
   for (const siteSlug of siteSlugs) {
     try {
       const url = `https://${job.ats_slug}.wd${wdNum}.myworkdayjobs.com/wday/cxs/${job.ats_slug}/${siteSlug}${externalPath}`;
-      const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-      if (res.status === 403) return null; // Rate limited — stop trying
+      const res = await fetch(url, { headers: WD_HEADERS, signal: AbortSignal.timeout(10000) });
+      if (res.status === 403) { sawForbidden = true; continue; }
       if (!res.ok) continue; // 422 = wrong siteSlug, try next
       const detail = await res.json();
       const desc = detail?.jobPostingInfo?.jobDescription;
-      if (desc) return desc;
+      if (desc && desc.trim()) return desc;
+      // 200 OK with a populated jobPostingInfo but no description body → upstream-empty
+      if (detail?.jobPostingInfo) sawEmptyDescription = true;
     } catch { /* timeout — try next */ }
   }
+  // Tenant-level permission block OR truly empty posting: not retryable.
+  if (sawForbidden || sawEmptyDescription) return 'SKIP';
   return null;
 }
 
@@ -111,9 +129,15 @@ async function fetchSmartRecruitersDescription(job) {
   }
   const parts = [];
   for (const section of Object.values(detail.jobAd.sections)) {
-    if (section.text) parts.push(section.text);
+    if (section.text && section.text.trim()) parts.push(section.text);
   }
-  return parts.length > 0 ? parts.join('\n') : null;
+  if (parts.length > 0) return parts.join('\n');
+
+  // jobAd.sections existed and we iterated it cleanly — but every section's
+  // `text` field is empty. Confirmed via direct probe: some companies
+  // (e.g. AccorHotel, Dr Reddy's) use SmartRecruiters as a redirect-only
+  // landing system with no body content. Mark N/A so we stop retrying.
+  return 'SKIP';
 }
 
 async function fetchBambooHRDescription(job) {
@@ -346,7 +370,36 @@ async function fetchLeverDescription(job) {
   );
   if (!res.ok) return null;
   const data = await res.json();
-  return data.descriptionPlain || data.description || null;
+
+  // Lever postings split body content across several fields. The legacy fetcher
+  // only checked descriptionPlain/description, so postings where the content was
+  // in descriptionBodyPlain/opening/lists got marked as failed forever.
+  // Build the full description from every populated section.
+  const parts = [];
+  const append = (s) => { if (typeof s === 'string' && s.trim()) parts.push(s.trim()); };
+
+  append(data.openingPlain || data.opening);
+  append(data.descriptionPlain || data.description);
+  append(data.descriptionBodyPlain || data.descriptionBody);
+
+  if (Array.isArray(data.lists)) {
+    for (const list of data.lists) {
+      const heading = list?.text || '';
+      const body    = list?.content || '';  // 'content' is HTML; we keep it as-is
+      const combined = [heading, body].filter(Boolean).join('\n');
+      if (combined) parts.push(combined);
+    }
+  }
+
+  append(data.additionalPlain || data.additional);
+
+  const full = parts.join('\n\n').trim();
+  if (full) return full;
+
+  // We successfully got a 200 + parsed response, but every text field is empty.
+  // These postings (often used as redirect landing pages) genuinely have no body.
+  // Mark them N/A so we stop retrying every cycle forever.
+  return 'SKIP';
 }
 
 async function fetchAshbyDescription(job) {
@@ -434,16 +487,43 @@ async function fetchZohoDescription(job) {
   if (!res.ok) return null;
   const html = await res.text();
   const match = html.match(/var\s+jobs\s*=\s*JSON\.parse\('(.+?)'\)/);
-  if (!match) return null;
-  let raw = match[1].replace(/\\x22/g, '"').replace(/\\x27/g, "'");
+  // Some Zoho tenants use a JS-only SPA template (HTML body ~2KB, no embedded
+  // data). No regex match means we can't extract anything without a real
+  // browser — mark SKIP so we don't retry these forever.
+  if (!match) return 'SKIP';
+  // Zoho's embedded JSON uses \xNN hex escapes for many characters (&, ', ", /, etc.).
+  // The legacy unescaper only handled \x22 and \x27, so any payload containing
+  // \x26 (&) or other hex codes broke JSON.parse — root cause of 308 zoho rows
+  // missing descriptions. Decode all \xNN sequences generically.
+  let raw = match[1].replace(/\\x([0-9a-fA-F]{2})/g, (_, hex) =>
+    String.fromCharCode(parseInt(hex, 16))
+  );
+  // Zoho also emits non-standard JSON escapes like "2026\-04\-21" (backslash
+  // followed by an arbitrary character). JSON only allows \", \\, \/, \b, \f,
+  // \n, \r, \t, \uXXXX — anything else trips JSON.parse. Strip those stray
+  // backslashes, keeping the valid escapes intact.
+  raw = raw.replace(/\\([^"\\/bfnrtu])/g, '$1');
+  // Legacy double-escape cleanup (kept for payloads that embed JSON-in-JSON).
   raw = raw.replace(/\\\\"/g, '\\"').replace(/\\\\:/g, ':').replace(/\\\\\//g, '/');
   try {
     const parsed = JSON.parse(raw);
     const jobData = Array.isArray(parsed) ? parsed[0] : parsed;
-    return jobData?.Job_Description || null;
+    const desc = jobData?.Job_Description;
+    if (typeof desc !== 'string') return null;            // unexpected shape, retry later
+    if (desc.trim() === '') return 'SKIP';                // upstream-empty, stop retrying
+    return desc;
   } catch {
+    // Last-ditch: try a regex extract for just the Job_Description field
+    // (handles cases where some other field has weird encoding we missed).
     const descMatch = raw.match(/"Job_Description"\s*:\s*"([\s\S]*?)"\s*,\s*"/);
-    return descMatch ? descMatch[1].replace(/\\"/g, '"') : null;
+    if (descMatch) {
+      const desc = descMatch[1].replace(/\\"/g, '"');
+      if (desc.trim()) return desc;
+      return 'SKIP'; // matched but empty
+    }
+    // Both JSON.parse and regex fallback failed — this tenant uses a format
+    // we can't handle. SKIP rather than retrying forever.
+    return 'SKIP';
   }
 }
 
@@ -728,4 +808,4 @@ async function backfillDescriptions() {
   return totalFilled;
 }
 
-module.exports = { backfillDescriptions };
+module.exports = { backfillDescriptions, fetchDescription };
