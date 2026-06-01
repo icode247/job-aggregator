@@ -56,30 +56,66 @@ function buildFilters(filters = {}) {
     }
   }
 
-  // Work mode: remote, hybrid, onsite
-  if (filters.workMode && filters.workMode !== 'any') {
-    if (filters.workMode === 'remote') {
-      clauses.push("(j.workplace_type ILIKE ? OR j.location ILIKE ? OR j.title ILIKE ?)");
-      params.push('%remote%', '%remote%', '%remote%');
-    } else if (filters.workMode === 'hybrid') {
-      clauses.push("(j.workplace_type ILIKE ? OR j.location ILIKE ?)");
-      params.push('%hybrid%', '%hybrid%');
-    } else if (filters.workMode === 'onsite') {
-      clauses.push("(j.workplace_type ILIKE ? OR j.workplace_type ILIKE ?)");
-      params.push('%on-site%', '%onsite%');
+  // Helper: normalize a filter that may be string | array | comma-separated string
+  // into a deduped array of trimmed non-empty values, lowercased for
+  // case-insensitive callers. Returns [] if nothing usable.
+  const toList = (v) => {
+    if (v == null) return [];
+    const arr = Array.isArray(v) ? v : String(v).split(',');
+    const out = [];
+    const seen = new Set();
+    for (const item of arr) {
+      const s = String(item).trim();
+      if (!s) continue;
+      const k = s.toLowerCase();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(s);
+    }
+    return out;
+  };
+
+  // Work mode: remote, hybrid, onsite — multi-value (OR semantics)
+  // Each mode adds its own OR-block; the whole work_mode group is then OR'd
+  // together so e.g. work_mode=remote,hybrid returns ANY remote OR hybrid job.
+  {
+    const modes = toList(filters.workMode).map((m) => m.toLowerCase()).filter((m) => m !== 'any');
+    if (modes.length > 0) {
+      const groups = [];
+      for (const m of modes) {
+        if (m === 'remote') {
+          groups.push('(j.workplace_type ILIKE ? OR j.location ILIKE ? OR j.title ILIKE ?)');
+          params.push('%remote%', '%remote%', '%remote%');
+        } else if (m === 'hybrid') {
+          groups.push('(j.workplace_type ILIKE ? OR j.location ILIKE ?)');
+          params.push('%hybrid%', '%hybrid%');
+        } else if (m === 'onsite' || m === 'on-site' || m === 'on_site') {
+          groups.push('(j.workplace_type ILIKE ? OR j.workplace_type ILIKE ?)');
+          params.push('%on-site%', '%onsite%');
+        }
+      }
+      if (groups.length > 0) clauses.push('(' + groups.join(' OR ') + ')');
     }
   }
 
-  // Employment type: full-time, part-time, contract, internship
-  if (filters.employmentType && filters.employmentType !== 'any') {
-    clauses.push("(j.employment_type ILIKE ? OR j.title ILIKE ?)");
-    params.push(`%${filters.employmentType}%`, `%${filters.employmentType}%`);
+  // Employment type: full-time, part-time, contract, internship — multi-value
+  {
+    const types = toList(filters.employmentType).filter((t) => t.toLowerCase() !== 'any');
+    if (types.length > 0) {
+      const groups = types.map(() => '(j.employment_type ILIKE ? OR j.title ILIKE ?)');
+      clauses.push('(' + groups.join(' OR ') + ')');
+      for (const t of types) params.push(`%${t}%`, `%${t}%`);
+    }
   }
 
-  // Location — free text match on location field
-  if (filters.location) {
-    clauses.push('j.location ILIKE ?');
-    params.push(`%${filters.location}%`);
+  // Location — multi-value free-text match (OR'd)
+  {
+    const locs = toList(filters.location);
+    if (locs.length > 0) {
+      const groups = locs.map(() => 'j.location ILIKE ?');
+      clauses.push('(' + groups.join(' OR ') + ')');
+      for (const l of locs) params.push(`%${l}%`);
+    }
   }
 
   // Posted — time window: 24h, 7d, 30d, 90d
@@ -111,10 +147,13 @@ function buildFilters(filters = {}) {
     params.push(filters.visa);
   }
 
-  // Experience level filter
-  if (filters.experienceLevel) {
-    clauses.push('j.experience_level = ?');
-    params.push(filters.experienceLevel);
+  // Experience level filter — multi-value (SQL IN)
+  {
+    const levels = toList(filters.experienceLevel);
+    if (levels.length > 0) {
+      clauses.push(`j.experience_level IN (${levels.map(() => '?').join(', ')})`);
+      params.push(...levels);
+    }
   }
 
   // Exact filters
@@ -122,10 +161,15 @@ function buildFilters(filters = {}) {
     clauses.push('j.company_id = ?');
     params.push(filters.companyId);
   }
-  if (filters.ats) {
-    const atsList = Array.isArray(filters.ats) ? filters.ats : [filters.ats];
-    clauses.push(`j.ats IN (${atsList.map(() => '?').join(', ')})`);
-    params.push(...atsList);
+  {
+    // ATS filter now uses toList so callers may pass either an array OR a
+    // comma-separated string (the route handler historically split on commas,
+    // but with toList we accept both forms transparently).
+    const atsList = toList(filters.ats);
+    if (atsList.length > 0) {
+      clauses.push(`j.ats IN (${atsList.map(() => '?').join(', ')})`);
+      params.push(...atsList);
+    }
   }
 
   return { clauses, params, needsJoin };
