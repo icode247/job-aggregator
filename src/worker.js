@@ -34,7 +34,10 @@ async function main() {
 
   logger.info('Worker started — processing sync queue only (no discovery/crawl)');
 
-  // Backfill descriptions every 3 minutes (no Browserless — API-only)
+  // Description backfill — re-enabled after fixing the four broken fetchers
+  // (zoho parser, lever multi-field, smartrecruiters/workday SKIP-on-empty).
+  // The 450-job backlog of unfetchable rows was cleared and marked N/A locally,
+  // so the loop now only processes genuinely-new missing-description rows.
   let allBackfillRunning = false;
   async function runAllBackfill() {
     if (allBackfillRunning) { logger.warn('Description backfill still running, skipping'); return; }
@@ -77,17 +80,21 @@ async function main() {
   }
   setTimeout(runStaleJobCleanup, 5 * 60 * 1000);
 
-  // Crawl Workable marketplace (jobs.workable.com) every 6 hours — plain HTTP, no Browserless
-  async function runWorkableMarketplace() {
-    try {
-      const added = await crawlWorkableMarketplace();
-      logger.info({ added }, 'Workable marketplace crawl cycle complete');
-    } catch (err) {
-      logger.error({ err: err.message }, 'Workable marketplace crawl error');
-    }
-    setTimeout(runWorkableMarketplace, 6 * 60 * 60 * 1000);
-  }
-  setTimeout(runWorkableMarketplace, 3 * 60 * 1000);
+  // Workable marketplace crawl DISABLED — was the only remaining company-
+  // discovery component (jobs.workable.com crawler). Companies are now seeded
+  // manually via Apify dataset imports + scripts/discover-wwr-companies.js,
+  // so this background crawl is no longer needed and would just churn CPU.
+  // async function runWorkableMarketplace() {
+  //   try {
+  //     const added = await crawlWorkableMarketplace();
+  //     logger.info({ added }, 'Workable marketplace crawl cycle complete');
+  //   } catch (err) {
+  //     logger.error({ err: err.message }, 'Workable marketplace crawl error');
+  //   }
+  //   setTimeout(runWorkableMarketplace, 6 * 60 * 60 * 1000);
+  // }
+  // setTimeout(runWorkableMarketplace, 3 * 60 * 1000);
+  logger.info('Workable marketplace crawl disabled (company discovery is now manual)');
 
   async function shutdown(signal) {
     logger.info({ signal }, 'Shutting down worker');

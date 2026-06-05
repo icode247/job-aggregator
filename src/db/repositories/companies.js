@@ -18,17 +18,23 @@ const companiesRepo = {
 
   async findDueForSync() {
     // Round-robin by staleness: never-synced first, then oldest-synced.
-    // No ATS preference — ensures all platforms get fair share of sync cycles.
+    // Restricted to the five ATS platforms where global remote roles concentrate
+    // OR where we've manually seeded companies from external datasets:
+    //   ashby, greenhouse, breezy, smartrecruiters — primary global remote feeds
+    //   bamboohr                                    — seeded via Apify dataset imports
+    // Other platforms (workable, lever, recruitee, pinpoint, jazzhr, personio,
+    // rippling, zoho, workday, comeet, paylocity) are PAUSED — their existing
+    // rows stay in the DB but no new sync cycles run against them.
     // Stale threshold: 60 min — job boards rarely update faster than hourly.
     const { rows } = await query(`
       SELECT id, ats, ats_slug FROM companies
       WHERE status = 'active'
         AND ats IS NOT NULL
-        AND ats IN ('ashby','breezy','greenhouse','workable','lever','recruitee','pinpoint','smartrecruiters','bamboohr','jazzhr','personio','rippling','zoho','workday','comeet','paylocity')
+        AND ats IN ('ashby','greenhouse','breezy','smartrecruiters','bamboohr')
         AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '60 minutes')
       ORDER BY
         last_synced_at ASC NULLS FIRST
-      LIMIT 5000
+      LIMIT 1500
     `);
     return rows;
   },

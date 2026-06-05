@@ -44,21 +44,26 @@ function formatJob(row, includeDescription = false) {
 /**
  * GET /api/jobs
  *
- * Query params:
- *   q              - Role / keywords (searches title, department, company name)
- *   work_mode      - any | remote | hybrid | onsite
- *   employment_type - any | full-time | part-time | contract | internship
- *   location       - Free text location filter (e.g. "United States", "Remote", "London")
+ * Query params (★ = supports multiple comma-separated values, OR-semantics
+ * within the field, AND-semantics across fields):
+ *
+ *   q ★              - Role / keywords (comma-separated for "role A, role B, role C")
+ *   work_mode ★      - any | remote | hybrid | onsite       (e.g. "remote,hybrid")
+ *   employment_type ★ - full-time | part-time | contract | internship | any
+ *   location ★       - Free text (e.g. "United States,Canada,United Kingdom")
+ *   experience_level ★ - internship | entry | mid | senior | lead | executive
+ *   ats ★            - ATS platform (e.g. "ashby,greenhouse,breezy")
  *   posted           - 24h | 7d | 30d | 90d | 3m
  *   remote           - true (only fully remote jobs, indexed)
  *   remote_worldwide - true (remote jobs open to any location globally)
  *   visa             - yes | no (H1B/visa sponsorship filter)
- *   experience_level - internship | entry | mid | senior | lead | executive
- *   company_id       - Filter by company ID
- *   ats              - Filter by ATS
+ *   company_id       - Filter by company ID (single)
  *   limit            - Results per page (default 50, max 200)
  *   page             - Page number (1-based, alternative to offset)
  *   offset           - Pagination offset
+ *
+ * Multi-value can also be passed via repeated keys: ?location=US&location=Canada
+ * (Express qs parser handles this transparently and yields an array.)
  */
 router.get('/api/jobs', async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
