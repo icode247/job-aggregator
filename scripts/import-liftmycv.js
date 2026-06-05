@@ -192,16 +192,33 @@ async function fetchPage(page) {
   return { jobs: data.results?.jobs || [], total: data.results?.total };
 }
 
+async function fetchPageWithRetry(page, max = 4) {
+  for (let attempt = 0; attempt < max; attempt++) {
+    try {
+      return await fetchPage(page);
+    } catch (err) {
+      // Most likely TimeoutError. Backoff and retry.
+      if (attempt < max - 1) {
+        const wait = 1000 * Math.pow(2, attempt);
+        process.stdout.write(`(timeout, retry in ${wait}ms) `);
+        await new Promise((r) => setTimeout(r, wait));
+        continue;
+      }
+      // Last attempt failed — surface as a sentinel error so fetchAll stops.
+      return { error: `fetch failed after ${max} attempts: ${err.message || err}` };
+    }
+  }
+}
+
 async function fetchAll() {
   const all = [];
   let page = 1;
   let total = null;
   while (page <= MAX_PAGES) {
     process.stdout.write(`  fetching page ${page}... `);
-    const r = await fetchPage(page);
+    const r = await fetchPageWithRetry(page);
     if (r.error) {
-      // Likely hit the offset-10000 cap. Stop cleanly.
-      console.log(r.error + (r.body ? ' ' + r.body : '') + '  ← stopping (likely hit API result-window cap)');
+      console.log(r.error + (r.body ? ' ' + r.body : '') + '  ← stopping (keeping what we have so far)');
       break;
     }
     if (r.total !== undefined) total = r.total;
@@ -281,7 +298,11 @@ function normalize(record) {
       title:           record.role,
       description:     record.description || null,
       url:             record.jobUrl,
-      location:        record.location || null,
+      // Truncate location — Postgres b-tree idx_jobs_location can't index
+      // values larger than ~2700 bytes per row. Some LiftMyCV records have
+      // multi-region comma-lists that blow past this. 1000 chars is plenty
+      // for our ILIKE search and human display.
+      location:        record.location ? String(record.location).slice(0, 1000) : null,
       workplace_type,
       employment_type: null,
       salary_min:      sal.min != null ? String(sal.min) : null,
@@ -360,8 +381,17 @@ async function main() {
     if (!companyId) { stats.skipped_unparseable++; continue; }
     n.job.company_id = companyId;
 
-    await insertJob(n.job);
-    stats.inserted++;
+    try {
+      await insertJob(n.job);
+      stats.inserted++;
+    } catch (err) {
+      // Don't let a single bad row (e.g. data too long for an index) kill the
+      // whole run. Log and move on.
+      stats.errors = (stats.errors || 0) + 1;
+      if (stats.errors <= 10) {
+        console.log(`    [err] ${n.job.external_id}: ${err.message.split('\n')[0]}`);
+      }
+    }
 
     // Progress every 250 jobs
     if ((i + 1) % 250 === 0) {
