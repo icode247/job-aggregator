@@ -67,6 +67,27 @@ const tests = [
   { title: 'Senior Engineering Manager', description: '', expect: { experience_level: 'senior' } },
   { title: 'Lead Intern', description: '', expect: { experience_level: 'internship' } },
 
+  // False friends — "Executive" in a sales title is a sales IC, NOT C-suite
+  { title: 'Account Executive', description: '', expect: { experience_level: 'mid' } },
+  { title: 'Account Executive, Enterprise Hunter', description: '', expect: { experience_level: 'senior' } },
+  { title: 'Senior Account Executive', description: '', expect: { experience_level: 'senior' } },
+  { title: 'Enterprise Account Executive', description: '', expect: { experience_level: 'senior' } },
+  { title: 'Sales Executive', description: '', expect: { experience_level: 'mid' } },
+  { title: 'Advertising Account Executive', description: '', expect: { experience_level: 'mid' } },
+  { title: 'Sales Development Representative', description: '', expect: { experience_level: 'entry' } },
+  { title: 'SDR', description: '', expect: { experience_level: 'entry' } },
+  // "Executive Assistant" / "Business Partner" are not executives
+  { title: 'Executive Assistant', description: '', expect: { experience_level: 'entry' } },
+  { title: 'HR Business Partner', description: '', expect: { experience_level: 'mid' } },
+  { title: 'Senior People Partner', description: '', expect: { experience_level: 'senior' } },
+  // "X Manager" IC roles are not people-leads
+  { title: 'Product Manager', description: '', expect: { experience_level: 'mid' } },
+  { title: 'Senior Product Manager', description: '', expect: { experience_level: 'senior' } },
+  { title: 'Account Manager', description: '', expect: { experience_level: 'mid' } },
+  // Genuine leadership still resolves correctly
+  { title: 'Director of Sales', description: '', expect: { experience_level: 'executive' } },
+  { title: 'Sales Manager', description: '', expect: { experience_level: 'lead' } },
+
   // Description-based entry detection
   { title: 'Software Engineer', description: 'This is an entry-level position requiring 0-2 years experience', expect: { experience_level: 'entry' } },
   { title: 'Analyst', description: 'Looking for a recent graduate to join our team', expect: { experience_level: 'entry' } },

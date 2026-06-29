@@ -354,7 +354,6 @@ const LEVEL_PATTERNS = {
     /\bvice\s*president\b/i,
     /\bc[etofi]o\b/i,
     /\bchief\b/i,
-    /\bexecutive\b/i,
     /\bsvp\b/i,
     /\bevp\b/i,
     /\bpartner\b/i,
@@ -362,20 +361,56 @@ const LEVEL_PATTERNS = {
   ],
 };
 
+// ── IC false-friend families ──────────────────────────────────────
+// Titles containing "executive", "manager", or "partner" that are INDIVIDUAL
+// CONTRIBUTORS, not C-suite or people-leads. The generic patterns above would
+// otherwise mislabel them (the bare /\bexecutive\b/ used to send every
+// "Account Executive" — a salesperson — to the executive bucket). These are
+// checked first and ranked on an IC ladder by seniority modifier.
+const SALES_EXECUTIVE = /\b(?:account|sales|advertising|ad|media|client|commercial|relationship|key\s+account|enterprise|business\s+development|inside\s+sales|field\s+sales)\s+executive\b/i;
+const SALES_REP = /\bsdr\b|\bbdr\b|\b(?:sales|business)\s+development\s+(?:representative|rep)\b/i;
+const IC_MANAGER = /\b(?:account|product|project|program|portfolio|category|brand|community|content)\s+manager\b|\bpartner(?:ships?)?\s+manager\b|\bproduct\s+owner\b/i;
+const BUSINESS_PARTNER = /\b(?:business|people|hr|human\s+resources|talent|finance|tech(?:nology)?)\s+partner\b/i;
+const EXEC_ASSISTANT = /\bexecutive\s+(?:assistant|administrator)\b|\b(?:administrative|admin)\s+assistant\b/i;
+
+// Seniority modifiers used to rank an IC title up or down from its base level.
+const SENIOR_MOD = /\b(?:senior|sr\.?|staff|principal|lead|enterprise|strategic)\b/i;
+const JUNIOR_MOD = /\b(?:junior|jr\.?|entry[\s-]*level|associate|trainee|graduate|apprentice|assistant)\b/i;
+
+function rankByModifier(titleLower, base) {
+  if (SENIOR_MOD.test(titleLower)) return 'senior';
+  if (JUNIOR_MOD.test(titleLower)) return 'entry';
+  return base;
+}
+
 // Priority order: most specific first
 const LEVEL_PRIORITY = ['internship', 'entry', 'executive', 'senior', 'lead', 'mid'];
 
 function classifyExperienceLevel(title, description) {
-  const titleLower = (title || '').toLowerCase();
+  const t = title || '';
+  const titleLower = t.toLowerCase();
 
-  // Title-based classification (highest confidence)
+  // Internship wins over everything (e.g. "Sales Intern", "Marketing Intern").
+  for (const re of LEVEL_PATTERNS.internship) {
+    if (re.test(t)) return 'internship';
+  }
+
+  // IC false-friend families — resolve BEFORE the generic exec/lead patterns so
+  // "Account Executive" (sales IC), "Product Manager" (IC), "HR Business Partner"
+  // and "Executive Assistant" don't get mislabeled as executive/lead.
+  if (EXEC_ASSISTANT.test(titleLower)) return 'entry';
+  if (SALES_REP.test(titleLower)) return rankByModifier(titleLower, 'entry');
+  if (SALES_EXECUTIVE.test(titleLower) || IC_MANAGER.test(titleLower) || BUSINESS_PARTNER.test(titleLower)) {
+    return rankByModifier(titleLower, 'mid');
+  }
+
+  // Title-based classification (highest confidence). Internship handled above.
   for (const level of LEVEL_PRIORITY) {
+    if (level === 'internship') continue;
     for (const re of LEVEL_PATTERNS[level]) {
-      if (re.test(title || '')) {
+      if (re.test(t)) {
         // Disambiguate: "Senior Manager" → senior, not lead
         if (level === 'lead' && /\bsenior\b/i.test(titleLower)) return 'senior';
-        // "Lead Intern" → internship, not lead
-        if (level === 'lead' && /\bintern/i.test(titleLower)) return 'internship';
         return level;
       }
     }
