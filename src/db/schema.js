@@ -103,6 +103,13 @@ async function migrate() {
     await exec('ALTER TABLE jobs ADD COLUMN IF NOT EXISTS random_rank DOUBLE PRECISION DEFAULT random()');
   }
 
+  // Dead-job pruning: records when each job's URL was last verified live. The worker
+  // rotates through jobs least-recently-checked first; partial index keeps that scan cheap.
+  if (isPostgres) {
+    await exec('ALTER TABLE jobs ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMP');
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_last_checked ON jobs(last_checked_at) WHERE removed_at IS NULL');
+  }
+
   // Full-text search (PostgreSQL only)
   if (isPostgres) {
     await exec(`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS search_vector tsvector`);

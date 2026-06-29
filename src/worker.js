@@ -7,6 +7,7 @@ const { registerSchedules, fanoutSync } = require('./queues/scheduler');
 const { backfillDescriptions } = require('./tasks/backfill-descriptions');
 const { backfillClassifications } = require('./tasks/backfill-classifications');
 const { crawlWorkableMarketplace } = require('./tasks/crawl-workable-marketplace');
+const { pruneDeadJobs } = require('./tasks/dead-job-check');
 
 async function main() {
   await migrate();
@@ -65,13 +66,14 @@ async function main() {
   }
   setTimeout(runClassificationBackfill, 2 * 60 * 1000);
 
-  // Clean up stale jobs older than 30 days — runs every 6 hours
+  // Clean up stale jobs older than 90 days — runs every 6 hours. (Dead postings
+  // younger than this are pruned by liveness checks in runDeadJobPruning below.)
   async function runStaleJobCleanup() {
     try {
       const { query } = require('./db/connection');
-      const { rows } = await query("DELETE FROM jobs WHERE posted_at IS NOT NULL AND posted_at < NOW() - INTERVAL '30 days' RETURNING id");
+      const { rows } = await query("DELETE FROM jobs WHERE posted_at IS NOT NULL AND posted_at < NOW() - INTERVAL '90 days' RETURNING id");
       if (rows.length > 0) {
-        logger.info({ deleted: rows.length }, 'Stale job cleanup: removed jobs older than 30 days');
+        logger.info({ deleted: rows.length }, 'Stale job cleanup: removed jobs older than 90 days');
       }
     } catch (err) {
       logger.error({ err: err.message }, 'Stale job cleanup error');
@@ -79,6 +81,23 @@ async function main() {
     setTimeout(runStaleJobCleanup, 6 * 60 * 60 * 1000);
   }
   setTimeout(runStaleJobCleanup, 5 * 60 * 1000);
+
+  // Dead-job pruning: verify a rotating batch of the older job tail (>30d) against
+  // their career pages and remove confirmed-dead postings. Runs hourly so the 30–90d
+  // window we now retain stays free of filled/expired listings. Only 404/410 or an
+  // explicit dead-page phrase prunes a job; transient failures are re-checked later.
+  async function runDeadJobPruning() {
+    try {
+      const { checked, dead, uncertain } = await pruneDeadJobs({ limit: 400, concurrency: 10, tailDays: 30, recheckDays: 14 });
+      if (checked > 0) {
+        logger.info({ checked, dead, uncertain }, 'Dead-job pruning: verified batch of older jobs');
+      }
+    } catch (err) {
+      logger.error({ err: err.message }, 'Dead-job pruning error');
+    }
+    setTimeout(runDeadJobPruning, 60 * 60 * 1000);
+  }
+  setTimeout(runDeadJobPruning, 8 * 60 * 1000);
 
   // Workable marketplace crawl DISABLED — was the only remaining company-
   // discovery component (jobs.workable.com crawler). Companies are now seeded
