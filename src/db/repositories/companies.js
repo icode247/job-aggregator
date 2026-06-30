@@ -53,7 +53,7 @@ const companiesRepo = {
     // active platform gets a fair share of each fanout regardless of backlog size.
     const { rows } = await query(`
       SELECT id, ats, ats_slug FROM (
-        SELECT id, ats, ats_slug,
+        SELECT id, ats, ats_slug, last_synced_at,
           ROW_NUMBER() OVER (PARTITION BY ats ORDER BY last_synced_at ASC NULLS FIRST) AS rn
         FROM companies
         WHERE status = 'active'
