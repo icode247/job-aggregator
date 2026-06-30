@@ -13,7 +13,7 @@ const { classifyJob } = require('../utils/classify');
 const QUEUE_NAME = 'sync';
 
 // Per-ATS concurrency limits for platforms with aggressive rate limiting
-const ATS_MAX_CONCURRENT = { workable: 1, recruitee: 3, workday: 2, lever: 2, icims: 3 };
+const ATS_MAX_CONCURRENT = { workable: 1, recruitee: 3, workday: 2, lever: 2, icims: 3, oracle: 2 };
 // Per-ATS delay (ms) between consecutive jobs to avoid rate limits
 const ATS_POST_DELAY = { workable: 5000 };
 const atsConcurrency = {};
@@ -152,7 +152,10 @@ function createSyncWorker() {
     {
       connection: createRedisConnection(),
       limiter: config.SYNC_RATE_LIMIT,
-      concurrency: 2,
+      // Bumped 2 -> 4 to absorb the added lever+workday+icims company volume without
+      // stretching the full refresh cycle. Standard-2X worker has the CPU headroom.
+      // Per-ATS caps (ATS_MAX_CONCURRENT) still protect rate-limited platforms.
+      concurrency: 4,
     }
   );
 

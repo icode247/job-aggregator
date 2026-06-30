@@ -31,16 +31,24 @@ const companiesRepo = {
     //                                                 been scheduled (oversight, not a pause),
     //                                                 leaving ~1k companies permanently empty.
     //                                                 Throttled via ATS_MAX_CONCURRENT.
+    //   oracle                                       — re-enabled 2026-06-30: adapter is NOT
+    //                                                 broken (verified: hcal.us2.CX_1001 -> 56
+    //                                                 jobs, fa-ewgu...CX_2001 -> 538). The 0-jobs
+    //                                                 state was just staleness — oracle hadn't
+    //                                                 synced since 03-23, so its rows aged out of
+    //                                                 the 90d window. 326/427 slugs are well-formed.
     // Other platforms (workable, recruitee, pinpoint, jazzhr, personio, rippling,
-    // zoho, comeet, paylocity, oracle) remain PAUSED — their existing rows stay in
-    // the DB but no new sync cycles run. (workable 403-blocks direct API access;
-    // oracle adapter currently yields 0 jobs — needs a fix before re-enabling.)
+    // zoho, comeet, paylocity) remain PAUSED — their existing rows stay in the DB
+    // but no new sync cycles run. (workable 403-blocks direct API access.)
+    // NOTE: 'oraclecloud' (357 cos) is the SAME platform under a different label, but
+    // its slugs are bare tenants (no region/siteNumber) that need reconstruction +
+    // siteNumber discovery before they're worth scheduling — handled separately.
     // Stale threshold: 60 min — job boards rarely update faster than hourly.
     const { rows } = await query(`
       SELECT id, ats, ats_slug FROM companies
       WHERE status = 'active'
         AND ats IS NOT NULL
-        AND ats IN ('ashby','greenhouse','breezy','smartrecruiters','bamboohr','lever','workday','icims')
+        AND ats IN ('ashby','greenhouse','breezy','smartrecruiters','bamboohr','lever','workday','icims','oracle')
         AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '60 minutes')
       ORDER BY
         last_synced_at ASC NULLS FIRST
