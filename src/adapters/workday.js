@@ -1,6 +1,9 @@
 const logger = require('../logger');
 
-const WD_NUMBERS = [1, 2, 3, 5, 12];
+// Common Workday instances first (covers ~80% of tenants), then the higher-numbered
+// pods (wd10x/wd50x) seen across the company set. discoverConfig() tries these in
+// order and stops at the first that resolves, so ordering keeps the common case fast.
+const WD_NUMBERS = [1, 2, 3, 5, 10, 12, 102, 103, 105, 108, 115, 501, 502, 503, 504];
 const PAGE_SIZE = 20;
 const DETAIL_BATCH_SIZE = 3;
 
