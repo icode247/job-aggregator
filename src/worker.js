@@ -99,21 +99,27 @@ async function main() {
   }
   setTimeout(runDeadJobPruning, 8 * 60 * 1000);
 
-  // Workable marketplace crawl DISABLED — was the only remaining company-
-  // discovery component (jobs.workable.com crawler). Companies are now seeded
-  // manually via Apify dataset imports + scripts/discover-wwr-companies.js,
-  // so this background crawl is no longer needed and would just churn CPU.
-  // async function runWorkableMarketplace() {
-  //   try {
-  //     const added = await crawlWorkableMarketplace();
-  //     logger.info({ added }, 'Workable marketplace crawl cycle complete');
-  //   } catch (err) {
-  //     logger.error({ err: err.message }, 'Workable marketplace crawl error');
-  //   }
-  //   setTimeout(runWorkableMarketplace, 6 * 60 * 60 * 1000);
-  // }
-  // setTimeout(runWorkableMarketplace, 3 * 60 * 1000);
-  logger.info('Workable marketplace crawl disabled (company discovery is now manual)');
+  // Workable marketplace crawl RE-ENABLED (2026-06-30). Pulls jobs.workable.com's
+  // public marketplace API (jobs.workable.com/api/v1/jobs) — verified reachable from
+  // Heroku (200, paginates), distinct from the apply.workable.com company feeds that
+  // 403 under load. Self-contained loop (does NOT use the sync queue), ~10k latest
+  // jobs/cycle, 1s/page delay, every 6h — keeps the ~53k /view/ marketplace jobs fresh.
+  let workableMarketplaceRunning = false;
+  async function runWorkableMarketplace() {
+    if (workableMarketplaceRunning) { logger.warn('Workable marketplace crawl still running, skipping'); return; }
+    workableMarketplaceRunning = true;
+    try {
+      const added = await crawlWorkableMarketplace();
+      logger.info({ added }, 'Workable marketplace crawl cycle complete');
+    } catch (err) {
+      logger.error({ err: err.message }, 'Workable marketplace crawl error');
+    } finally {
+      workableMarketplaceRunning = false;
+    }
+    setTimeout(runWorkableMarketplace, 6 * 60 * 60 * 1000);
+  }
+  setTimeout(runWorkableMarketplace, 3 * 60 * 1000);
+  logger.info('Workable marketplace crawl enabled (jobs.workable.com marketplace API)');
 
   async function shutdown(signal) {
     logger.info({ signal }, 'Shutting down worker');
