@@ -18,19 +18,29 @@ const companiesRepo = {
 
   async findDueForSync() {
     // Round-robin by staleness: never-synced first, then oldest-synced.
-    // Restricted to the five ATS platforms where global remote roles concentrate
+    // Restricted to the ATS platforms where global remote roles concentrate
     // OR where we've manually seeded companies from external datasets:
     //   ashby, greenhouse, breezy, smartrecruiters — primary global remote feeds
     //   bamboohr                                    — seeded via Apify dataset imports
-    // Other platforms (workable, lever, recruitee, pinpoint, jazzhr, personio,
-    // rippling, zoho, workday, comeet, paylocity) are PAUSED — their existing
-    // rows stay in the DB but no new sync cycles run against them.
+    //   lever, workday                              — re-enabled; both have healthy
+    //                                                 APIs + large job inventories.
+    //                                                 (workday/lever throttled via
+    //                                                 ATS_MAX_CONCURRENT in sync.queue)
+    //   icims                                        — enabled 2026-06-30: adapter works
+    //                                                 (classic-portal scrape) but had never
+    //                                                 been scheduled (oversight, not a pause),
+    //                                                 leaving ~1k companies permanently empty.
+    //                                                 Throttled via ATS_MAX_CONCURRENT.
+    // Other platforms (workable, recruitee, pinpoint, jazzhr, personio, rippling,
+    // zoho, comeet, paylocity, oracle) remain PAUSED — their existing rows stay in
+    // the DB but no new sync cycles run. (workable 403-blocks direct API access;
+    // oracle adapter currently yields 0 jobs — needs a fix before re-enabling.)
     // Stale threshold: 60 min — job boards rarely update faster than hourly.
     const { rows } = await query(`
       SELECT id, ats, ats_slug FROM companies
       WHERE status = 'active'
         AND ats IS NOT NULL
-        AND ats IN ('ashby','greenhouse','breezy','smartrecruiters','bamboohr')
+        AND ats IN ('ashby','greenhouse','breezy','smartrecruiters','bamboohr','lever','workday','icims')
         AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '60 minutes')
       ORDER BY
         last_synced_at ASC NULLS FIRST
