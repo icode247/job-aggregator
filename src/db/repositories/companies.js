@@ -44,14 +44,24 @@ const companiesRepo = {
     // its slugs are bare tenants (no region/siteNumber) that need reconstruction +
     // siteNumber discovery before they're worth scheduling — handled separately.
     // Stale threshold: 60 min — job boards rarely update faster than hourly.
+    //
+    // PER-PLATFORM ROUND-ROBIN: rank each platform's due companies by staleness, then
+    // interleave (oldest-of-each-platform first, then 2nd-oldest, ...). A pure global
+    // "last_synced ASC NULLS FIRST" let one platform's backlog/NULL burst monopolize
+    // the 1500-row fanout and starve the others (e.g. re-enabling workday added ~1.7k
+    // NULLs that blocked greenhouse's 11k stale rows). Round-robin guarantees every
+    // active platform gets a fair share of each fanout regardless of backlog size.
     const { rows } = await query(`
-      SELECT id, ats, ats_slug FROM companies
-      WHERE status = 'active'
-        AND ats IS NOT NULL
-        AND ats IN ('ashby','greenhouse','breezy','smartrecruiters','bamboohr','lever','workday','icims','oracle')
-        AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '60 minutes')
-      ORDER BY
-        last_synced_at ASC NULLS FIRST
+      SELECT id, ats, ats_slug FROM (
+        SELECT id, ats, ats_slug,
+          ROW_NUMBER() OVER (PARTITION BY ats ORDER BY last_synced_at ASC NULLS FIRST) AS rn
+        FROM companies
+        WHERE status = 'active'
+          AND ats IS NOT NULL
+          AND ats IN ('ashby','greenhouse','breezy','smartrecruiters','bamboohr','lever','workday','icims','oracle')
+          AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '60 minutes')
+      ) ranked
+      ORDER BY rn, last_synced_at ASC NULLS FIRST
       LIMIT 1500
     `);
     return rows;
