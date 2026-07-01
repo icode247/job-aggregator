@@ -58,7 +58,7 @@ const companiesRepo = {
         FROM companies
         WHERE status = 'active'
           AND ats IS NOT NULL
-          AND ats IN ('ashby','greenhouse','breezy','smartrecruiters','bamboohr','lever','workday','icims','oracle')
+          AND ats IN ('ashby','greenhouse','breezy','smartrecruiters','bamboohr','lever','workday','icims','oracle','recruitee','zoho')
           AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '60 minutes')
       ) ranked
       ORDER BY rn, last_synced_at ASC NULLS FIRST

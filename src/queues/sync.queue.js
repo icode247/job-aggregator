@@ -13,7 +13,7 @@ const { classifyJob } = require('../utils/classify');
 const QUEUE_NAME = 'sync';
 
 // Per-ATS concurrency limits for platforms with aggressive rate limiting
-const ATS_MAX_CONCURRENT = { workable: 1, recruitee: 3, workday: 2, lever: 2, icims: 3, oracle: 2 };
+const ATS_MAX_CONCURRENT = { workable: 1, recruitee: 3, workday: 2, lever: 2, icims: 3, oracle: 2, breezy: 3, zoho: 2 };
 // Per-ATS delay (ms) between consecutive jobs to avoid rate limits
 const ATS_POST_DELAY = { workable: 5000 };
 const atsConcurrency = {};
