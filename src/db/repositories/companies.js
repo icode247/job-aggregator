@@ -58,7 +58,7 @@ const companiesRepo = {
         FROM companies
         WHERE status = 'active'
           AND ats IS NOT NULL
-          AND ats IN ('ashby','greenhouse','breezy','smartrecruiters','bamboohr','lever','workday','icims','oracle','recruitee','zoho')
+          AND ats IN ('ashby','greenhouse','breezy','smartrecruiters','bamboohr','lever','workday','icims','oracle','recruitee','zoho','successfactors')
           AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '60 minutes')
       ) ranked
       ORDER BY rn, last_synced_at ASC NULLS FIRST
@@ -166,7 +166,7 @@ const companiesRepo = {
       bamboohr: `https://${atsSlug}.bamboohr.com/careers`,
       taleo: `https://${atsSlug}.taleo.net`,
       pinpoint: `https://${atsSlug}.pinpointhq.com`,
-      successfactors: `https://career${atsSlug}.successfactors.eu/career`,
+      successfactors: `https://${atsSlug}`, // atsSlug is the CSB career host, e.g. jobs.acme.com
     };
     const careerUrl = boardUrls[ats] || `https://${atsSlug}.com/careers`;
     let domain;
