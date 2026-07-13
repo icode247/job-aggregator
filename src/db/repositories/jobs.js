@@ -118,15 +118,28 @@ function buildFilters(filters = {}) {
     }
   }
 
-  // Posted — time window: 24h, 7d, 30d, 90d
+  // Posted — time window. Accepts Nh / Nd / Nw / Nm (e.g. 2h, 6h, 24h, 7d, 30d, 90d, 3m).
+  // (Old code only knew 24h/7d/30d/90d and silently ignored anything else — so "2h" and
+  // the documented "3m" did nothing at all.)
   if (filters.posted) {
-    const intervals = { '24h': 1, '7d': 7, '30d': 30, '90d': 90 };
-    const days = intervals[filters.posted];
-    if (days) {
-      if (isPostgres) {
-        clauses.push(`COALESCE(j.posted_at, j.first_seen_at) >= NOW() - INTERVAL '${days} days'`);
-      } else {
-        clauses.push(`COALESCE(j.posted_at, j.first_seen_at) >= datetime('now', '-${days} days')`);
+    const m = String(filters.posted).trim().match(/^(\d+)\s*([hdwm])$/i);
+    if (m) {
+      const n = parseInt(m[1], 10); // integer — safe to interpolate
+      const unit = { h: 'hours', d: 'days', w: 'weeks', m: 'months' }[m[2].toLowerCase()];
+      if (n > 0 && unit) {
+        // Filter on first_seen_at — when the listing appeared on our board. It's the only
+        // timestamp with real precision: source posted_at is date-only (midnight) or null
+        // for ~half the jobs, so it can't support hour-level windows — and mixing columns
+        // makes windows non-monotonic (6h could out-count 24h). first_seen_at is consistent,
+        // precise, and monotonic across every window.
+        if (isPostgres) {
+          clauses.push(`j.first_seen_at >= NOW() - INTERVAL '${n} ${unit}'`);
+        } else {
+          // SQLite has no 'weeks' modifier — express weeks as days.
+          const sUnit = unit === 'weeks' ? 'days' : unit;
+          const sN = unit === 'weeks' ? n * 7 : n;
+          clauses.push(`j.first_seen_at >= datetime('now', '-${sN} ${sUnit}')`);
+        }
       }
     }
   }

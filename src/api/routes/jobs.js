@@ -53,7 +53,9 @@ function formatJob(row, includeDescription = false) {
  *   location ★       - Free text (e.g. "United States,Canada,United Kingdom")
  *   experience_level ★ - internship | entry | mid | senior | lead | executive
  *   ats ★            - ATS platform (e.g. "ashby,greenhouse,breezy")
- *   posted           - 24h | 7d | 30d | 90d | 3m
+ *   posted           - Nh | Nd | Nw | Nm (e.g. 2h, 6h, 12h, 24h, 7d, 30d, 90d, 3m).
+ *                      Filters on first_seen_at (listing freshness) — source posted_at is
+ *                      date-only/null for ~half the jobs, so it can't do hour-level windows.
  *   remote           - true (only fully remote jobs, indexed)
  *   remote_worldwide - true (remote jobs open to any location globally)
  *   visa             - yes | no (H1B/visa sponsorship filter)
