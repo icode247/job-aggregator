@@ -27,6 +27,7 @@ const ATS_CONFIG = {
   zoho:            { batchSize: 50, concurrency: 3 },
   workday:         { batchSize: 75, concurrency: 4 },
   comeet:          { batchSize: 50, concurrency: 4 },
+  paylocity:       { batchSize: 60, concurrency: 3 },
 };
 
 // Cache workday configs per slug with TTL (1 hour)
@@ -198,6 +199,56 @@ async function fetchBreezyDescription(job) {
   // Breezy has description in og:description meta tag
   const ogMatch = html.match(/property="og:description"[^>]*content="([^"]*)"/i);
   if (ogMatch?.[1] && ogMatch[1].length > 50) return ogMatch[1];
+  return null;
+}
+
+// Paylocity's crawl is list-only (window.pageData carries no description); the full text
+// lives on the Jobs/Details/{id} page as a JSON-LD JobPosting. Detail pages soft-block
+// under sustained single-IP load — they return the page WITHOUT the JSON-LD rather than a
+// 429 — so, like the list adapter, we rotate UA, jitter, and retry the empty / 429 / 5xx /
+// reset cases with backoff. Genuinely-gone listings (404 / JobNotFound) are marked N/A.
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const PAYLOCITY_UAS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+];
+async function fetchPaylocityDescription(job) {
+  if (!job.url) return null;
+  const MAX = 3;
+  for (let attempt = 0; attempt <= MAX; attempt++) {
+    await sleep(200 + Math.random() * 800); // 0.2-1s jitter, browser-like
+    const ua = PAYLOCITY_UAS[Math.floor(Math.random() * PAYLOCITY_UAS.length)];
+    let res;
+    try {
+      res = await fetch(job.url, {
+        headers: { 'User-Agent': ua, Accept: 'text/html,application/xhtml+xml' },
+        redirect: 'follow',
+        signal: AbortSignal.timeout(20000),
+      });
+    } catch {
+      if (attempt < MAX) { await sleep(2 ** attempt * 800 + Math.random() * 800); continue; }
+      return null;
+    }
+    // Genuinely-gone listing → stop retrying it forever.
+    if (res.status === 404 || res.status === 410 || /JobNotFound/i.test(res.url)) return 'SKIP';
+    if (res.status === 429 || res.status >= 500) {
+      if (attempt < MAX) { await sleep(2 ** attempt * 800 + Math.random() * 800); continue; }
+      return null;
+    }
+    if (!res.ok) return null;
+    const html = await res.text();
+    // Full description = the JSON-LD JobPosting.description (HTML), same shape as breezy/jazzhr.
+    const ld = extractJsonLdDescription(html);
+    if (ld && ld.length > 20) return ld;
+    // Weak fallback: og:description (a shorter summary) when the JSON-LD is absent.
+    const og = html.match(/property="og:description"[^>]*content="([^"]*)"/i);
+    if (og?.[1] && og[1].length > 80) return og[1];
+    // Page returned but no description = almost certainly a soft-block that dropped the
+    // content → back off and retry; give up after MAX (leaves NULL for the next pass).
+    if (attempt < MAX) { await sleep(2 ** attempt * 800 + Math.random() * 800); continue; }
+    return null;
+  }
   return null;
 }
 
@@ -702,6 +753,8 @@ async function fetchDescription(job) {
       description = await fetchSuccessFactorsDescription(job); break;
     case 'comeet':
       description = await fetchComeetDescription(job); break;
+    case 'paylocity':
+      description = await fetchPaylocityDescription(job); break;
   }
 
   // No Browserless proxy fallback — all active ATS platforms return descriptions
@@ -808,4 +861,4 @@ async function backfillDescriptions() {
   return totalFilled;
 }
 
-module.exports = { backfillDescriptions, fetchDescription };
+module.exports = { backfillDescriptions, fetchDescription, backfillForAts, ATS_CONFIG };
