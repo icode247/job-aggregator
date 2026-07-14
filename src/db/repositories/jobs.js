@@ -127,18 +127,22 @@ function buildFilters(filters = {}) {
       const n = parseInt(m[1], 10); // integer — safe to interpolate
       const unit = { h: 'hours', d: 'days', w: 'weeks', m: 'months' }[m[2].toLowerCase()];
       if (n > 0 && unit) {
-        // Filter on first_seen_at — when the listing appeared on our board. It's the only
-        // timestamp with real precision: source posted_at is date-only (midnight) or null
-        // for ~half the jobs, so it can't support hour-level windows — and mixing columns
-        // makes windows non-monotonic (6h could out-count 24h). first_seen_at is consistent,
-        // precise, and monotonic across every window.
+        // Filter on the date the UI shows as "Posted": posted_at when the source provides it,
+        // else first_seen_at (which equals created_at — the UI's own fallback). Filtering on
+        // first_seen_at alone surfaced freshly-crawled but long-posted listings (a newly
+        // onboarded company's back-catalog) under "last 24h" — 94% of results weren't actually
+        // posted in-window. The OR-form is equivalent to COALESCE(posted_at, first_seen_at) but
+        // keeps an accurate planner row estimate (no posted_at index exists). Per-row single
+        // value => still monotonic across windows.
         if (isPostgres) {
-          clauses.push(`j.first_seen_at >= NOW() - INTERVAL '${n} ${unit}'`);
+          const t = `NOW() - INTERVAL '${n} ${unit}'`;
+          clauses.push(`(j.posted_at >= ${t} OR (j.posted_at IS NULL AND j.first_seen_at >= ${t}))`);
         } else {
           // SQLite has no 'weeks' modifier — express weeks as days.
           const sUnit = unit === 'weeks' ? 'days' : unit;
           const sN = unit === 'weeks' ? n * 7 : n;
-          clauses.push(`j.first_seen_at >= datetime('now', '-${sN} ${sUnit}')`);
+          const t = `datetime('now', '-${sN} ${sUnit}')`;
+          clauses.push(`(j.posted_at >= ${t} OR (j.posted_at IS NULL AND j.first_seen_at >= ${t}))`);
         }
       }
     }
