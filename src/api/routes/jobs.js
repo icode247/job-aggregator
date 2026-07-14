@@ -78,7 +78,9 @@ router.get('/api/jobs', async (req, res) => {
   if (req.query.work_mode) filters.workMode = req.query.work_mode;
   if (req.query.employment_type) filters.employmentType = req.query.employment_type;
   if (req.query.location) filters.location = req.query.location;
-  if (req.query.posted) filters.posted = req.query.posted;
+  // Accept `posted_after` as an alias for `posted` (the Browse-and-apply v2 frontend + the
+  // AI Job Matcher send `posted_after`); both take the same Nh/Nd/Nw/Nm value.
+  if (req.query.posted || req.query.posted_after) filters.posted = req.query.posted || req.query.posted_after;
   if (req.query.remote) filters.remote = req.query.remote;
   if (req.query.remote_worldwide) filters.remoteWorldwide = req.query.remote_worldwide;
   if (req.query.visa) filters.visa = req.query.visa;
