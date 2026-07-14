@@ -72,4 +72,14 @@ nohup bash -c "while true; do \
 done" >"$LOG/backfill-comeet.log" 2>&1 &
 echo "launched comeet description backfill -> $LOG/backfill-comeet.log  wrapper pid $!"
 
+# Paylocity description backfill: paylocity's list crawl carries no description; the full
+# text is on each Jobs/Details/{id} page as a JSON-LD JobPosting (backfill-descriptions.js
+# fetchPaylocityDescription). Direct fetch, no proxy; self-throttles (UA-rotation + jitter).
+# LOOP re-checks for newly crawled jobs; batch/concurrency come from ATS_CONFIG (60/3).
+nohup bash -c "while true; do \
+  env LOOP=1 RECHECK_S=900 PG_POOL_MAX=2 node scripts/backfill-desc-generic.js paylocity; \
+  echo \"[\$(date)] paylocity-desc exited rc=\$? — restarting in 30s\"; sleep 30; \
+done" >"$LOG/backfill-paylocity.log" 2>&1 &
+echo "launched paylocity description backfill -> $LOG/backfill-paylocity.log  wrapper pid $!"
+
 echo "all crawlers launched."
