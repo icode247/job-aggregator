@@ -4,6 +4,10 @@ const logger = require('../../logger');
 let redis = null;
 
 function getRedis() {
+  // Redis retired (addon removed) — no REDIS_URL means no cache. Returning null makes the
+  // middleware a pure passthrough. Without this, ioredis connects to the localhost default
+  // and client.get() HANGS forever (maxRetriesPerRequest is null), hanging every API request.
+  if (!process.env.REDIS_URL) return null;
   if (!redis) {
     try { redis = createRedisConnection(); } catch { return null; }
   }
