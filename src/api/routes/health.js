@@ -5,9 +5,12 @@ const { createRedisConnection } = require('../../queues/connection');
 
 const router = Router();
 
-// Lazy-init read-only queue instance for health checks
+// Lazy-init read-only queue instance for health checks. When REDIS_URL is unset the
+// BullMQ queue/Redis has been retired — skip it entirely (a live getJobCounts against a
+// dead Redis would hang forever, since maxRetriesPerRequest is null, and hang /health).
 let queues;
 function getQueues() {
+  if (!process.env.REDIS_URL) return { sync: null };
   if (!queues) {
     queues = {
       sync: new Queue('sync', { connection: createRedisConnection() }),
@@ -17,6 +20,7 @@ function getQueues() {
 }
 
 async function getQueueCounts(queue) {
+  if (!queue) return null;
   try {
     const counts = await queue.getJobCounts('waiting', 'active', 'failed', 'delayed');
     return counts;
@@ -38,9 +42,9 @@ router.get('/health', async (req, res) => {
     status: 'ok',
     companies_tracked: activeCount,
     total_active_jobs: totalJobs,
-    queue_health: {
-      sync: { waiting: sync.waiting, active: sync.active, failed: sync.failed, delayed: sync.delayed },
-    },
+    queue_health: sync
+      ? { sync: { waiting: sync.waiting, active: sync.active, failed: sync.failed, delayed: sync.delayed } }
+      : { sync: 'disabled (redis retired)' },
   });
 });
 
