@@ -10,7 +10,9 @@ const logger = require('../logger');
 
 const API_BASE = 'https://jobs.workable.com/api/v1';
 const JOBS_PER_PAGE = 20; // API returns 20 per page
-const MAX_PAGES_PER_CYCLE = 500; // 10,000 jobs per cycle
+// Heroku worker uses the default (500 pages = 10k latest/cycle). A deep local run
+// can set MARKETPLACE_MAX_PAGES much higher to walk the full ~170k marketplace.
+const MAX_PAGES_PER_CYCLE = parseInt(process.env.MARKETPLACE_MAX_PAGES, 10) || 500;
 
 function mapEmploymentType(type) {
   if (!type) return null;
@@ -144,13 +146,21 @@ async function crawlWorkableMarketplace() {
         ? `${API_BASE}/jobs?query=&location=&pageToken=${encodeURIComponent(pageToken)}`
         : `${API_BASE}/jobs?query=&location=`;
 
-      const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
-      if (!res.ok) {
-        logger.error({ status: res.status }, 'Workable marketplace API error');
-        break;
+      // Retry transient failures (a single dropped fetch used to kill the whole
+      // deep crawl). Only give up on a page after several backed-off attempts.
+      let data = null;
+      for (let attempt = 1; attempt <= 6; attempt++) {
+        try {
+          const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          data = await res.json();
+          break;
+        } catch (e) {
+          if (attempt === 6) { logger.error({ err: e.message, page: pagesProcessed }, 'Workable marketplace: page failed after 6 retries — stopping'); }
+          else { await new Promise(r => setTimeout(r, 3000 * attempt)); }
+        }
       }
-
-      const data = await res.json();
+      if (!data) break;
       const jobs = data.jobs || [];
 
       if (jobs.length === 0) break;
@@ -200,3 +210,11 @@ async function crawlWorkableMarketplace() {
 }
 
 module.exports = { crawlWorkableMarketplace };
+
+// Standalone deep run: MARKETPLACE_MAX_PAGES=8500 walks the full ~170k marketplace.
+if (require.main === module) {
+  if (!process.env.DATABASE_URL) { console.error('Set DATABASE_URL'); process.exit(1); }
+  crawlWorkableMarketplace()
+    .then((added) => { console.log('Workable marketplace crawl finished — jobs upserted:', added); process.exit(0); })
+    .catch((e) => { console.error('FATAL', e); process.exit(1); });
+}

@@ -13,10 +13,20 @@ function getDb() {
       pool = new Pool({
         connectionString: process.env.DATABASE_URL,
         ssl: config.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-        max: 15,
+        max: parseInt(process.env.PG_POOL_MAX, 10) || 15,
         idleTimeoutMillis: 10000,
         connectionTimeoutMillis: 10000,
+        // Abort any query that runs longer than 60s instead of hanging forever on a
+        // half-dead connection (the SA->us-east-1 link drops mid-query and, without
+        // these, a query never returns — freezing the whole crawl loop).
+        statement_timeout: 60000,
+        query_timeout: 60000,
       });
+      // Idle clients can be terminated by the server (Heroku) or a flaky link; pg
+      // emits 'error' on the pool for those. Without a listener Node treats it as an
+      // uncaught exception and crashes the process — so swallow/log it; the next
+      // query just acquires a fresh client.
+      pool.on('error', (err) => logger.warn({ err: err.message }, 'PG pool idle-client error (ignored)'));
       logger.info('PostgreSQL pool connected');
     }
     return pool;
