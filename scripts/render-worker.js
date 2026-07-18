@@ -19,7 +19,7 @@
 const { fork } = require('child_process');
 const path = require('path');
 const logger = require('../src/logger');
-const { backfillDescriptions } = require('../src/tasks/backfill-descriptions');
+const { backfillForAts, ATS_CONFIG } = require('../src/tasks/backfill-descriptions');
 const { backfillClassifications } = require('../src/tasks/backfill-classifications');
 const { pruneDeadJobs } = require('../src/tasks/dead-job-check');
 const { query, closeDb } = require('../src/db/connection');
@@ -32,11 +32,18 @@ let shuttingDown = false;
 function startCrawler() {
   if (shuttingDown) return;
   child = fork(path.join(__dirname, 'crawl-companies-local.js'), [], {
+    // Cap the child heap below the ~258MB Node auto-picks on the 512MB Starter so a runaway
+    // tenant fails with a clean V8 error + restart rather than a container SIGKILL. The REAL
+    // fix is low concurrency/batch: the OOM was 4-way concurrency crawling 500-600-posting
+    // Workday tenants (each posting carries full description HTML) — several 10MB job arrays
+    // in flight at once. CONCURRENCY 2 + BATCH 8 keeps at most ~2 tenants' jobs resident and
+    // GCs between companies. Override via Render env if you later move to a bigger instance.
+    execArgv: ['--max-old-space-size=224'],
     env: {
       ...process.env,
       ATS: CRAWL_ATS,
-      CONCURRENCY: process.env.CONCURRENCY || '4',
-      BATCH: process.env.BATCH || '30',
+      CONCURRENCY: process.env.CONCURRENCY || '2',
+      BATCH: process.env.BATCH || '8',
       PG_POOL_MAX: process.env.PG_POOL_MAX || '2',
       DELAY_MS: process.env.DELAY_MS || '300',
       PROXY_DISABLED: '1', // all four crawl direct; never route through the metered proxy
@@ -55,8 +62,20 @@ let descRunning = false;
 async function runDescBackfill() {
   if (!descRunning) {
     descRunning = true;
-    try { const filled = await backfillDescriptions(); logger.info({ filled }, 'desc backfill cycle complete'); }
-    catch (e) { logger.error({ err: e.message }, 'desc backfill error'); }
+    try {
+      // Sequential per-platform (NOT the all-parallel backfillDescriptions) so the parent
+      // process's memory stays bounded on the 512MB Starter: one platform's batch of HTML
+      // descriptions in flight at a time, not ~15 platforms' worth at once. Batch/concurrency
+      // capped for the same reason. Slower per cycle, but it loops every 5m and re-drains.
+      let filled = 0;
+      for (const [ats, cfg] of Object.entries(ATS_CONFIG)) {
+        try {
+          const r = await backfillForAts(ats, Math.min(cfg.batchSize, 40), Math.min(cfg.concurrency, 3));
+          filled += r.filled;
+        } catch (e) { logger.warn({ ats, err: e.message }, 'desc backfill (ats) error'); }
+      }
+      logger.info({ filled }, 'desc backfill cycle complete');
+    } catch (e) { logger.error({ err: e.message }, 'desc backfill error'); }
     finally { descRunning = false; }
   }
   setTimeout(runDescBackfill, 5 * 60 * 1000);
