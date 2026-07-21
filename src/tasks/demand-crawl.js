@@ -154,6 +154,31 @@ const wonsulting = {
   },
 };
 
+// jobhose (scale.jobs) — free public keyword+location API. `userId` is required but any string
+// works (no account validation). Rich payload: ATS source, company, structured location, salary,
+// experience, remote flag, full description. Direct job source (like liftmycv/wonsulting).
+const JOBHOSE_USER = process.env.JOBHOSE_USER_ID || 'user_demandcrawl';
+const JH_COUNTRIES = new Set(['united states', 'usa', 'us', 'united kingdom', 'uk', 'canada', 'germany', 'france', 'netherlands', 'australia', 'ireland', 'india', 'spain', 'singapore', 'united arab emirates', 'uae', 'saudi arabia', 'qatar', 'brazil', 'italy', 'italia', 'sweden', 'switzerland', 'japan', 'european union', 'europe', 'mexico', 'poland', 'portugal']);
+const jobhose = {
+  name: 'jobhose',
+  enabled: () => true,
+  async search(title, location, page) {
+    const loc = (location || '').trim();
+    const isCountry = JH_COUNTRIES.has(loc.toLowerCase());
+    const locObj = loc ? [{ city: isCountry ? '' : loc, state: '', country: isCountry ? loc : '' }] : [{ city: '', state: '', country: 'United States' }];
+    const take = Math.min(PAGE_SIZE, 50);
+    const params = new URLSearchParams({ userId: JOBHOSE_USER, jobTitles: title, take: String(take), skip: String((page - 1) * take), source: 'live', searchMode: 'top-matched', locations: JSON.stringify(locObj) });
+    const data = await httpGetJson(`https://jobhose-prod.scale.jobs/api/search-jobs?${params}`, { 'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', origin: 'https://scale.jobs', referer: 'https://scale.jobs/' });
+    return (data?.jobs || []).filter((j) => j.url && j.organization && j.title).map((j) => {
+      const jl = (j.jobLocations && j.jobLocations[0]) || null;
+      const locStr = jl ? [jl.city, jl.country].filter(Boolean).join(', ') : ((j.locationsAltRaw && j.locationsAltRaw[0]) || j.locationType || null);
+      return { externalId: j.externalId || j.id, source: 'jobhose', atsHint: j.source, company: j.organization,
+        applyUrl: j.url, title: j.title, location: locStr, description: j.descriptionText || j.descriptionHtml || null,
+        postedAt: j.datePosted || null, workplaceType: wp(j.aiWorkArrangement || (j.isRemote ? 'Remote' : j.locationType)), jobUrl: j.url };
+    });
+  },
+};
+
 // Google-dork discovery via Serper (PAID, capped). For each demanded (role, location) we run
 // ONE combined dork — `"role" location (site:greenhouse OR site:lever OR ...)` — across the
 // supported path-slug ATS, pull the company slugs out of the result URLs, and insert those
@@ -216,7 +241,7 @@ const googledork = {
   },
 };
 
-const SOURCES = [liftmycv, wonsulting, googledork];
+const SOURCES = [liftmycv, wonsulting, jobhose, googledork];
 
 // ---------- storage ----------
 async function upsertNormalized(n) {
