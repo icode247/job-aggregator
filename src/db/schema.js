@@ -70,6 +70,30 @@ async function migrate() {
 
   await exec('CREATE INDEX IF NOT EXISTS idx_crawl_sources_ats ON crawl_sources(ats)');
 
+  // Demand capture: every user search (via the board API) is recorded + aggregated here so the
+  // crawlers can be steered toward what users actually look for. `demand_key` is a normalized
+  // string of the (query,location,type,experience,work_mode) combo used for upsert dedup — a
+  // composite UNIQUE would break on NULLs, so we key on the derived string instead. A new
+  // empty table -> CREATE takes no lock on jobs/companies (safe on boot).
+  await exec(`
+    CREATE TABLE IF NOT EXISTS search_demand (
+      id                ${autoId},
+      demand_key        TEXT NOT NULL UNIQUE,
+      query_text        TEXT,
+      location          TEXT,
+      employment_type   TEXT,
+      experience_level  TEXT,
+      work_mode         TEXT,
+      search_count      INTEGER DEFAULT 1,
+      last_result_count INTEGER,
+      min_result_count  INTEGER,
+      first_seen_at     TIMESTAMP DEFAULT ${now},
+      last_seen_at      TIMESTAMP DEFAULT ${now}
+    )
+  `);
+  await exec('CREATE INDEX IF NOT EXISTS idx_search_demand_priority ON search_demand(search_count DESC, last_result_count ASC)');
+  await exec('CREATE INDEX IF NOT EXISTS idx_search_demand_last_seen ON search_demand(last_seen_at DESC)');
+
   // Fix salary columns from INTEGER to TEXT (avoid type issues with decimals)
   if (isPostgres) {
     try {

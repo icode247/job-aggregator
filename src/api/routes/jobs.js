@@ -2,6 +2,7 @@ const { Router } = require('express');
 const { jobsRepo } = require('../../db');
 const { query } = require('../../db/connection');
 const { stripHtml } = require('../../utils/html');
+const { recordSearchDemand, getTopDemand } = require('../searchDemand');
 
 const router = Router();
 
@@ -117,6 +118,23 @@ router.get('/api/jobs', async (req, res) => {
     },
     data: jobs.map(j => formatJob(j, includeDesc)),
   });
+
+  // Fire-and-forget demand capture — NEVER awaited, self-contained try/catch, so it cannot
+  // slow or break the response. Only the initial page (offset 0) counts as one user search,
+  // so pagination doesn't inflate the count.
+  if (offset === 0) recordSearchDemand(filters, total).catch(() => {});
+});
+
+/**
+ * GET /api/demand
+ * Top unmet search demand — most-searched, fewest-results first. Drives demand-based crawling.
+ * Query: limit (default 100, max 500), max_results (only searches that returned <= N)
+ */
+router.get('/api/demand', async (req, res) => {
+  const limit = parseInt(req.query.limit, 10) || 100;
+  const maxResults = req.query.max_results != null ? parseInt(req.query.max_results, 10) : null;
+  const rows = await getTopDemand({ limit, maxResults });
+  res.json({ count: rows.length, data: rows });
 });
 
 /**
