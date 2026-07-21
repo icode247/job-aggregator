@@ -82,4 +82,14 @@ nohup bash -c "while true; do \
 done" >"$LOG/backfill-paylocity.log" 2>&1 &
 echo "launched paylocity description backfill -> $LOG/backfill-paylocity.log  wrapper pid $!"
 
+# Demand-driven crawl (Phase 2): reads the top UNMET searches from search_demand (what users
+# search for but we return few results for) and fetches those exact jobs from LiftMyCV into
+# Postgres. Keyword+location API (low bandwidth), 6h per-demand cooldown. LOOP re-checks every
+# 30m for newly-accumulated unmet demand. This is what makes the crawl chase real user demand.
+nohup bash -c "while true; do \
+  env LOOP=1 RECHECK_S=1800 DEMAND_MAX_LOCATIONS=3 PG_POOL_MAX=2 node src/tasks/demand-crawl.js; \
+  echo \"[\$(date)] demand-crawl exited rc=\$? — restarting in 60s\"; sleep 60; \
+done" >"$LOG/demand-crawl.log" 2>&1 &
+echo "launched demand-driven crawl -> $LOG/demand-crawl.log  wrapper pid $!"
+
 echo "all crawlers launched."
