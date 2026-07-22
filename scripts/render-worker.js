@@ -16,6 +16,13 @@
  * Render config:  Build `npm ci`  ·  Start `node scripts/render-worker.js`  ·  env DATABASE_URL
  * Tune for the 512MB/low-CPU Starter via env: CRAWL_ATS, CONCURRENCY, BATCH, PG_POOL_MAX.
  */
+// Keep demand-crawl's per-cycle memory small on the 512MB box (it shares the parent process
+// with the maintenance loops). MUST be set before requiring demand-crawl, which reads these
+// at module load. Smaller page/batch => fewer job objects in flight => no parent-heap OOM.
+process.env.DEMAND_BATCH = process.env.DEMAND_BATCH || '12';
+process.env.DEMAND_PAGE_SIZE = process.env.DEMAND_PAGE_SIZE || '40';
+process.env.DEMAND_MAX_TITLES = process.env.DEMAND_MAX_TITLES || '2';
+process.env.DEMAND_MAX_LOCATIONS = process.env.DEMAND_MAX_LOCATIONS || '2';
 const { fork } = require('child_process');
 const path = require('path');
 const logger = require('../src/logger');
