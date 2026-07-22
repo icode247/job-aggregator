@@ -22,6 +22,7 @@ const logger = require('../src/logger');
 const { backfillForAts, ATS_CONFIG } = require('../src/tasks/backfill-descriptions');
 const { backfillClassifications } = require('../src/tasks/backfill-classifications');
 const { pruneDeadJobs } = require('../src/tasks/dead-job-check');
+const { cycle: runDemandCycle, ensureColumns: ensureDemandColumns } = require('../src/tasks/demand-crawl');
 const { query, closeDb } = require('../src/db/connection');
 
 const CRAWL_ATS = process.env.CRAWL_ATS || 'workday,icims,oracle,successfactors';
@@ -96,6 +97,20 @@ async function runDeadPrune() {
   catch (e) { logger.error({ err: e.message }, 'dead-job pruning error'); }
   setTimeout(runDeadPrune, 60 * 60 * 1000);
 }
+// Demand-driven crawl (Phase 2): moved off the Mac to the cloud so home-network outages don't
+// pause it. Runs IN this parent process (not a fork) — it's I/O-bound + low-memory (one API
+// page at a time), cheaper than a second Node runtime on the 512MB box. Sources activate by
+// env: LiftMyCV + jobhose need no key; Wonsulting needs WONSULTING_COOKIE; googledork a paid
+// SERPER_API_KEY. A single crawl guard prevents overlap.
+let demandRunning = false;
+async function runDemandCrawl() {
+  if (!demandRunning) {
+    demandRunning = true;
+    try { await runDemandCycle(); } catch (e) { logger.error({ err: e.message }, 'demand-crawl cycle error'); }
+    finally { demandRunning = false; }
+  }
+  setTimeout(runDemandCrawl, 20 * 60 * 1000);
+}
 
 function shutdown(sig) {
   shuttingDown = true;
@@ -109,9 +124,11 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('unhandledRejection', (err) => logger.error({ err: err?.message }, 'unhandledRejection in render-worker'));
 
-logger.info({ crawlAts: CRAWL_ATS }, 'render-worker starting — crawl 4 sync-only platforms + maintenance (no Redis)');
+logger.info({ crawlAts: CRAWL_ATS }, 'render-worker starting — crawl 4 sync-only platforms + maintenance + demand-crawl (no Redis)');
 startCrawler();
 setTimeout(runDescBackfill, 5 * 60 * 1000);
 setTimeout(runClassify, 2 * 60 * 1000);
 setTimeout(runStaleCleanup, 5 * 60 * 1000);
 setTimeout(runDeadPrune, 8 * 60 * 1000);
+// demand-crawl: ensure its columns exist, then start the loop a bit after boot.
+ensureDemandColumns().catch((e) => logger.warn({ err: e.message }, 'demand ensureColumns')).finally(() => setTimeout(runDemandCrawl, 6 * 60 * 1000));

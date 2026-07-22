@@ -367,4 +367,4 @@ if (require.main === module) {
   })().catch((e) => { logger.error({ err: e.message }, 'demand-crawl fatal'); process.exit(1); });
 }
 
-module.exports = { cycle, crawlDemand, upsertNormalized, deriveCompany };
+module.exports = { cycle, crawlDemand, upsertNormalized, deriveCompany, ensureColumns };
