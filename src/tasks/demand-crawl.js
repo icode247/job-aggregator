@@ -135,8 +135,15 @@ const liftmycv = {
   },
 };
 
-const WONSULTING_COOKIE = process.env.WONSULTING_COOKIE || '';
-const WONSULTING_XSRF = (() => { const m = WONSULTING_COOKIE.match(/XSRF-TOKEN=([^;]+)/); try { return m ? decodeURIComponent(m[1]) : ''; } catch { return m ? m[1] : ''; } })();
+// Strip CR/LF/surrounding whitespace — env values pasted via a dashboard often pick up a
+// stray newline, which makes the derived x-xsrf-token header throw "Invalid character".
+const WONSULTING_COOKIE = (process.env.WONSULTING_COOKIE || '').replace(/[\r\n]+/g, '').trim();
+const WONSULTING_XSRF = (() => {
+  const m = WONSULTING_COOKIE.match(/XSRF-TOKEN=([^;]+)/);
+  let v = '';
+  try { v = m ? decodeURIComponent(m[1]) : ''; } catch { v = m ? m[1] : ''; }
+  return v.replace(/[^\x20-\x7E]/g, ''); // header-safe: drop any non-printable-ASCII
+})();
 const wonsulting = {
   name: 'wonsulting',
   enabled: () => !!(WONSULTING_COOKIE && WONSULTING_XSRF),
