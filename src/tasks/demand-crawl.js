@@ -40,8 +40,10 @@ const logger = require('../logger');
 const { classifyJob } = require('../utils/classify');
 
 const THRESHOLD = parseInt(process.env.DEMAND_MAX_RESULTS || '10', 10);
-const BATCH = parseInt(process.env.DEMAND_BATCH || '15', 10);
-const RECRAWL_HOURS = parseInt(process.env.DEMAND_RECRAWL_HOURS || '6', 10);
+const BATCH = parseInt(process.env.DEMAND_BATCH || '25', 10);
+// 48h (not 6h): a just-crawled demand shouldn't be redone for days, or the top few high-volume
+// searches get re-crawled every cycle and the long-tail backlog never gets reached.
+const RECRAWL_HOURS = parseInt(process.env.DEMAND_RECRAWL_HOURS || '48', 10);
 const MAX_TITLES = parseInt(process.env.DEMAND_MAX_TITLES || '3', 10);
 const MAX_LOCATIONS = parseInt(process.env.DEMAND_MAX_LOCATIONS || '2', 10);
 const PAGES = parseInt(process.env.DEMAND_PAGES || '1', 10);
@@ -296,8 +298,29 @@ async function crawlDemand(row) {
       }
     }
   }
-  if (!DRY) await query('UPDATE search_demand SET last_crawled_at = NOW(), jobs_added = COALESCE(jobs_added,0) + ? WHERE demand_key = ?', [added, row.demand_key]);
-  return { added, fetched, perSource };
+  // Re-count actual coverage now, so a demand that's now satisfied drops OUT of the unmet queue
+  // (otherwise last_result_count keeps its old low value until a user happens to re-search it,
+  // and the crawler keeps re-picking it). Best-effort; plainto_tsquery is injection/parse-safe.
+  let resultCount = null;
+  if (!DRY) {
+    try {
+      const firstTitle = splitList(row.query_text, 1)[0];
+      const firstLoc = splitList(row.location, 1)[0];
+      if (firstTitle) {
+        const params = [firstTitle];
+        let locClause = '';
+        if (firstLoc) { locClause = ' AND location ILIKE ?'; params.push(`%${firstLoc}%`); }
+        const rc = await query(`SELECT count(*) n FROM jobs WHERE removed_at IS NULL AND search_vector @@ plainto_tsquery('english', ?)${locClause}`, params);
+        resultCount = parseInt(rc.rows[0].n, 10);
+      }
+    } catch (e) { logger.debug({ err: e.message }, 'demand re-count failed'); }
+    if (resultCount != null) {
+      await query('UPDATE search_demand SET last_crawled_at = NOW(), jobs_added = COALESCE(jobs_added,0) + ?, last_result_count = ? WHERE demand_key = ?', [added, resultCount, row.demand_key]);
+    } else {
+      await query('UPDATE search_demand SET last_crawled_at = NOW(), jobs_added = COALESCE(jobs_added,0) + ? WHERE demand_key = ?', [added, row.demand_key]);
+    }
+  }
+  return { added, fetched, perSource, resultCount };
 }
 
 async function ensureColumns() {
@@ -321,9 +344,9 @@ async function cycle() {
   if (!rows.length) { logger.info('demand-crawl: no unmet demand due'); return { demands: 0, added: 0 }; }
   let totalAdded = 0, totalFetched = 0;
   for (const row of rows) {
-    const { added, fetched, perSource } = await crawlDemand(row);
+    const { added, fetched, perSource, resultCount } = await crawlDemand(row);
     totalAdded += added; totalFetched += fetched;
-    logger.info({ q: (row.query_text || '').slice(0, 48), loc: row.location, searches: row.search_count, was_results: row.last_result_count, fetched, added, perSource, dry: DRY }, 'demand crawled');
+    logger.info({ q: (row.query_text || '').slice(0, 48), loc: row.location, searches: row.search_count, was_results: row.last_result_count, now_results: resultCount, fetched, added, perSource, dry: DRY }, 'demand crawled');
   }
   logger.info({ demands: rows.length, fetched: totalFetched, added: totalAdded, dorkReqUsed, dorkNewCompanies, dorkDisabled, dry: DRY }, 'demand-crawl cycle complete');
   return { demands: rows.length, added: totalAdded };
