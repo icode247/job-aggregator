@@ -1,5 +1,6 @@
 const { query, transaction, isPostgres } = require('../connection');
 const logger = require('../../logger');
+const { aliasGroup, isShortAlias } = require('../../utils/location-aliases');
 
 /**
  * Build WHERE clauses from filters.
@@ -108,13 +109,30 @@ function buildFilters(filters = {}) {
     }
   }
 
-  // Location — multi-value free-text match (OR'd)
+  // Location — multi-value free-text match (OR'd), with country-alias expansion so e.g.
+  // "UAE" also matches jobs stored as "United Arab Emirates" (and USA/US<->United States,
+  // UK<->United Kingdom, ...). Long unambiguous aliases use a substring match; short ones
+  // (us/uk/usa/uae) use a word-boundary regex so "us" doesn't match "Houston".
   {
     const locs = toList(filters.location);
     if (locs.length > 0) {
-      const groups = locs.map(() => 'j.location ILIKE ?');
-      clauses.push('(' + groups.join(' OR ') + ')');
-      for (const l of locs) params.push(`%${l}%`);
+      const or = [];
+      for (const l of locs) {
+        const raw = String(l).trim().toLowerCase();
+        const group = aliasGroup(l);
+        // Match the term itself plus every alias in its country group (deduped).
+        const terms = group ? Array.from(new Set([raw, ...group])) : [l];
+        for (const term of terms) {
+          // Word-boundary only for KNOWN short aliases (us/uk/usa/uae) so they match as whole
+          // words; everything else (incl. arbitrary short input like "NY") stays substring.
+          if (isPostgres && isShortAlias(term) && aliasGroup(term)) {
+            or.push("j.location ~* ('\\y' || ? || '\\y')"); params.push(String(term).toLowerCase());
+          } else {
+            or.push('j.location ILIKE ?'); params.push(`%${term}%`);
+          }
+        }
+      }
+      clauses.push('(' + or.join(' OR ') + ')');
     }
   }
 
