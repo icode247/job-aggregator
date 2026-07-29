@@ -24,6 +24,10 @@ const logger = require('../src/logger');
 const ROLE_SOURCE = process.env.ROLE_SOURCE || 'demand';
 const ROLE_LOCATION = process.env.RESUMLY_LOCATION || 'United States';
 const CHECKPOINT = process.env.RESUMLY_CHECKPOINT || '/tmp/resumly-done.txt';
+// FETCH_FILE: when set, write normalized jobs to this JSONL (deduped by externalId) instead of
+// upserting to Postgres. This makes the token-bound phase ~30x faster (no per-job DB round-trip);
+// scripts/import-resumly-file.js batch-loads the file into Postgres afterward (no token needed).
+const FETCH_FILE = process.env.FETCH_FILE || '';
 
 const TOKEN = process.env.RESUMLY_TOKEN || '';
 const QID = process.env.RESUMLY_QUERY_ID || '';
@@ -79,6 +83,7 @@ function normalize(j) {
     description: null, postedAt: j.date_posted || null, workplaceType, jobUrl: j.url };
 }
 
+const fileSeen = new Set(); // dedup ids across roles when writing to file
 async function drainCurrentQuery() {
   let page = 1, added = 0, seen = 0;
   while (page <= MAX_PAGES) {
@@ -87,7 +92,16 @@ async function drainCurrentQuery() {
     let data; try { data = JSON.parse(res.body); } catch { break; }
     const rows = data.result || [];
     if (!rows.length) break;
-    for (const j of rows) { seen++; try { added += await upsertNormalized(normalize(j)); } catch { /* skip */ } }
+    for (const j of rows) {
+      seen++;
+      const n = normalize(j);
+      if (FETCH_FILE) {
+        const id = String(n.externalId || '');
+        if (id && !fileSeen.has(id)) { fileSeen.add(id); fs.appendFileSync(FETCH_FILE, JSON.stringify(n) + '\n'); added++; }
+      } else {
+        try { added += await upsertNormalized(n); } catch { /* skip */ }
+      }
+    }
     if (!data.has_more) break;
     page++; await sleep(DELAY_MS);
   }
