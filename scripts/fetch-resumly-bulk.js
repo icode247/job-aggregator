@@ -13,9 +13,17 @@
  *      RESTORE_TITLE("financial analyst") RESTORE_LOCATION("United States")
  */
 const https = require('https');
+const fs = require('fs');
 const { upsertNormalized } = require('../src/tasks/demand-crawl');
 const { query, closeDb } = require('../src/db/connection');
 const logger = require('../src/logger');
+
+// ROLE_SOURCE=roles drains the comprehensive resumly-roles.js vocabulary (US by default);
+// otherwise the top DEMAND_LIMIT search_demand rows. CHECKPOINT persists completed roles so a
+// re-run (after a crash / token refresh) skips what's done — essential for the long full-vocab run.
+const ROLE_SOURCE = process.env.ROLE_SOURCE || 'demand';
+const ROLE_LOCATION = process.env.RESUMLY_LOCATION || 'United States';
+const CHECKPOINT = process.env.RESUMLY_CHECKPOINT || '/tmp/resumly-done.txt';
 
 const TOKEN = process.env.RESUMLY_TOKEN || '';
 const QID = process.env.RESUMLY_QUERY_ID || '';
@@ -78,11 +86,22 @@ async function drainCurrentQuery() {
 
 (async () => {
   if (!TOKEN || !QID || !process.env.DATABASE_URL) { console.error('Set RESUMLY_TOKEN, RESUMLY_QUERY_ID, DATABASE_URL'); process.exit(1); }
-  const { rows } = await query(
-    `SELECT query_text, location FROM search_demand
-       WHERE query_text IS NOT NULL AND query_text <> ''
-       ORDER BY search_count DESC, last_result_count ASC NULLS FIRST LIMIT $1`, [DEMAND_LIMIT]);
-  logger.info({ roles: rows.length }, 'resumly bulk drain starting');
+  let rows;
+  if (ROLE_SOURCE === 'roles') {
+    const { ALL_ROLES } = require('./resumly-roles');
+    rows = ALL_ROLES.map((r) => ({ query_text: r, location: ROLE_LOCATION }));
+  } else {
+    ({ rows } = await query(
+      `SELECT query_text, location FROM search_demand
+         WHERE query_text IS NOT NULL AND query_text <> ''
+         ORDER BY search_count DESC, last_result_count ASC NULLS FIRST LIMIT $1`, [DEMAND_LIMIT]));
+  }
+  // Resume: skip roles already checkpointed.
+  const doneSet = new Set();
+  try { fs.readFileSync(CHECKPOINT, 'utf8').split('\n').forEach((l) => l.trim() && doneSet.add(l.trim())); } catch { /* fresh */ }
+  const pending = rows.filter((r) => !doneSet.has(`${r.query_text}|${r.location || ''}`));
+  logger.info({ source: ROLE_SOURCE, total: rows.length, alreadyDone: doneSet.size, pending: pending.length }, 'resumly bulk drain starting');
+  rows = pending;
   const t0 = Date.now();
   let totalAdded = 0, totalSeen = 0, done = 0;
   const bySource = {};
@@ -96,6 +115,7 @@ async function drainCurrentQuery() {
     const before = totalAdded;
     const { added, seen } = await drainCurrentQuery();
     totalAdded += added; totalSeen += seen; done++;
+    try { fs.appendFileSync(CHECKPOINT, `${row.query_text}|${row.location || ''}\n`); } catch { /* ignore */ }
     logger.info({ role: row.query_text.slice(0, 40), loc: row.location, seen, added, cumAdded: totalAdded }, `role ${done}/${rows.length} drained`);
     await sleep(400);
   }
