@@ -36,7 +36,7 @@ const BASE = '/Prod/job-search';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const H = { authorization: `Bearer ${TOKEN}`, origin: 'https://app.resumly.ai', 'content-type': 'application/json' };
 
-function req(method, path, body) {
+function reqOnce(method, path, body) {
   return new Promise((resolve, reject) => {
     const payload = body ? JSON.stringify(body) : null;
     const opts = { hostname: HOST, path, method, timeout: 25000, headers: { ...H } };
@@ -45,6 +45,16 @@ function req(method, path, body) {
     r.on('error', reject); r.on('timeout', function () { this.destroy(); reject(new Error('timeout')); });
     if (payload) r.write(payload); r.end();
   });
+}
+// Retry transient network errors (timeout / reset / home-network blip) so a single hiccup
+// during the multi-hour run doesn't abort a role — 3 tries with backoff.
+async function req(method, path, body) {
+  let lastErr;
+  for (let i = 0; i < 3; i++) {
+    try { return await reqOnce(method, path, body); }
+    catch (e) { lastErr = e; await sleep(1500 * (i + 1)); }
+  }
+  throw lastErr;
 }
 const splitList = (s, cap) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, cap);
 const titleCase = (s) => s.replace(/\b\w/g, (c) => c.toUpperCase());
@@ -109,14 +119,18 @@ async function drainCurrentQuery() {
     const titles = splitList(row.query_text, 5);
     const locs = splitList(row.location, 5);
     if (!titles.length) continue;
-    const ok = await setQuery(titles, locs);
-    if (!ok) { logger.warn({ q: row.query_text.slice(0, 40) }, 'query update failed — skip'); continue; }
-    await sleep(2500); // let resumly populate the query
-    const before = totalAdded;
-    const { added, seen } = await drainCurrentQuery();
-    totalAdded += added; totalSeen += seen; done++;
-    try { fs.appendFileSync(CHECKPOINT, `${row.query_text}|${row.location || ''}\n`); } catch { /* ignore */ }
-    logger.info({ role: row.query_text.slice(0, 40), loc: row.location, seen, added, cumAdded: totalAdded }, `role ${done}/${rows.length} drained`);
+    try {
+      const ok = await setQuery(titles, locs);
+      if (!ok) { logger.warn({ q: row.query_text.slice(0, 40) }, 'query update failed — skip'); continue; }
+      await sleep(2500); // let resumly populate the query
+      const { added, seen } = await drainCurrentQuery();
+      totalAdded += added; totalSeen += seen; done++;
+      // Checkpoint ONLY on success, so a role that errored is retried on the next resume.
+      try { fs.appendFileSync(CHECKPOINT, `${row.query_text}|${row.location || ''}\n`); } catch { /* ignore */ }
+      logger.info({ role: row.query_text.slice(0, 40), loc: row.location, seen, added, cumAdded: totalAdded }, `role ${done}/${rows.length} drained`);
+    } catch (e) {
+      logger.warn({ role: row.query_text.slice(0, 40), err: e.message }, 'role failed — skipping (will retry on resume)');
+    }
     await sleep(400);
   }
   // Restore the user's saved search.
