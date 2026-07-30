@@ -10,6 +10,7 @@
 const fs = require('fs');
 const readline = require('readline');
 const { deriveCompany } = require('../src/tasks/demand-crawl');
+const { isSupportedAts } = require('../src/utils/supported-ats');
 const { query, closeDb } = require('../src/db/connection');
 const { classifyJob } = require('../src/utils/classify');
 const logger = require('../src/logger');
@@ -22,7 +23,7 @@ async function flush(batch) {
   if (!batch.length) return 0;
   // 1) derive + batch-upsert companies (dedup by career_url within the batch)
   const derived = batch.map((n) => ({ n, c: deriveCompany(n.applyUrl, n.atsHint, n.company, 'resumly') }))
-    .filter((x) => x.c.slug && x.c.careerUrl);
+    .filter((x) => x.c.slug && x.c.careerUrl && isSupportedAts(x.c.ats)); // only applyable ATS
   const uniqCos = new Map();
   for (const { n, c } of derived) if (!uniqCos.has(c.careerUrl)) uniqCos.set(c.careerUrl, { name: n.company, domain: c.domain, ats: c.ats, slug: c.slug, careerUrl: c.careerUrl });
   const cos = [...uniqCos.values()];

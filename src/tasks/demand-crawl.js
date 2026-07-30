@@ -38,6 +38,7 @@ const https = require('https');
 const { query, closeDb } = require('../db/connection');
 const logger = require('../logger');
 const { classifyJob } = require('../utils/classify');
+const { isSupportedAts } = require('../utils/supported-ats');
 
 const THRESHOLD = parseInt(process.env.DEMAND_MAX_RESULTS || '10', 10);
 const BATCH = parseInt(process.env.DEMAND_BATCH || '25', 10);
@@ -257,6 +258,9 @@ async function upsertNormalized(n) {
   if (!n.externalId || !n.company || !n.applyUrl) return 0;
   const c = deriveCompany(n.applyUrl, n.atsHint, n.company, n.source);
   if (!c.slug || !c.careerUrl) return 0;
+  // Only store jobs on ATS platforms we can crawl AND apply to — otherwise we re-fill the DB with
+  // jobs users can't apply to (the exact cruft the one-time cleanup removed).
+  if (!isSupportedAts(c.ats)) return 0;
   if (DRY) return 0;
   const cRes = await query(
     `INSERT INTO companies (company_name, domain, ats, ats_slug, career_url, status, origin, created_at, updated_at)
