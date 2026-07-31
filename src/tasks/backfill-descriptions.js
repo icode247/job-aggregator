@@ -113,8 +113,38 @@ async function fetchWorkdayDescription(job, rawData) {
   return null;
 }
 
+// The stored external_id is the ATS-native posting id for natively-crawled jobs, but for
+// demand/bulk-imported jobs (liftmycv, wonsulting, resumly, csv_import, serp_discovery) it's the
+// AGGREGATOR's own id — while the real ATS id lives in job.url. Prefer the id parsed from the URL;
+// fall back to the (prefix-stripped) external_id so natively-crawled jobs behave exactly as before.
+const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+function nativeId(job, ats) {
+  const fallback = String(job.external_id || '').replace(`${ats}_`, '');
+  const url = job.url || '';
+  let m = null;
+  switch (ats) {
+    case 'greenhouse':
+      m = url.match(/[?&]gh_jid=(\d+)/) || url.match(/\/jobs\/(\d+)/); break;
+    case 'lever':
+    case 'ashby':
+    case 'rippling':
+      m = url.match(UUID_RE); return m ? m[0] : fallback;
+    case 'smartrecruiters':
+      m = url.match(/\/(\d{6,})(?:[-/?#]|$)/); break;
+    case 'bamboohr':
+      m = url.match(/\/careers\/(\d+)/); break;
+    case 'icims':
+      m = url.match(/\/jobs\/(\d+)/); break;
+    case 'personio':
+      m = url.match(/\/job\/(\d+)/) || url.match(/-(\d+)(?:[?#/]|$)/); break;
+    default:
+      return fallback;
+  }
+  return m ? m[1] : fallback;
+}
+
 async function fetchSmartRecruitersDescription(job) {
-  const postingId = job.external_id.replace('smartrecruiters_', '');
+  const postingId = nativeId(job, 'smartrecruiters');
   const res = await fetch(
     `https://api.smartrecruiters.com/v1/companies/${encodeURIComponent(job.ats_slug)}/postings/${postingId}`,
     { signal: AbortSignal.timeout(10000) }
@@ -142,7 +172,7 @@ async function fetchSmartRecruitersDescription(job) {
 }
 
 async function fetchBambooHRDescription(job) {
-  const jobId = job.external_id.replace('bamboohr_', '');
+  const jobId = nativeId(job, 'bamboohr');
   const res = await fetch(
     `https://${job.ats_slug}.bamboohr.com/careers/${jobId}/detail`,
     { signal: AbortSignal.timeout(10000) }
@@ -403,7 +433,7 @@ async function fetchOracleDescription(job) {
 }
 
 async function fetchGreenhouseDescription(job) {
-  const jobId = job.external_id.replace('greenhouse_', '');
+  const jobId = nativeId(job, 'greenhouse');
   const res = await fetch(
     `https://api.greenhouse.io/v1/boards/${encodeURIComponent(job.ats_slug)}/jobs/${jobId}?questions=true`,
     { signal: AbortSignal.timeout(10000) }
@@ -414,7 +444,7 @@ async function fetchGreenhouseDescription(job) {
 }
 
 async function fetchLeverDescription(job) {
-  const jobId = job.external_id.replace('lever_', '');
+  const jobId = nativeId(job, 'lever');
   const res = await fetch(
     `https://api.lever.co/v0/postings/${encodeURIComponent(job.ats_slug)}/${jobId}`,
     { signal: AbortSignal.timeout(10000) }
@@ -454,7 +484,7 @@ async function fetchLeverDescription(job) {
 }
 
 async function fetchAshbyDescription(job) {
-  const jobId = job.external_id.replace('ashby_', '');
+  const jobId = nativeId(job, 'ashby');
   const res = await fetch(
     `https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(job.ats_slug)}/job/${jobId}`,
     { signal: AbortSignal.timeout(10000) }
@@ -465,7 +495,7 @@ async function fetchAshbyDescription(job) {
 }
 
 async function fetchIcimsDescription(job) {
-  const externalId = job.external_id.replace('icims_', '');
+  const externalId = nativeId(job, 'icims');
   // iCIMS iframe endpoint returns server-rendered HTML with JSON-LD
   const url = `https://${job.ats_slug}.icims.com/jobs/${externalId}/job?in_iframe=1`;
   try {
@@ -486,7 +516,7 @@ async function fetchPersonioDescription(job) {
   );
   if (!res.ok) return null;
   const xml = await res.text();
-  const positionId = job.external_id.replace('personio_', '');
+  const positionId = nativeId(job, 'personio');
   // Find the position block with matching ID
   const posRegex = new RegExp(`<position>([\\s\\S]*?)</position>`, 'g');
   let posMatch;
@@ -519,7 +549,7 @@ async function fetchRecruiteeDescription(job) {
 }
 
 async function fetchRipplingDescription(job) {
-  const jobUuid = job.external_id.replace('rippling_', '');
+  const jobUuid = nativeId(job, 'rippling');
   const res = await fetch(
     `https://api.rippling.com/platform/api/ats/v1/board/${encodeURIComponent(job.ats_slug)}/jobs/${jobUuid}`,
     { signal: AbortSignal.timeout(10000) }
