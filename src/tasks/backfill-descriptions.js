@@ -76,7 +76,39 @@ const WD_HEADERS = {
   'Accept-Language': 'en-US,en;q=0.9',
 };
 
+// Derive the CXS coordinates straight from a myworkdayjobs URL:
+//   https://{tenant}.wd{N}.myworkdayjobs.com/[lang/]{site}/job/{path}
+// gives tenant, wdNum, site and the externalPath — no robots.txt discovery or rawData needed.
+// This is what makes demand/aggregator-imported workday jobs (no rawData.externalPath) fillable.
+function parseWorkdayUrl(url) {
+  try {
+    const u = new URL(url);
+    if (!u.hostname.includes('myworkdayjobs.com')) return null;
+    const wd = (u.hostname.match(/\.wd(\d+)\./) || [])[1];
+    const tenant = u.hostname.split('.')[0];
+    const parts = u.pathname.split('/').filter(Boolean);
+    const jobIdx = parts.indexOf('job');
+    if (!wd || !tenant || jobIdx < 1) return null;
+    return { tenant, wd, site: parts[jobIdx - 1], externalPath: '/' + parts.slice(jobIdx).join('/') };
+  } catch { return null; }
+}
+
 async function fetchWorkdayDescription(job, rawData) {
+  // URL-first: works for jobs without rawData.externalPath (demand/aggregator imports).
+  const p = parseWorkdayUrl(job.url);
+  if (p) {
+    try {
+      const cxs = `https://${p.tenant}.wd${p.wd}.myworkdayjobs.com/wday/cxs/${p.tenant}/${p.site}${p.externalPath}`;
+      const res = await fetch(cxs, { headers: WD_HEADERS, signal: AbortSignal.timeout(10000) });
+      if (res.ok) {
+        const detail = await res.json();
+        const desc = detail?.jobPostingInfo?.jobDescription;
+        if (desc && desc.trim()) return desc;
+        if (detail?.jobPostingInfo) return 'SKIP'; // 200 but empty body → upstream-empty
+      }
+    } catch { /* fall through to discovery-based path below */ }
+  }
+
   const cacheKey = job.ats_slug;
   let config = getWdConfig(cacheKey);
   if (config === undefined) {
@@ -483,15 +515,39 @@ async function fetchLeverDescription(job) {
   return 'SKIP';
 }
 
+// Ashby's per-job posting-api endpoint now 401s. The BOARD-LIST endpoint is still public and
+// carries descriptionHtml for every posting, so fetch the whole board once per slug (cached) and
+// look up the posting by its UUID (which is the id in job.url). One request serves all a
+// company's jobs in the batch instead of one-per-job.
+const ashbyBoardCache = new Map(); // slug -> { map: Map(id -> descHtml) | null, ts }
+const ASHBY_TTL_MS = 30 * 60 * 1000;
+async function ashbyBoard(slug) {
+  const hit = ashbyBoardCache.get(slug);
+  if (hit && Date.now() - hit.ts < ASHBY_TTL_MS) return hit.map;
+  let map = null;
+  try {
+    const res = await fetch(
+      `https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(slug)}?includeCompensation=true`,
+      { signal: AbortSignal.timeout(12000) });
+    if (res.ok) {
+      const data = await res.json();
+      map = new Map();
+      for (const j of (data.jobs || [])) {
+        const d = j.descriptionHtml || j.descriptionPlain;
+        if (j.id && d) map.set(j.id, d);
+      }
+    }
+  } catch { /* network/timeout — leave map null, retry next cycle */ }
+  ashbyBoardCache.set(slug, { map, ts: Date.now() });
+  return map;
+}
 async function fetchAshbyDescription(job) {
-  const jobId = nativeId(job, 'ashby');
-  const res = await fetch(
-    `https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(job.ats_slug)}/job/${jobId}`,
-    { signal: AbortSignal.timeout(10000) }
-  );
-  if (!res.ok) return null;
-  const data = await res.json();
-  return data.descriptionHtml || data.descriptionPlain || null;
+  const board = await ashbyBoard(job.ats_slug);
+  if (!board) return null; // board fetch failed — retryable
+  const desc = board.get(nativeId(job, 'ashby'));
+  if (desc) return desc;
+  // Board loaded fine but this posting isn't listed → removed/unlisted. Stop retrying.
+  return board.size ? 'SKIP' : null;
 }
 
 async function fetchIcimsDescription(job) {
