@@ -903,7 +903,11 @@ async function backfillForAts(ats, batchSize, concurrency) {
      WHERE j.removed_at IS NULL
      AND j.description IS NULL
      AND j.ats = ?
-     ORDER BY j.first_seen_at DESC
+     -- random() (not first_seen_at DESC): failed jobs stay description=NULL, so a fixed ordering
+     -- re-selects the SAME newest batch every cycle. When the newest N are all unfillable (dead/
+     -- SPA/soft-block) that wall blocks the thousands of fillable older jobs behind it forever.
+     -- Random sampling drains the fillable ones and merely re-samples the stuck ones occasionally.
+     ORDER BY random()
      LIMIT ?`,
     [ats, batchSize]
   );
