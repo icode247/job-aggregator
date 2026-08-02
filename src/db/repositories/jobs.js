@@ -261,14 +261,12 @@ const jobsRepo = {
     let removed = 0;
     let skippedRemoval = false;
 
-    // Only sync jobs posted within the last 30 days — users want fresh listings.
-    // Jobs without a posted date are kept (can't determine age).
-    const THIRTY_DAYS_AGO = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const freshJobs = incomingJobs.filter(job => {
-      if (!job.posted_at) return true;
-      const posted = new Date(job.posted_at);
-      return !isNaN(posted.getTime()) && posted >= THIRTY_DAYS_AGO;
-    });
+    // NOTE: posting age is a query-time concern (the API/UI filters by posted_at),
+    // NOT an ingest-time one. We used to drop >30-day-old postings from the incoming
+    // set before upserting, which meant any company whose live inventory skewed old
+    // never got those rows' last_seen_at refreshed — they'd sit unrefreshed until
+    // the skip-removal guard below (see the missingCount comment) froze them forever.
+    // Always upsert everything the adapter returns.
 
     await transaction(async (tx) => {
       const { rows: existingJobs } = await tx.query(
@@ -277,9 +275,9 @@ const jobsRepo = {
       );
 
       const existingMap = new Map(existingJobs.map(j => [j.external_id, j.id]));
-      const incomingIds = new Set(freshJobs.map(j => j.external_id));
+      const incomingIds = new Set(incomingJobs.map(j => j.external_id));
 
-      for (const job of freshJobs) {
+      for (const job of incomingJobs) {
         await tx.query(
           `INSERT INTO jobs (
             external_id, company_id, ats, title, department, location,
@@ -335,14 +333,14 @@ const jobsRepo = {
       const existingCount = existingMap.size;
       const missingCount = [...existingMap.keys()].filter(id => !incomingIds.has(id)).length;
       const skipRemoval = existingCount > 0 && (
-        freshJobs.length === 0 ||
+        incomingJobs.length === 0 ||
         missingCount / existingCount > 0.5
       );
 
       if (skipRemoval) {
         skippedRemoval = true;
         logger.warn(
-          { companyId, ats, existingCount, incomingCount: freshJobs.length, missingCount },
+          { companyId, ats, existingCount, incomingCount: incomingJobs.length, missingCount },
           'Skipping job removal — incoming count dropped too much, likely partial API response'
         );
       } else {
