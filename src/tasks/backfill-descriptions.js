@@ -587,8 +587,20 @@ function extractDivByClass(html, needle) {
 // Personio's XML feed serves EMPTY <jobDescriptions> — so descriptions were never captured, and
 // aggregator-imported personio jobs kept a low-quality AI SUMMARY. The real full description lives
 // only on the HTML job page (job.url), inside a page_jobDescription container. Extract it there.
+// SSRF guard: job.url originates from imported data, so never fetch an arbitrary host. Personio
+// postings are always served from the personio-hosted subdomain; require it (https + host suffix)
+// before fetching, which blocks localhost / private-IP / cloud-metadata targets outright.
+function isPersonioUrl(u) {
+  try {
+    const url = new URL(u);
+    if (url.protocol !== 'https:') return false;
+    const h = url.hostname.toLowerCase();
+    return h.endsWith('.jobs.personio.de') || h.endsWith('.jobs.personio.com');
+  } catch { return false; }
+}
+
 async function fetchPersonioDescription(job) {
-  if (!job.url) return null;
+  if (!job.url || !isPersonioUrl(job.url)) return null;
   const res = await fetch(job.url, {
     headers: { 'user-agent': 'Mozilla/5.0', accept: 'text/html' },
     redirect: 'follow', signal: AbortSignal.timeout(15000),
