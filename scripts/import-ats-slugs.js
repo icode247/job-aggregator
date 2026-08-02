@@ -33,6 +33,7 @@ const MAP = {
   breezy:          { ats: 'breezy',          slug: (e) => e.slug, url: (e) => e.url },
   workable:        { ats: 'workable',        slug: (e) => e.slug, url: (e) => e.url },
   jazzhr:          { ats: 'jazzhr',          slug: (e) => e.slug, url: (e) => e.url },
+  teamtailor:      { ats: 'teamtailor',      slug: (e) => e.slug, url: (e) => e.url },
   // transformed to the adapter-expected format:
   icims:           { ats: 'icims',           slug: (e) => host(e.url).replace(/\.icims\.com$/, ''), url: (e, s) => `https://${s}.icims.com` },
   workday:         { ats: 'workday',         slug: (e) => String(e.slug).split('/')[0], url: (e, s) => `https://${s}.myworkdayjobs.com` },
