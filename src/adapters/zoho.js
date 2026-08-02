@@ -105,10 +105,12 @@ async function fetchJobs(clientname) {
     .map(job => ({
       external_id: `zoho_${job.id}`,
       title: job.Posting_Title || job.Job_Opening_Name || null,
-      department: job.Department || null,
-      location: [job.City, job.State, job.Country1].filter(Boolean).join(', ') || null,
+      // Field is `Country` (the old `Country1` never existed, so country was dropped from every
+      // location — jobs with only a country came out null). Keep Country1 as a fallback just in case.
+      location: [job.City, job.State, job.Country || job.Country1].filter(Boolean).join(', ') || null,
       workplace_type: job.Remote_Job ? 'remote' : null,
       employment_type: job.Job_Type || null,
+      department: job.Department || job.Industry || null, // Industry when present (per-company field)
       salary_min: null,
       salary_max: null,
       salary_currency: null,
