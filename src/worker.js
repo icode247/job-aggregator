@@ -68,10 +68,20 @@ async function main() {
 
   // Clean up stale jobs older than 90 days — runs every 6 hours. (Dead postings
   // younger than this are pruned by liveness checks in runDeadJobPruning below.)
+  // Rows with posted_at IS NULL used to be exempt forever (the WHERE clause only
+  // matched non-null dates), which let jobs from adapters that don't parse a posted
+  // date (iCIMS, Rippling, Pinpoint, JazzHR, ...) accumulate indefinitely. Those now
+  // age out on first_seen_at instead, keeping the same 90-day policy consistent
+  // across dated and undated rows.
   async function runStaleJobCleanup() {
     try {
       const { query } = require('./db/connection');
-      const { rows } = await query("DELETE FROM jobs WHERE posted_at IS NOT NULL AND posted_at < NOW() - INTERVAL '90 days' RETURNING id");
+      const { rows } = await query(`
+        DELETE FROM jobs
+        WHERE (posted_at IS NOT NULL AND posted_at < NOW() - INTERVAL '90 days')
+           OR (posted_at IS NULL AND first_seen_at < NOW() - INTERVAL '90 days')
+        RETURNING id
+      `);
       if (rows.length > 0) {
         logger.info({ deleted: rows.length }, 'Stale job cleanup: removed jobs older than 90 days');
       }
