@@ -25,12 +25,20 @@ const CHECKPOINT = process.env.CHECKPOINT || '/tmp/paylocity-salary.done';
   const done = new Set();
   try { fs.readFileSync(CHECKPOINT, 'utf8').split('\n').forEach((l) => l.trim() && done.add(l.trim())); } catch { /* fresh */ }
 
-  const { rows } = await query(
-    `SELECT id, ats, external_id, url, raw_data FROM jobs
-      WHERE ats = 'paylocity' AND removed_at IS NULL AND url IS NOT NULL AND salary_min IS NULL
-      ORDER BY first_seen_at DESC`);
-  const pending = rows.filter((r) => !done.has(String(r.id)));
-  logger.info({ total: rows.length, pending: pending.length, conc: CONC }, 'paylocity salary re-fetch starting');
+  // Keyset-paginate (WHERE id > lastId) so we never load all ~85k rows at once (that read-timed-out).
+  const PAGE = 2000;
+  const pending = [];
+  let lastId = 0;
+  for (;;) {
+    const { rows } = await query(
+      `SELECT id, ats, url FROM jobs
+        WHERE ats = 'paylocity' AND removed_at IS NULL AND url IS NOT NULL AND salary_min IS NULL AND id > $1
+        ORDER BY id LIMIT $2`, [lastId, PAGE]);
+    if (!rows.length) break;
+    for (const r of rows) if (!done.has(String(r.id))) pending.push(r);
+    lastId = rows[rows.length - 1].id;
+  }
+  logger.info({ pending: pending.length, conc: CONC }, 'paylocity salary re-fetch starting');
 
   let processed = 0, filled = 0;
   const t0 = Date.now();
