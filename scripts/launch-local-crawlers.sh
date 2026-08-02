@@ -37,9 +37,16 @@ launch() { # name  ATS-list  logfile  [env-override]
 # PROXY_DISABLED=1 — the IPRoyal residential proxy is metered/often-down, and
 # routing bamboohr/lever through it just fails (100% errors when the proxy lapses).
 launch A "bamboohr,lever"                          "$LOG/crawl-A.log" "$COMMON PROXY_DISABLED=1"
-launch B "smartrecruiters,recruitee,zoho,breezy"   "$LOG/crawl-B.log"
-launch C "ashby,greenhouse"                         "$LOG/crawl-C.log"
-launch F "rippling"                                "$LOG/crawl-F.log"
+# B/C/F crawl DIRECT (PROXY_DISABLED=1). These ATS all expose public JSON APIs that
+# don't IP-block, so the laptop's own residential IP is enough — the proxy added nothing
+# but a socket leak. On the metered IPRoyal proxy they ran 100% errors (EADDRNOTAVAIL,
+# ephemeral-port exhaustion) for ~71h and stored 0 jobs; direct they flow at hundreds/min.
+launch B "smartrecruiters,recruitee,zoho,breezy"   "$LOG/crawl-B.log" "$COMMON PROXY_DISABLED=1"
+launch C "ashby,greenhouse"                         "$LOG/crawl-C.log" "$COMMON PROXY_DISABLED=1"
+launch F "rippling"                                "$LOG/crawl-F.log" "$COMMON PROXY_DISABLED=1"
+# Instance J (jazzhr): applytojob.com JSON API, works DIRECT. Added when the ats-slugs
+# seed brought in ~2.5k jazzhr companies that nothing was crawling.
+launch J "jazzhr"                                  "$LOG/crawl-J.log" "$COMMON PROXY_DISABLED=1"
 # Instance P (pinpoint): distinct host (pinpointhq.com), plain JSON API — but it
 # FAILS through the residential proxy, so force PROXY_DISABLED=1 (crawls direct).
 launch P "pinpoint"                                "$LOG/crawl-P.log" "$COMMON PROXY_DISABLED=1"
