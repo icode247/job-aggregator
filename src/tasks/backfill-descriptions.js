@@ -565,32 +565,41 @@ async function fetchIcimsDescription(job) {
   return null;
 }
 
-async function fetchPersonioDescription(job) {
-  const res = await fetch(
-    `https://${encodeURIComponent(job.ats_slug)}.jobs.personio.de/xml`,
-    { signal: AbortSignal.timeout(15000) }
-  );
-  if (!res.ok) return null;
-  const xml = await res.text();
-  const positionId = nativeId(job, 'personio');
-  // Find the position block with matching ID
-  const posRegex = new RegExp(`<position>([\\s\\S]*?)</position>`, 'g');
-  let posMatch;
-  while ((posMatch = posRegex.exec(xml)) !== null) {
-    const block = posMatch[1];
-    const idMatch = block.match(/<id>(\d+)<\/id>/);
-    if (idMatch && idMatch[1] === positionId) {
-      // Extract CDATA descriptions
-      const sections = [];
-      const descRegex = /<jobDescription>[\s\S]*?<name><!\[CDATA\[(.*?)\]\]><\/name>[\s\S]*?<value><!\[CDATA\[([\s\S]*?)\]\]><\/value>[\s\S]*?<\/jobDescription>/g;
-      let descMatch;
-      while ((descMatch = descRegex.exec(block)) !== null) {
-        sections.push(`<h3>${descMatch[1]}</h3>${descMatch[2]}`);
-      }
-      if (sections.length > 0) return sections.join('\n');
-    }
+// Extract the inner HTML of the first <div> whose class contains `needle`, using a tag-depth
+// counter (personio nests divs, so a regex can't find the matching close). Returns null if absent.
+function extractDivByClass(html, needle) {
+  const open = new RegExp(`<div[^>]*class="[^"]*${needle}[^"]*"[^>]*>`, 'i');
+  const m = open.exec(html);
+  if (!m) return null;
+  let i = m.index + m[0].length;
+  const start = i;
+  let depth = 1;
+  const tagRe = /<\/?div\b[^>]*>/gi;
+  tagRe.lastIndex = i;
+  let t;
+  while ((t = tagRe.exec(html)) !== null) {
+    depth += t[0].startsWith('</') ? -1 : 1;
+    if (depth === 0) return html.slice(start, t.index);
   }
   return null;
+}
+
+// Personio's XML feed serves EMPTY <jobDescriptions> — so descriptions were never captured, and
+// aggregator-imported personio jobs kept a low-quality AI SUMMARY. The real full description lives
+// only on the HTML job page (job.url), inside a page_jobDescription container. Extract it there.
+async function fetchPersonioDescription(job) {
+  if (!job.url) return null;
+  const res = await fetch(job.url, {
+    headers: { 'user-agent': 'Mozilla/5.0', accept: 'text/html' },
+    redirect: 'follow', signal: AbortSignal.timeout(15000),
+  });
+  if (res.status === 404 || res.status === 410) return 'SKIP'; // job gone
+  if (!res.ok) return null;
+  const html = await res.text();
+  // Prefer the personio-specific container; fall back to the generic extractors.
+  const block = extractDivByClass(html, 'page_jobDescription') || extractDivByClass(html, 'detail-block-description');
+  if (block && block.replace(/<[^>]+>/g, ' ').trim().length > 120) return block.trim();
+  return extractDescriptionFromHtml(html) || null;
 }
 
 async function fetchRecruiteeDescription(job) {
