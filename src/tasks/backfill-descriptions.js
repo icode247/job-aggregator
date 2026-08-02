@@ -702,14 +702,7 @@ async function fetchComeetDescription(job) {
   return data.details?.description || data.description || null;
 }
 
-async function fetchPinpointDescription(job) {
-  const jobId = job.external_id.replace('pinpoint_', '');
-  const res = await fetch(
-    `https://${encodeURIComponent(job.ats_slug)}.pinpointhq.com/postings/${jobId}.json`,
-    { signal: AbortSignal.timeout(10000) }
-  );
-  if (!res.ok) return null;
-  const data = await res.json();
+function buildPinpointSections(data) {
   const sections = [];
   if (data.description) sections.push(data.description);
   if (data.key_responsibilities) {
@@ -725,6 +718,36 @@ async function fetchPinpointDescription(job) {
     sections.push(`<h3>${header}</h3>${data.benefits}`);
   }
   return sections.length > 0 ? sections.join('\n') : null;
+}
+
+// Pinpoint's per-job endpoint ({slug}.pinpointhq.com/postings/{id}.json) is dead — 404 for the
+// numeric id, 406 for the URL UUID. Descriptions now live ONLY in the LIST (postings.json), which
+// also serves custom-domain accounts (careers.infor.com). Fetch the board once per slug (cached)
+// and match the posting by numeric id OR the UUID in job.url. This is what makes aggregator-imported
+// pinpoint jobs (no description at import) fillable.
+const pinpointBoardCache = new Map(); // slug -> { list, ts }
+const PP_TTL_MS = 30 * 60 * 1000;
+async function pinpointBoard(slug) {
+  const hit = pinpointBoardCache.get(slug);
+  if (hit && Date.now() - hit.ts < PP_TTL_MS) return hit.list;
+  let list = null;
+  try {
+    const res = await fetch(`https://${encodeURIComponent(slug)}.pinpointhq.com/postings.json`,
+      { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(12000) });
+    if (res.ok) { const j = await res.json(); list = Array.isArray(j.data || j.postings || j) ? (j.data || j.postings || j) : []; }
+  } catch { /* network — retry next cycle */ }
+  pinpointBoardCache.set(slug, { list, ts: Date.now() });
+  return list;
+}
+async function fetchPinpointDescription(job) {
+  const list = await pinpointBoard(job.ats_slug);
+  if (!list) return null; // board fetch failed — retryable
+  const wantId = String(job.external_id).replace('pinpoint_', '');
+  const wantUuid = (job.url || '').match(UUID_RE)?.[0]?.toLowerCase();
+  const post = list.find((p) => String(p.id) === wantId
+    || (wantUuid && String(p.url || '').toLowerCase().includes(wantUuid)));
+  if (!post) return list.length ? 'SKIP' : null; // board loaded but posting gone → stop retrying
+  return buildPinpointSections(post) || 'SKIP';
 }
 
 async function fetchSuccessFactorsDescription(job) {
