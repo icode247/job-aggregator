@@ -15,7 +15,7 @@ async function fetchJobs(clientname) {
     salary_interval: null,
     description: job.content || null,
     url: job.absolute_url,
-    posted_at: job.updated_at || null,
+    posted_at: job.first_published || job.updated_at || null, // first_published = true post date; updated_at is last-edit
     raw_data: job,
   }));
 

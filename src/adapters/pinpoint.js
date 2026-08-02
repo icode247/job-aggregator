@@ -1,5 +1,15 @@
 const logger = require('../logger');
 
+// Pinpoint workplace_type values -> our vocabulary
+function normalizeWorkplace(v) {
+  const s = String(v || '').toLowerCase();
+  if (!s) return null;
+  if (s.includes('remote')) return 'remote';
+  if (s.includes('hybrid')) return 'hybrid';
+  if (s.includes('site') || s.includes('office')) return 'onsite';
+  return null;
+}
+
 function buildPinpointDescription(job) {
   const sections = [];
   if (job.description) sections.push(job.description);
@@ -33,9 +43,14 @@ async function fetchJobs(clientname) {
     title: job.title || job.attributes?.title,
     department: job.department?.name || job.attributes?.department || null,
     location: job.location?.name || job.attributes?.location || null,
-    workplace_type: job.remote ? 'remote' : null,
-    employment_type: job.employment_type || job.attributes?.employment_type || null,
-    salary_min: null, salary_max: null, salary_currency: null, salary_interval: null,
+    // Source exposes workplace_type directly (remote|hybrid|on_site) — job.remote didn't exist.
+    workplace_type: normalizeWorkplace(job.workplace_type) || (job.remote ? 'remote' : null),
+    employment_type: job.employment_type_text || job.employment_type || job.attributes?.employment_type || null,
+    // Structured compensation was being dropped.
+    salary_min: job.compensation_minimum || null,
+    salary_max: job.compensation_maximum || null,
+    salary_currency: job.compensation_currency || null,
+    salary_interval: job.compensation_frequency || null,
     description: buildPinpointDescription(job),
     url: job.url || `https://${clientname}.pinpointhq.com/postings/${job.id}`,
     posted_at: job.published_at || job.created_at || null,

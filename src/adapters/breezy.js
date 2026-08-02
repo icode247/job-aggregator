@@ -1,5 +1,27 @@
 const DETAIL_BATCH_SIZE = 5;
 
+// Breezy exposes salary only as free text (e.g. "$90,000 – $120,000 / year", "€45k/year").
+// Parse min/max/currency/interval best-effort; return {} when it isn't a usable range.
+function parseBreezySalary(s) {
+  const empty = { salary_min: null, salary_max: null, salary_currency: null, salary_interval: null };
+  if (!s || typeof s !== 'string') return empty;
+  const currency = /€|eur/i.test(s) ? 'EUR' : /£|gbp/i.test(s) ? 'GBP' : /\$|usd/i.test(s) ? 'USD' : null;
+  const interval = /year|annum|\/yr|annual/i.test(s) ? 'year' : /hour|\/hr/i.test(s) ? 'hour'
+    : /month/i.test(s) ? 'month' : /day/i.test(s) ? 'day' : null;
+  const nums = (s.match(/\d[\d,.]*\s*[kK]?/g) || []).map((n) => {
+    const k = /k/i.test(n);
+    const v = parseFloat(n.replace(/[,\s kK]/g, ''));
+    return isNaN(v) ? null : (k ? v * 1000 : v);
+  }).filter((v) => v != null);
+  if (!nums.length) return empty;
+  return {
+    salary_min: String(nums[0]),
+    salary_max: nums.length > 1 ? String(nums[1]) : null,
+    salary_currency: currency,
+    salary_interval: interval,
+  };
+}
+
 /**
  * Fetch a single job's detail page and extract description + logo.
  */
@@ -81,10 +103,7 @@ async function fetchJobs(clientname) {
         location: job.location?.name || job.location?.city || null,
         workplace_type: job.location?.is_remote ? 'remote' : null,
         employment_type: job.type?.name || null,
-        salary_min: null,
-        salary_max: null,
-        salary_currency: null,
-        salary_interval: null,
+        ...parseBreezySalary(job.salary), // breezy gives salary as free text, e.g. "$90,000 – $120,000 / year"
         description: detail?.description || null,
         url: job.url || `https://${encodeURIComponent(clientname)}.breezy.hr/p/${job.friendly_id}`,
         posted_at: job.published_date || null,

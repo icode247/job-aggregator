@@ -1,5 +1,21 @@
 const DETAIL_BATCH_SIZE = 5;
 
+// BambooHR publishes compensation as free text ("$17.00+", "$90k–$120k / year").
+// Parse best-effort into min/max/currency/interval; {} if not a usable amount.
+function parseComp(s) {
+  const empty = { salary_min: null, salary_max: null, salary_currency: null, salary_interval: null };
+  if (!s || typeof s !== 'string') return empty;
+  const currency = /€|eur/i.test(s) ? 'EUR' : /£|gbp/i.test(s) ? 'GBP' : /\$|usd/i.test(s) ? 'USD' : null;
+  const interval = /year|annum|annual|\/yr/i.test(s) ? 'year' : /hour|\/hr/i.test(s) ? 'hour'
+    : /month/i.test(s) ? 'month' : /day/i.test(s) ? 'day' : null;
+  const nums = (s.match(/\d[\d,.]*\s*[kK]?/g) || []).map((n) => {
+    const k = /k/i.test(n); const v = parseFloat(n.replace(/[,\s kK]/g, ''));
+    return isNaN(v) ? null : (k ? v * 1000 : v);
+  }).filter((v) => v != null);
+  if (!nums.length) return empty;
+  return { salary_min: String(nums[0]), salary_max: nums.length > 1 ? String(nums[1]) : null, salary_currency: currency, salary_interval: interval };
+}
+
 async function fetchJobDetail(company, jobId) {
   try {
     const res = await fetch(
@@ -65,10 +81,8 @@ async function fetchJobs(clientname) {
         location: locationStr,
         workplace_type: workplaceType,
         employment_type: employmentType,
-        salary_min: null,
-        salary_max: null,
-        salary_currency: null,
-        salary_interval: null,
+        // BambooHR gives compensation as free text (e.g. "$17.00+", "$90k-$120k/year").
+        ...parseComp(detail?.compensation),
         description: detail?.description || null,
         url: detail?.jobOpeningShareUrl || `https://${clientname}.bamboohr.com/careers/${listing.id}`,
         posted_at: detail?.datePosted || null,

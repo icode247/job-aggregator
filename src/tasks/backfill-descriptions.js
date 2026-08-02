@@ -76,7 +76,39 @@ const WD_HEADERS = {
   'Accept-Language': 'en-US,en;q=0.9',
 };
 
+// Derive the CXS coordinates straight from a myworkdayjobs URL:
+//   https://{tenant}.wd{N}.myworkdayjobs.com/[lang/]{site}/job/{path}
+// gives tenant, wdNum, site and the externalPath — no robots.txt discovery or rawData needed.
+// This is what makes demand/aggregator-imported workday jobs (no rawData.externalPath) fillable.
+function parseWorkdayUrl(url) {
+  try {
+    const u = new URL(url);
+    if (!u.hostname.includes('myworkdayjobs.com')) return null;
+    const wd = (u.hostname.match(/\.wd(\d+)\./) || [])[1];
+    const tenant = u.hostname.split('.')[0];
+    const parts = u.pathname.split('/').filter(Boolean);
+    const jobIdx = parts.indexOf('job');
+    if (!wd || !tenant || jobIdx < 1) return null;
+    return { tenant, wd, site: parts[jobIdx - 1], externalPath: '/' + parts.slice(jobIdx).join('/') };
+  } catch { return null; }
+}
+
 async function fetchWorkdayDescription(job, rawData) {
+  // URL-first: works for jobs without rawData.externalPath (demand/aggregator imports).
+  const p = parseWorkdayUrl(job.url);
+  if (p) {
+    try {
+      const cxs = `https://${p.tenant}.wd${p.wd}.myworkdayjobs.com/wday/cxs/${p.tenant}/${p.site}${p.externalPath}`;
+      const res = await fetch(cxs, { headers: WD_HEADERS, signal: AbortSignal.timeout(10000) });
+      if (res.ok) {
+        const detail = await res.json();
+        const desc = detail?.jobPostingInfo?.jobDescription;
+        if (desc && desc.trim()) return desc;
+        if (detail?.jobPostingInfo) return 'SKIP'; // 200 but empty body → upstream-empty
+      }
+    } catch { /* fall through to discovery-based path below */ }
+  }
+
   const cacheKey = job.ats_slug;
   let config = getWdConfig(cacheKey);
   if (config === undefined) {
@@ -113,8 +145,38 @@ async function fetchWorkdayDescription(job, rawData) {
   return null;
 }
 
+// The stored external_id is the ATS-native posting id for natively-crawled jobs, but for
+// demand/bulk-imported jobs (liftmycv, wonsulting, resumly, csv_import, serp_discovery) it's the
+// AGGREGATOR's own id — while the real ATS id lives in job.url. Prefer the id parsed from the URL;
+// fall back to the (prefix-stripped) external_id so natively-crawled jobs behave exactly as before.
+const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+function nativeId(job, ats) {
+  const fallback = String(job.external_id || '').replace(`${ats}_`, '');
+  const url = job.url || '';
+  let m = null;
+  switch (ats) {
+    case 'greenhouse':
+      m = url.match(/[?&]gh_jid=(\d+)/) || url.match(/\/jobs\/(\d+)/); break;
+    case 'lever':
+    case 'ashby':
+    case 'rippling':
+      m = url.match(UUID_RE); return m ? m[0] : fallback;
+    case 'smartrecruiters':
+      m = url.match(/\/(\d{6,})(?:[-/?#]|$)/); break;
+    case 'bamboohr':
+      m = url.match(/\/careers\/(\d+)/); break;
+    case 'icims':
+      m = url.match(/\/jobs\/(\d+)/); break;
+    case 'personio':
+      m = url.match(/\/job\/(\d+)/) || url.match(/-(\d+)(?:[?#/]|$)/); break;
+    default:
+      return fallback;
+  }
+  return m ? m[1] : fallback;
+}
+
 async function fetchSmartRecruitersDescription(job) {
-  const postingId = job.external_id.replace('smartrecruiters_', '');
+  const postingId = nativeId(job, 'smartrecruiters');
   const res = await fetch(
     `https://api.smartrecruiters.com/v1/companies/${encodeURIComponent(job.ats_slug)}/postings/${postingId}`,
     { signal: AbortSignal.timeout(10000) }
@@ -142,7 +204,7 @@ async function fetchSmartRecruitersDescription(job) {
 }
 
 async function fetchBambooHRDescription(job) {
-  const jobId = job.external_id.replace('bamboohr_', '');
+  const jobId = nativeId(job, 'bamboohr');
   const res = await fetch(
     `https://${job.ats_slug}.bamboohr.com/careers/${jobId}/detail`,
     { signal: AbortSignal.timeout(10000) }
@@ -403,7 +465,7 @@ async function fetchOracleDescription(job) {
 }
 
 async function fetchGreenhouseDescription(job) {
-  const jobId = job.external_id.replace('greenhouse_', '');
+  const jobId = nativeId(job, 'greenhouse');
   const res = await fetch(
     `https://api.greenhouse.io/v1/boards/${encodeURIComponent(job.ats_slug)}/jobs/${jobId}?questions=true`,
     { signal: AbortSignal.timeout(10000) }
@@ -414,7 +476,7 @@ async function fetchGreenhouseDescription(job) {
 }
 
 async function fetchLeverDescription(job) {
-  const jobId = job.external_id.replace('lever_', '');
+  const jobId = nativeId(job, 'lever');
   const res = await fetch(
     `https://api.lever.co/v0/postings/${encodeURIComponent(job.ats_slug)}/${jobId}`,
     { signal: AbortSignal.timeout(10000) }
@@ -453,19 +515,43 @@ async function fetchLeverDescription(job) {
   return 'SKIP';
 }
 
+// Ashby's per-job posting-api endpoint now 401s. The BOARD-LIST endpoint is still public and
+// carries descriptionHtml for every posting, so fetch the whole board once per slug (cached) and
+// look up the posting by its UUID (which is the id in job.url). One request serves all a
+// company's jobs in the batch instead of one-per-job.
+const ashbyBoardCache = new Map(); // slug -> { map: Map(id -> descHtml) | null, ts }
+const ASHBY_TTL_MS = 30 * 60 * 1000;
+async function ashbyBoard(slug) {
+  const hit = ashbyBoardCache.get(slug);
+  if (hit && Date.now() - hit.ts < ASHBY_TTL_MS) return hit.map;
+  let map = null;
+  try {
+    const res = await fetch(
+      `https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(slug)}?includeCompensation=true`,
+      { signal: AbortSignal.timeout(12000) });
+    if (res.ok) {
+      const data = await res.json();
+      map = new Map();
+      for (const j of (data.jobs || [])) {
+        const d = j.descriptionHtml || j.descriptionPlain;
+        if (j.id && d) map.set(j.id, d);
+      }
+    }
+  } catch { /* network/timeout — leave map null, retry next cycle */ }
+  ashbyBoardCache.set(slug, { map, ts: Date.now() });
+  return map;
+}
 async function fetchAshbyDescription(job) {
-  const jobId = job.external_id.replace('ashby_', '');
-  const res = await fetch(
-    `https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(job.ats_slug)}/job/${jobId}`,
-    { signal: AbortSignal.timeout(10000) }
-  );
-  if (!res.ok) return null;
-  const data = await res.json();
-  return data.descriptionHtml || data.descriptionPlain || null;
+  const board = await ashbyBoard(job.ats_slug);
+  if (!board) return null; // board fetch failed — retryable
+  const desc = board.get(nativeId(job, 'ashby'));
+  if (desc) return desc;
+  // Board loaded fine but this posting isn't listed → removed/unlisted. Stop retrying.
+  return board.size ? 'SKIP' : null;
 }
 
 async function fetchIcimsDescription(job) {
-  const externalId = job.external_id.replace('icims_', '');
+  const externalId = nativeId(job, 'icims');
   // iCIMS iframe endpoint returns server-rendered HTML with JSON-LD
   const url = `https://${job.ats_slug}.icims.com/jobs/${externalId}/job?in_iframe=1`;
   try {
@@ -479,32 +565,41 @@ async function fetchIcimsDescription(job) {
   return null;
 }
 
-async function fetchPersonioDescription(job) {
-  const res = await fetch(
-    `https://${encodeURIComponent(job.ats_slug)}.jobs.personio.de/xml`,
-    { signal: AbortSignal.timeout(15000) }
-  );
-  if (!res.ok) return null;
-  const xml = await res.text();
-  const positionId = job.external_id.replace('personio_', '');
-  // Find the position block with matching ID
-  const posRegex = new RegExp(`<position>([\\s\\S]*?)</position>`, 'g');
-  let posMatch;
-  while ((posMatch = posRegex.exec(xml)) !== null) {
-    const block = posMatch[1];
-    const idMatch = block.match(/<id>(\d+)<\/id>/);
-    if (idMatch && idMatch[1] === positionId) {
-      // Extract CDATA descriptions
-      const sections = [];
-      const descRegex = /<jobDescription>[\s\S]*?<name><!\[CDATA\[(.*?)\]\]><\/name>[\s\S]*?<value><!\[CDATA\[([\s\S]*?)\]\]><\/value>[\s\S]*?<\/jobDescription>/g;
-      let descMatch;
-      while ((descMatch = descRegex.exec(block)) !== null) {
-        sections.push(`<h3>${descMatch[1]}</h3>${descMatch[2]}`);
-      }
-      if (sections.length > 0) return sections.join('\n');
-    }
+// Extract the inner HTML of the first <div> whose class contains `needle`, using a tag-depth
+// counter (personio nests divs, so a regex can't find the matching close). Returns null if absent.
+function extractDivByClass(html, needle) {
+  const open = new RegExp(`<div[^>]*class="[^"]*${needle}[^"]*"[^>]*>`, 'i');
+  const m = open.exec(html);
+  if (!m) return null;
+  let i = m.index + m[0].length;
+  const start = i;
+  let depth = 1;
+  const tagRe = /<\/?div\b[^>]*>/gi;
+  tagRe.lastIndex = i;
+  let t;
+  while ((t = tagRe.exec(html)) !== null) {
+    depth += t[0].startsWith('</') ? -1 : 1;
+    if (depth === 0) return html.slice(start, t.index);
   }
   return null;
+}
+
+// Personio's XML feed serves EMPTY <jobDescriptions> — so descriptions were never captured, and
+// aggregator-imported personio jobs kept a low-quality AI SUMMARY. The real full description lives
+// only on the HTML job page (job.url), inside a page_jobDescription container. Extract it there.
+async function fetchPersonioDescription(job) {
+  if (!job.url) return null;
+  const res = await fetch(job.url, {
+    headers: { 'user-agent': 'Mozilla/5.0', accept: 'text/html' },
+    redirect: 'follow', signal: AbortSignal.timeout(15000),
+  });
+  if (res.status === 404 || res.status === 410) return 'SKIP'; // job gone
+  if (!res.ok) return null;
+  const html = await res.text();
+  // Prefer the personio-specific container; fall back to the generic extractors.
+  const block = extractDivByClass(html, 'page_jobDescription') || extractDivByClass(html, 'detail-block-description');
+  if (block && block.replace(/<[^>]+>/g, ' ').trim().length > 120) return block.trim();
+  return extractDescriptionFromHtml(html) || null;
 }
 
 async function fetchRecruiteeDescription(job) {
@@ -519,7 +614,7 @@ async function fetchRecruiteeDescription(job) {
 }
 
 async function fetchRipplingDescription(job) {
-  const jobUuid = job.external_id.replace('rippling_', '');
+  const jobUuid = nativeId(job, 'rippling');
   const res = await fetch(
     `https://api.rippling.com/platform/api/ats/v1/board/${encodeURIComponent(job.ats_slug)}/jobs/${jobUuid}`,
     { signal: AbortSignal.timeout(10000) }
@@ -616,14 +711,7 @@ async function fetchComeetDescription(job) {
   return data.details?.description || data.description || null;
 }
 
-async function fetchPinpointDescription(job) {
-  const jobId = job.external_id.replace('pinpoint_', '');
-  const res = await fetch(
-    `https://${encodeURIComponent(job.ats_slug)}.pinpointhq.com/postings/${jobId}.json`,
-    { signal: AbortSignal.timeout(10000) }
-  );
-  if (!res.ok) return null;
-  const data = await res.json();
+function buildPinpointSections(data) {
   const sections = [];
   if (data.description) sections.push(data.description);
   if (data.key_responsibilities) {
@@ -639,6 +727,36 @@ async function fetchPinpointDescription(job) {
     sections.push(`<h3>${header}</h3>${data.benefits}`);
   }
   return sections.length > 0 ? sections.join('\n') : null;
+}
+
+// Pinpoint's per-job endpoint ({slug}.pinpointhq.com/postings/{id}.json) is dead — 404 for the
+// numeric id, 406 for the URL UUID. Descriptions now live ONLY in the LIST (postings.json), which
+// also serves custom-domain accounts (careers.infor.com). Fetch the board once per slug (cached)
+// and match the posting by numeric id OR the UUID in job.url. This is what makes aggregator-imported
+// pinpoint jobs (no description at import) fillable.
+const pinpointBoardCache = new Map(); // slug -> { list, ts }
+const PP_TTL_MS = 30 * 60 * 1000;
+async function pinpointBoard(slug) {
+  const hit = pinpointBoardCache.get(slug);
+  if (hit && Date.now() - hit.ts < PP_TTL_MS) return hit.list;
+  let list = null;
+  try {
+    const res = await fetch(`https://${encodeURIComponent(slug)}.pinpointhq.com/postings.json`,
+      { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(12000) });
+    if (res.ok) { const j = await res.json(); list = Array.isArray(j.data || j.postings || j) ? (j.data || j.postings || j) : []; }
+  } catch { /* network — retry next cycle */ }
+  pinpointBoardCache.set(slug, { list, ts: Date.now() });
+  return list;
+}
+async function fetchPinpointDescription(job) {
+  const list = await pinpointBoard(job.ats_slug);
+  if (!list) return null; // board fetch failed — retryable
+  const wantId = String(job.external_id).replace('pinpoint_', '');
+  const wantUuid = (job.url || '').match(UUID_RE)?.[0]?.toLowerCase();
+  const post = list.find((p) => String(p.id) === wantId
+    || (wantUuid && String(p.url || '').toLowerCase().includes(wantUuid)));
+  if (!post) return list.length ? 'SKIP' : null; // board loaded but posting gone → stop retrying
+  return buildPinpointSections(post) || 'SKIP';
 }
 
 async function fetchSuccessFactorsDescription(job) {
@@ -817,7 +935,11 @@ async function backfillForAts(ats, batchSize, concurrency) {
      WHERE j.removed_at IS NULL
      AND j.description IS NULL
      AND j.ats = ?
-     ORDER BY j.first_seen_at DESC
+     -- random() (not first_seen_at DESC): failed jobs stay description=NULL, so a fixed ordering
+     -- re-selects the SAME newest batch every cycle. When the newest N are all unfillable (dead/
+     -- SPA/soft-block) that wall blocks the thousands of fillable older jobs behind it forever.
+     -- Random sampling drains the fillable ones and merely re-samples the stuck ones occasionally.
+     ORDER BY random()
      LIMIT ?`,
     [ats, batchSize]
   );
