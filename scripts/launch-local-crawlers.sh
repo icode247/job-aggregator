@@ -47,6 +47,9 @@ launch F "rippling"                                "$LOG/crawl-F.log" "$COMMON P
 # Instance J (jazzhr): applytojob.com JSON API, works DIRECT. Added when the ats-slugs
 # seed brought in ~2.5k jazzhr companies that nothing was crawling.
 launch J "jazzhr"                                  "$LOG/crawl-J.log" "$COMMON PROXY_DISABLED=1"
+# Instance TT (teamtailor): public {slug}.teamtailor.com/jobs.json feed, direct. Feed carries full
+# descriptions (no backfill needed). Seeded ~1.5k companies from the ats-slugs dump. Caps 100/company.
+launch TT "teamtailor"                             "$LOG/crawl-TT.log" "$COMMON PROXY_DISABLED=1"
 # Instance P (pinpoint): distinct host (pinpointhq.com), plain JSON API — but it
 # FAILS through the residential proxy, so force PROXY_DISABLED=1 (crawls direct).
 launch P "pinpoint"                                "$LOG/crawl-P.log" "$COMMON PROXY_DISABLED=1"
