@@ -152,7 +152,9 @@ async function main() {
   // The scraper echoes back the URL it actually fetched (scheme added, trailing slash),
   // so match on a normalized host rather than the raw string.
   const norm = s => String(s || '').replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
-  const byDomain = new Map(companies.map(c => [norm(c.domain), c]));
+  // Keyed on scrape_target: the own domain in normal mode, the ATS careers URL
+  // in SHARED mode. Older batch files only carry `domain`.
+  const byDomain = new Map(companies.map(c => [norm(c.scrape_target || c.domain), c]));
   const scraped = parseCsv(fs.readFileSync(SCRAPED_CSV, 'utf8'));
 
   const candidates = [];
