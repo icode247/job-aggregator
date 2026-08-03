@@ -92,20 +92,31 @@ async function main() {
   }
   setTimeout(runStaleJobCleanup, 5 * 60 * 1000);
 
-  // Dead-job pruning: verify a rotating batch of the older job tail (>30d) against
-  // their career pages and remove confirmed-dead postings. Runs hourly so the 30–90d
-  // window we now retain stays free of filled/expired listings. Only 404/410 or an
-  // explicit dead-page phrase prunes a job; transient failures are re-checked later.
+  // Dead-job pruning: verify a rotating batch of jobs against their career pages
+  // and remove confirmed-dead postings. This is now the ONLY removal path (see
+  // jobs.js syncForCompany) — as of the guard rewrite the eligible population
+  // includes every job missing from its company's latest sync, not just the
+  // aging >30d tail, so throughput was bumped (400/hr -> ~1,500/hr) to make a
+  // dent in that backlog instead of taking 200+ days for one pass.
+  //
+  // Partitioned by job id (even here, odd in scripts/prune-dead-jobs-local.js)
+  // so this runner and a local process on a separate network/IP can work the
+  // backlog in parallel with zero risk of re-checking the same rows — also
+  // spreads outbound verification traffic across two IPs instead of hammering
+  // thousands of third-party career-page domains from one.
   async function runDeadJobPruning() {
     try {
-      const { checked, dead, uncertain } = await pruneDeadJobs({ limit: 400, concurrency: 10, tailDays: 30, recheckDays: 14 });
+      const { checked, dead, uncertain } = await pruneDeadJobs({
+        limit: 500, concurrency: 10, tailDays: 30, recheckDays: 14,
+        partitionMod: 2, partitionRemainder: 0,
+      });
       if (checked > 0) {
-        logger.info({ checked, dead, uncertain }, 'Dead-job pruning: verified batch of older jobs');
+        logger.info({ checked, dead, uncertain }, 'Dead-job pruning: verified batch (render partition)');
       }
     } catch (err) {
       logger.error({ err: err.message }, 'Dead-job pruning error');
     }
-    setTimeout(runDeadJobPruning, 60 * 60 * 1000);
+    setTimeout(runDeadJobPruning, 20 * 60 * 1000);
   }
   setTimeout(runDeadJobPruning, 8 * 60 * 1000);
 

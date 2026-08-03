@@ -93,4 +93,16 @@ done" >"$LOG/backfill-paylocity.log" 2>&1 &
 echo "launched paylocity description backfill -> $LOG/backfill-paylocity.log  wrapper pid $!"
 
 
+# Local half of the dead-job-pruning split (see src/tasks/dead-job-check.js and
+# src/worker.js on Render, which owns the even-id partition). Verifies the odd-id
+# partition via real HTTP checks against each job's own career-page URL — only an
+# HTTP-confirmed 404/410 or explicit dead-page phrase removes anything. Small
+# PG_POOL_MAX: the essential-2 plan caps at 40 connections and we're already close
+# with ~11 crawler instances + 2 backfill loops + the Render worker's own pool.
+nohup bash -c "while true; do \
+  env LOOP=1 INTERVAL_S=1200 LIMIT=500 CONCURRENCY=10 PG_POOL_MAX=1 node scripts/prune-dead-jobs-local.js; \
+  echo \"[\$(date)] prune-dead-local exited rc=\$? — restarting in 30s\"; sleep 30; \
+done" >"$LOG/prune-dead-local.log" 2>&1 &
+echo "launched prune-dead-jobs-local (odd-id partition) -> $LOG/prune-dead-local.log  wrapper pid $!"
+
 echo "all crawlers launched."

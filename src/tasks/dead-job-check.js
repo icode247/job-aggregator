@@ -97,12 +97,24 @@ async function runWithConcurrency(items, maxConcurrency, fn) {
  *      needs verifying now that nothing removes them at sync time. Prioritized
  *      first since it's fresh, actionable signal rather than background hygiene.
  *
+ * `partitionMod`/`partitionRemainder` split the eligible population by
+ * `j.id % partitionMod = partitionRemainder`, so multiple independent runners
+ * (e.g. the Render worker and a local process) can each own a disjoint slice
+ * with zero coordination and no risk of double-checking the same job — useful
+ * for spreading outbound verification traffic across separate IPs/networks.
+ * Defaults to no partitioning (mod=1, remainder=0 matches everything).
+ *
  * @returns {Promise<{checked:number, dead:number, uncertain:number}>}
  */
-async function pruneDeadJobs({ limit = 400, concurrency = 10, tailDays = 30, recheckDays = 14 } = {}) {
+async function pruneDeadJobs({
+  limit = 400, concurrency = 10, tailDays = 30, recheckDays = 14,
+  partitionMod = 1, partitionRemainder = 0,
+} = {}) {
   const { query } = require('../db/connection');
   const t = Number(tailDays) || 30;
   const r = Number(recheckDays) || 14;
+  const pMod = Number(partitionMod) || 1;
+  const pRem = ((Number(partitionRemainder) || 0) % pMod + pMod) % pMod;
 
   const { rows: jobs } = await query(
     `SELECT j.id, j.url,
@@ -111,6 +123,7 @@ async function pruneDeadJobs({ limit = 400, concurrency = 10, tailDays = 30, rec
        JOIN companies c ON c.id = j.company_id
       WHERE j.removed_at IS NULL
         AND j.url IS NOT NULL
+        AND j.id % ${pMod} = ${pRem}
         AND (j.last_checked_at IS NULL OR j.last_checked_at < NOW() - INTERVAL '${r} days')
         AND (
           (j.posted_at IS NOT NULL AND j.posted_at < NOW() - INTERVAL '${t} days')
