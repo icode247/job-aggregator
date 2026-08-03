@@ -1,3 +1,8 @@
 node_modules/
 data/*.db
 .env
+
+# Logo-review working files: scraper input/output, per-batch caches and the
+# generated preview page. Only processed.txt (the reviewed-company set) is tracked.
+data/logo/*
+!data/logo/processed.txt
