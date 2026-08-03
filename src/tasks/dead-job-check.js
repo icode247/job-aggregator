@@ -75,11 +75,27 @@ async function runWithConcurrency(items, maxConcurrency, fn) {
 }
 
 /**
- * Verify a rotating batch of the older job tail and prune confirmed-dead postings.
+ * Verify a rotating batch of jobs and prune confirmed-dead postings. This is now
+ * the ONLY place jobs get marked removed_at — syncForCompany() (jobs.js) used to
+ * also remove jobs via list-diff (any stored external_id missing from a sync's
+ * incoming set), guarded by a >50%-missing skip heuristic. That was retired: the
+ * heuristic froze real closures (ashby's jerry.ai: 350->48 jobs, frozen because
+ * 97% were "missing"), and list-diffing itself proved unreliable — external_id
+ * churn (a job reposted under a new id while still live at the same URL) showed
+ * up independently on Greenhouse and Workday, where a blind diff would have
+ * deleted hundreds of still-open jobs. HTTP verification doesn't have that
+ * failure mode: a job is only ever removed on a confirmed 404/410 or an explicit
+ * dead-page phrase.
  *
- * Scope: jobs posted more than `tailDays` ago (recent jobs are kept fresh by the
- * crawler, so we don't waste fetches on them) that haven't been checked within
- * `recheckDays`. Oldest-checked first, so the whole tail rotates over time.
+ * Scope is now the union of two populations, both eligible once `recheckDays`
+ * has passed since their last check:
+ *   1. The original tail — jobs posted more than `tailDays` ago (recent jobs are
+ *      kept fresh by the crawler, so we don't waste fetches on them).
+ *   2. Jobs "missing from the latest sync" — j.last_seen_at predates their
+ *      company's last_synced_at by more than a few minutes, meaning the most
+ *      recent successful sync didn't include them. This is the population that
+ *      needs verifying now that nothing removes them at sync time. Prioritized
+ *      first since it's fresh, actionable signal rather than background hygiene.
  *
  * @returns {Promise<{checked:number, dead:number, uncertain:number}>}
  */
@@ -89,14 +105,18 @@ async function pruneDeadJobs({ limit = 400, concurrency = 10, tailDays = 30, rec
   const r = Number(recheckDays) || 14;
 
   const { rows: jobs } = await query(
-    `SELECT j.id, j.url
+    `SELECT j.id, j.url,
+            (c.last_synced_at IS NOT NULL AND j.last_seen_at < c.last_synced_at - INTERVAL '5 minutes') AS missing_from_sync
        FROM jobs j
+       JOIN companies c ON c.id = j.company_id
       WHERE j.removed_at IS NULL
         AND j.url IS NOT NULL
-        AND j.posted_at IS NOT NULL
-        AND j.posted_at < NOW() - INTERVAL '${t} days'
         AND (j.last_checked_at IS NULL OR j.last_checked_at < NOW() - INTERVAL '${r} days')
-      ORDER BY j.last_checked_at ASC NULLS FIRST
+        AND (
+          (j.posted_at IS NOT NULL AND j.posted_at < NOW() - INTERVAL '${t} days')
+          OR (c.last_synced_at IS NOT NULL AND j.last_seen_at < c.last_synced_at - INTERVAL '5 minutes')
+        )
+      ORDER BY missing_from_sync DESC, j.last_checked_at ASC NULLS FIRST
       LIMIT $1`,
     [limit]
   );
