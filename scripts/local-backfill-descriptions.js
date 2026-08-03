@@ -25,8 +25,11 @@ async function main() {
     process.exit(1);
   }
 
-  await migrate();
-  logger.info('Local description backfill started — connected to production DB');
+  // migrate() is OFF by default: the prod schema is already applied, and running it on boot takes
+  // ACCESS EXCLUSIVE locks on the 2.5M-row jobs table that time out under the crawl fleet's write
+  // load (it crash-looped the worker before). Opt in with MIGRATE_ON_BOOT=1 only when needed.
+  if (process.env.MIGRATE_ON_BOOT === '1') await migrate();
+  logger.info('Local description backfill started — connected to production DB (migrate skipped)');
 
   let cycle = 0;
   while (true) {
