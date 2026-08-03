@@ -228,6 +228,30 @@ function extractJsonLdDescription(html) {
   return null;
 }
 
+// Extract salary from a page's JSON-LD JobPosting.baseSalary (schema.org MonetaryAmount).
+// Returns {salary_min,salary_max,salary_currency,salary_interval} or null if not published.
+const UNIT_TO_INTERVAL = { YEAR: 'year', MONTH: 'month', WEEK: 'week', DAY: 'day', HOUR: 'hour' };
+function extractJsonLdSalary(html) {
+  const ldRegex = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi;
+  let ldMatch;
+  while ((ldMatch = ldRegex.exec(html)) !== null) {
+    let ld; try { ld = JSON.parse(ldMatch[1]); } catch { continue; }
+    const bs = ld && ld['@type'] === 'JobPosting' ? ld.baseSalary : null;
+    const v = bs && (bs.value || bs);
+    if (!v) continue;
+    const min = v.minValue ?? v.value ?? null;
+    const max = v.maxValue ?? v.value ?? null;
+    if (min == null && max == null) continue;
+    return {
+      salary_min: min != null ? String(min) : null,
+      salary_max: max != null ? String(max) : null,
+      salary_currency: bs.currency || ld.baseSalary?.currency || null,
+      salary_interval: UNIT_TO_INTERVAL[String(v.unitText || '').toUpperCase()] || null,
+    };
+  }
+  return null;
+}
+
 async function fetchJazzHRDescription(job) {
   if (!job.url) return null;
   const res = await fetch(job.url, { signal: AbortSignal.timeout(10000) });
@@ -300,6 +324,16 @@ async function fetchPaylocityDescription(job) {
     }
     if (!res.ok) return null;
     const html = await res.text();
+    // ~17% of paylocity jobs (pay-transparency states) publish baseSalary in the JSON-LD, which the
+    // adapter drops. Capture it here as a side-effect of the same fetch (no extra request).
+    try {
+      const sal = extractJsonLdSalary(html);
+      if (sal && job.id) {
+        await query(
+          'UPDATE jobs SET salary_min=?, salary_max=?, salary_currency=?, salary_interval=? WHERE id=? AND salary_min IS NULL',
+          [sal.salary_min, sal.salary_max, sal.salary_currency, sal.salary_interval, job.id]);
+      }
+    } catch { /* salary is best-effort; never block the description */ }
     // Full description = the JSON-LD JobPosting.description (HTML), same shape as breezy/jazzhr.
     const ld = extractJsonLdDescription(html);
     if (ld && ld.length > 20) return ld;

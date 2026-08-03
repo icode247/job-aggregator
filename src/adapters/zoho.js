@@ -35,9 +35,11 @@ async function fetchJobDetail(domain, clientname, jobId, slug) {
       const job = Array.isArray(parsed) ? parsed[0] : parsed;
       return job?.Job_Description || null;
     } catch {
-      // If JSON parse fails, try regex extraction as fallback
-      const descMatch = raw.match(/"Job_Description"\s*:\s*"([\s\S]*?)"\s*,\s*"/);
-      return descMatch ? descMatch[1].replace(/\\"/g, '"') : null;
+      // If JSON parse fails, extract the Job_Description as a proper JSON string value:
+      // (?:[^"\\]|\\.)* matches any char except an UNescaped quote, so it stops only at the real
+      // closing quote — the old `([\s\S]*?)"\s*,\s*"` truncated at the first \",\" inside the HTML.
+      const descMatch = raw.match(/"Job_Description"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+      return descMatch ? descMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n') : null;
     }
   } catch {
     return null;
@@ -105,10 +107,12 @@ async function fetchJobs(clientname) {
     .map(job => ({
       external_id: `zoho_${job.id}`,
       title: job.Posting_Title || job.Job_Opening_Name || null,
-      department: job.Department || null,
-      location: [job.City, job.State, job.Country1].filter(Boolean).join(', ') || null,
+      // Field is `Country` (the old `Country1` never existed, so country was dropped from every
+      // location — jobs with only a country came out null). Keep Country1 as a fallback just in case.
+      location: [job.City, job.State, job.Country || job.Country1].filter(Boolean).join(', ') || null,
       workplace_type: job.Remote_Job ? 'remote' : null,
       employment_type: job.Job_Type || null,
+      department: job.Department || job.Industry || null, // Industry when present (per-company field)
       salary_min: null,
       salary_max: null,
       salary_currency: null,
@@ -121,8 +125,11 @@ async function fetchJobs(clientname) {
       raw_data: job,
     }));
 
-  // Fetch descriptions from detail pages for jobs missing them
-  const missingDesc = jobs.filter(j => !j.description);
+  // The LIST blob's Job_Description is a TRUNCATED PREVIEW (~150 chars ending in "..."), not the
+  // full text — so fetch the detail page whenever the description is missing OR looks like a
+  // preview (short, or ellipsis-terminated). Real descriptions are thousands of chars.
+  const looksPreview = (d) => !d || d.length < 600 || /\.\.\.|…\s*<?\/?\w*>?\s*$/.test(d.replace(/<[^>]+>/g, '').trim());
+  const missingDesc = jobs.filter(j => looksPreview(j.description));
   if (missingDesc.length > 0 && workingDomain) {
     for (let i = 0; i < missingDesc.length; i += DETAIL_BATCH_SIZE) {
       if (i > 0) await new Promise(r => setTimeout(r, 300));
