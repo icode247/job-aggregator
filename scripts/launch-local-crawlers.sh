@@ -110,8 +110,10 @@ echo "launched prune-dead-jobs-local (odd-id partition) -> $LOG/prune-dead-local
 # whose list crawl carries no body. Loops backfillDescriptions() every 2 min. migrate() is OFF
 # (it crash-looped on boot under crawl load); IPROYAL_* passed for oracle's proxy-render path.
 IPROYAL_ENVS="$(grep -E "^IPROYAL_PROXY_(HOST|PORT|USER|PASS|LIFETIME)=" .env 2>/dev/null | sed -E "s/^([A-Z_]+)=(.*)$/\1='\2'/" | tr "\n" " ")"
+# PG_POOL_MAX=2: it runs all ATS in parallel so it bursts connections; keep it small to stay under
+# the essential-2 40-conn cap alongside the ~9 crawlers + other backfills + Render + web dynos.
 nohup bash -c "while true; do \
-  env PG_POOL_MAX=4 $IPROYAL_ENVS node scripts/local-backfill-descriptions.js; \
+  env PG_POOL_MAX=2 $IPROYAL_ENVS node scripts/local-backfill-descriptions.js; \
   echo \"[\$(date)] desc-backfill exited rc=\$? — restarting in 30s\"; sleep 30; \
 done" >"$LOG/backfill-desc.log" 2>&1 &
 echo "launched general description backfill -> $LOG/backfill-desc.log  wrapper pid $!"
