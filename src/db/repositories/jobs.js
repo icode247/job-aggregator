@@ -313,7 +313,46 @@ const jobsRepo = {
 
       const existingMap = new Map(existingJobs.map(j => [j.external_id, j.id]));
 
-      for (const job of incomingJobs) {
+      // Deduplicate by external_id before batching. A multi-row INSERT ... ON CONFLICT
+      // errors outright ("cannot affect row a second time") if one statement carries the
+      // same conflict key twice, and adapters do occasionally emit a duplicate posting.
+      // Last occurrence wins, which is what the old row-at-a-time loop ended up with.
+      const deduped = [...new Map(incomingJobs.map(j => [j.external_id, j])).values()];
+
+      for (const job of deduped) {
+        if (existingMap.has(job.external_id)) updated++;
+        else added++;
+      }
+
+      // Insert in chunks rather than one statement per job. The whole loop runs inside a
+      // single transaction, so a round-trip per job meant a big tenant held its connection
+      // (as "idle in transaction") for minutes — with ~11 crawlers doing that concurrently
+      // the essential-2 40-connection cap was permanently near exhaustion. Batching cuts
+      // round-trips ~200x and the hold time from minutes to seconds.
+      //
+      // CHUNK is bounded by Postgres's 65535 bind-parameter ceiling: 20 params/row, so
+      // 200 rows = 4000 params, comfortably clear.
+      const CHUNK = 200;
+      for (let i = 0; i < deduped.length; i += CHUNK) {
+        const slice = deduped.slice(i, i + CHUNK);
+        const rowSql = `(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`;
+        const params = [];
+        for (const job of slice) {
+          params.push(
+            job.external_id, companyId, ats,
+            job.title, job.department || null, job.location,
+            job.workplace_type || null, job.employment_type || null,
+            job.salary_min || null, job.salary_max || null,
+            job.salary_currency || null, job.salary_interval || null,
+            job.description || null, job.url, job.posted_at || null,
+            JSON.stringify(job.raw_data || null),
+            job.visa_sponsorship || '',
+            job.experience_level || '',
+            job.is_remote || false,
+            job.remote_worldwide || false
+          );
+        }
+
         await tx.query(
           `INSERT INTO jobs (
             external_id, company_id, ats, title, department, location,
@@ -323,7 +362,7 @@ const jobsRepo = {
             visa_sponsorship, experience_level, is_remote, remote_worldwide,
             first_seen_at, last_seen_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+          VALUES ${slice.map(() => rowSql).join(', ')}
           ON CONFLICT(external_id, company_id) DO UPDATE SET
             title = EXCLUDED.title,
             department = EXCLUDED.department,
@@ -344,25 +383,8 @@ const jobsRepo = {
             remote_worldwide = EXCLUDED.remote_worldwide,
             last_seen_at = datetime('now'),
             removed_at = NULL`,
-          [
-            job.external_id, companyId, ats,
-            job.title, job.department || null, job.location,
-            job.workplace_type || null, job.employment_type || null,
-            job.salary_min || null, job.salary_max || null,
-            job.salary_currency || null, job.salary_interval || null,
-            job.description || null, job.url, job.posted_at || null,
-            JSON.stringify(job.raw_data || null),
-            job.visa_sponsorship || '',
-            job.experience_level || '',
-            job.is_remote || false,
-            job.remote_worldwide || false,
-          ]
+          params
         );
-        if (existingMap.has(job.external_id)) {
-          updated++;
-        } else {
-          added++;
-        }
       }
     });
 
