@@ -55,6 +55,13 @@ async function closeDb() {
   }
 }
 
+// better-sqlite3 binds only numbers, strings, bigints, buffers and null — a JS
+// boolean throws, while pg accepts one happily. Normalise here so callers stay
+// dialect-agnostic (jobs.js passes is_remote/remote_worldwide as booleans).
+function sqliteParams(params) {
+  return params.map(p => (typeof p === 'boolean' ? (p ? 1 : 0) : p));
+}
+
 /**
  * Unified query helper. Works with both SQLite and PostgreSQL.
  * - sql: SQL string with ? placeholders (auto-converted to $1,$2... for PG)
@@ -87,11 +94,11 @@ async function query(sql, params = []) {
   const isInsert = sqliteSql.trimStart().toUpperCase().startsWith('INSERT');
 
   if (isSelect) {
-    const rows = database.prepare(sqliteSql).all(...params);
+    const rows = database.prepare(sqliteSql).all(...sqliteParams(params));
     return { rows, rowCount: rows.length, lastId: null };
   }
 
-  const result = database.prepare(sqliteSql).run(...params);
+  const result = database.prepare(sqliteSql).run(...sqliteParams(params));
   return {
     rows: [],
     rowCount: result.changes,
@@ -142,18 +149,32 @@ async function transaction(fn) {
     }
   }
 
-  // SQLite transactions are synchronous
+  // SQLite. better-sqlite3's own database.transaction() helper rejects a callback
+  // that returns a promise ("Transaction function cannot return a promise"), and
+  // every caller here is async — so drive BEGIN/COMMIT by hand instead. That is
+  // safe because better-sqlite3 statements are synchronous and there is a single
+  // connection: nothing else can interleave between the awaits.
   const database = getDb();
-  return database.transaction(() => fn({
+  const tx = {
     query(sql, params = []) {
       const isSelect = sql.trimStart().toUpperCase().startsWith('SELECT');
       if (isSelect) {
-        return { rows: database.prepare(sql).all(...params) };
+        return { rows: database.prepare(sql).all(...sqliteParams(params)) };
       }
-      const result = database.prepare(sql).run(...params);
+      const result = database.prepare(sql).run(...sqliteParams(params));
       return { rows: [], rowCount: result.changes };
     },
-  }))();
+  };
+
+  database.exec('BEGIN');
+  try {
+    const result = await fn(tx);
+    database.exec('COMMIT');
+    return result;
+  } catch (err) {
+    database.exec('ROLLBACK');
+    throw err;
+  }
 }
 
 module.exports = { getDb, closeDb, query, exec, transaction, isPostgres };
