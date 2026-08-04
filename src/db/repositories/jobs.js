@@ -369,10 +369,18 @@ const jobsRepo = {
             location = EXCLUDED.location,
             workplace_type = EXCLUDED.workplace_type,
             employment_type = EXCLUDED.employment_type,
-            salary_min = EXCLUDED.salary_min,
-            salary_max = EXCLUDED.salary_max,
-            salary_currency = EXCLUDED.salary_currency,
-            salary_interval = EXCLUDED.salary_interval,
+            -- COALESCE, not a plain overwrite. Several ATS (paylocity, workable, ...) carry
+            -- no salary in the list response, so the adapter passes NULL every sync — an
+            -- unconditional assignment therefore ERASED anything the description/salary
+            -- backfill had recovered. Measured: of 29,710 salaries a one-time paylocity
+            -- sweep recovered over 18.5h, only ~2.6k survived, and jobs not re-synced in
+            -- the last 3h still held salary at 9.8% vs 2.0% for those that were.
+            -- Trade-off is the same one description already makes: a salary an employer
+            -- genuinely removes stays until the row is replaced.
+            salary_min = COALESCE(EXCLUDED.salary_min, jobs.salary_min),
+            salary_max = COALESCE(EXCLUDED.salary_max, jobs.salary_max),
+            salary_currency = COALESCE(EXCLUDED.salary_currency, jobs.salary_currency),
+            salary_interval = COALESCE(EXCLUDED.salary_interval, jobs.salary_interval),
             description = COALESCE(EXCLUDED.description, jobs.description),
             url = EXCLUDED.url,
             posted_at = EXCLUDED.posted_at,
