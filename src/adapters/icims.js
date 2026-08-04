@@ -4,6 +4,11 @@
  * 1. Jibe-powered sites with /api/jobs JSON endpoint
  * 2. Classic iCIMS portals at {slug}.icims.com with HTML scraping
  *
+ * Slug forms:
+ *   "{company}"          -> careers.{company}.com, jobs.{company}.com, {company}.icims.com
+ *   "{prefix}-{company}" -> {slug}.icims.com, then careers./jobs.{company}.com
+ *   "full:{host}"        -> that host verbatim (vanity domains the patterns above miss)
+ *
  * Classic portals use consistent CSS classes:
  * - .iCIMS_JobsTable container
  * - .iCIMS_Anchor links with title="ID - Job Title"
@@ -15,11 +20,33 @@ const logger = require('../logger');
 const DETAIL_BATCH_SIZE = 5;
 const MAX_PAGES = 50;
 
+/**
+ * A "full:{host}" slug names the vanity host outright, for sites the patterns below
+ * cannot reconstruct — *.jibeapply.com, or a careers host on a non-.com TLD
+ * (careers.kentro.us, github.careers). Those hosts serve /api/jobs normally; it is only
+ * the URL guessing that misses them, and {slug}.icims.com 404s for them.
+ *
+ * The host comes from our own DB, but it is still interpolated straight into a fetch, so
+ * validate it: a plain public DNS name, nothing that could redirect the request inward.
+ */
+function parseFullHost(slug) {
+  const host = slug.slice(5).trim().toLowerCase();
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(host)) return null;
+  if (/^\d+(\.\d+)*$/.test(host)) return null;                       // bare IP
+  if (/(^|\.)(localhost|local|internal|intranet|test|invalid)$/.test(host)) return null;
+  return host;
+}
+
 async function fetchJobs(clientname) {
   // Build URL candidates based on slug format
   const urls = [];
+  let fullHost = null;
 
-  if (clientname.includes('-')) {
+  if (clientname.startsWith('full:')) {
+    fullHost = parseFullHost(clientname);
+    if (!fullHost) throw new Error(`iCIMS: invalid host in slug "${clientname}"`);
+    urls.push(`https://${fullHost}/api/jobs`);
+  } else if (clientname.includes('-')) {
     urls.push(`https://${clientname}.icims.com/api/jobs`);
     const parts = clientname.split('-');
     if (['careers', 'jobs', 'globalcareers'].includes(parts[0])) {
@@ -51,7 +78,7 @@ async function fetchJobs(clientname) {
   }
 
   // Fallback: scrape classic iCIMS HTML portal
-  const portalUrl = `https://${clientname}.icims.com`;
+  const portalUrl = fullHost ? `https://${fullHost}` : `https://${clientname}.icims.com`;
   const jobs = await scrapeClassicPortal(portalUrl, clientname);
   if (jobs.length > 0) {
     return { jobs, meta: { companyName: null, logoUrl: null } };
