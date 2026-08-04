@@ -96,6 +96,17 @@ function deriveCompany(applyUrl, atsHint, companyName, sourceName) {
   else if (host.endsWith('.recruitee.com')) { ats = 'recruitee'; slug = sub; careerUrl = `https://${sub}.recruitee.com`; }
   else if (host.endsWith('.breezy.hr')) { ats = 'breezy'; slug = sub; careerUrl = `https://${sub}.breezy.hr`; }
   else if (host.includes('teamtailor.com') && sub !== 'teamtailor') { ats = 'teamtailor'; slug = sub; careerUrl = `https://${sub}.teamtailor.com`; }
+  // Paylocity: the tenant is a GUID in the path (/Recruiting/Jobs/All/{guid}). Job-detail and
+  // apply links carry ONLY a numeric job id — no tenant — so they must be dropped, not stored.
+  // Without this branch they fell to the generic fallback below, which slugged them "Recruiting"
+  // and, because career_url is the conflict key, piled every employer's postings onto one bogus
+  // company row (978 live jobs from 263 different employers under "iNewOrleans LLC").
+  else if (host.endsWith('paylocity.com')) {
+    const g = clean.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    if (!g) return { ats: 'paylocity', slug: null, careerUrl: null, domain: null };
+    ats = 'paylocity'; slug = g[0].toLowerCase();
+    careerUrl = `https://recruiting.paylocity.com/recruiting/jobs/All/${slug}`;
+  }
   // Path-slug ATS (boards.greenhouse.io/{slug}, jobs.lever.co/{slug}, ...)
   else if (parts[0] && /greenhouse|lever|ashby|workable|smartrecruiters/.test(host)) {
     slug = parts[0];
