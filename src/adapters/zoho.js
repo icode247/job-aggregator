@@ -3,11 +3,16 @@
  * Job data is embedded in a hidden <input id="jobs"> field as HTML-encoded JSON.
  * Company meta is in <input id="meta">.
  */
+// Zoho Recruit serves each tenant from ONE regional domain; the adapter probes them in
+// turn. A domain missing here means those tenants look dead (every probe 404s) even
+// though their board is live — .ca was found that way while repairing generic slugs.
 const ZOHO_DOMAINS = [
   'zohorecruit.com',
   'zohorecruit.in',
   'zohorecruit.eu',
   'zohorecruit.com.au',
+  'zohorecruit.ca',
+  'zohorecruit.jp',
 ];
 
 const DETAIL_BATCH_SIZE = 3;

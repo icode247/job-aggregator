@@ -82,6 +82,9 @@ const ATS_HOST_MAP = { greenhouse: 'greenhouse', lever: 'lever', ashby: 'ashby',
   bamboohr: 'bamboohr', smartrecruiters: 'smartrecruiters', recruitee: 'recruitee', breezy: 'breezy',
   personio: 'personio', pinpoint: 'pinpoint', jazzhr: 'jazzhr', rippling: 'rippling', zoho: 'zoho' };
 
+// URL path words that name a section, never an employer.
+const GENERIC_PATH_SEGMENT = /^(company|companies|jobs?|job-openings|careers?|careersection|opportunities|positions|openings|talent|people|team|about|home|index|search|apply|hiring|main|portal|site|page|default|external|internal|psc|en|us|www|vacancies|listings|recruiting|recruitment|employment|work|join|joinus|current-openings|view|list|all|browse|find|explore)$/i;
+
 function deriveCompany(applyUrl, atsHint, companyName, sourceName) {
   const strip = (u) => { try { const x = new URL(u); ['userid','jobid','utm_source','utm_medium','utm_campaign','gh_src'].forEach(p => x.searchParams.delete(p)); return x.toString().replace(/\?$/, ''); } catch { return u; } };
   const clean = strip(applyUrl || '');
@@ -118,6 +121,14 @@ function deriveCompany(applyUrl, atsHint, companyName, sourceName) {
   }
   // Generic fallback: host root, else namespace by company name so it still stores.
   if (!careerUrl) {
+    // parts[0] is only a tenant id when it actually names the employer. When it is a
+    // generic path word ("careers", "jobs", "company", "psc", ...) it identifies nothing,
+    // and because career_url is the ON CONFLICT key every employer on that host collapses
+    // into ONE row: 353 such rows had accumulated, one of them holding 978 postings from
+    // 625 different employers. Drop the job instead — a row we can never crawl is worse
+    // than no row. (Only the fallback is guarded; the branches above read the tenant from
+    // the hostname, where "people.bamboohr.com" is a legitimate tenant named "people".)
+    if (host && parts[0] && GENERIC_PATH_SEGMENT.test(parts[0])) return { ats: ats || ATS_HOST_MAP[sub] || sourceName, slug: null, careerUrl: null, domain: null };
     if (host && parts[0]) { slug = parts[0]; careerUrl = `${proto}//${host}/${slug}`; }
     else if (host) { slug = sub; careerUrl = `${proto}//${host}`; }
     else { slug = (companyName || 'unknown').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); careerUrl = `${sourceName}://${slug}`; }
