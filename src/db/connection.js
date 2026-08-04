@@ -13,10 +13,20 @@ function getDb() {
       pool = new Pool({
         connectionString: process.env.DATABASE_URL,
         ssl: config.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-        max: 15,
+        max: parseInt(process.env.PG_POOL_MAX, 10) || 15,
         idleTimeoutMillis: 10000,
         connectionTimeoutMillis: 10000,
+        // Abort any query that runs longer than 60s instead of hanging forever on a
+        // half-dead connection (the SA->us-east-1 link drops mid-query and, without
+        // these, a query never returns — freezing the whole crawl loop).
+        statement_timeout: 60000,
+        query_timeout: 60000,
       });
+      // Idle clients can be terminated by the server (Heroku) or a flaky link; pg
+      // emits 'error' on the pool for those. Without a listener Node treats it as an
+      // uncaught exception and crashes the process — so swallow/log it; the next
+      // query just acquires a fresh client.
+      pool.on('error', (err) => logger.warn({ err: err.message }, 'PG pool idle-client error (ignored)'));
       logger.info('PostgreSQL pool connected');
     }
     return pool;
@@ -43,6 +53,13 @@ async function closeDb() {
     db = null;
     logger.info('SQLite database closed');
   }
+}
+
+// better-sqlite3 binds only numbers, strings, bigints, buffers and null — a JS
+// boolean throws, while pg accepts one happily. Normalise here so callers stay
+// dialect-agnostic (jobs.js passes is_remote/remote_worldwide as booleans).
+function sqliteParams(params) {
+  return params.map(p => (typeof p === 'boolean' ? (p ? 1 : 0) : p));
 }
 
 /**
@@ -77,11 +94,11 @@ async function query(sql, params = []) {
   const isInsert = sqliteSql.trimStart().toUpperCase().startsWith('INSERT');
 
   if (isSelect) {
-    const rows = database.prepare(sqliteSql).all(...params);
+    const rows = database.prepare(sqliteSql).all(...sqliteParams(params));
     return { rows, rowCount: rows.length, lastId: null };
   }
 
-  const result = database.prepare(sqliteSql).run(...params);
+  const result = database.prepare(sqliteSql).run(...sqliteParams(params));
   return {
     rows: [],
     rowCount: result.changes,
@@ -132,18 +149,32 @@ async function transaction(fn) {
     }
   }
 
-  // SQLite transactions are synchronous
+  // SQLite. better-sqlite3's own database.transaction() helper rejects a callback
+  // that returns a promise ("Transaction function cannot return a promise"), and
+  // every caller here is async — so drive BEGIN/COMMIT by hand instead. That is
+  // safe because better-sqlite3 statements are synchronous and there is a single
+  // connection: nothing else can interleave between the awaits.
   const database = getDb();
-  return database.transaction(() => fn({
+  const tx = {
     query(sql, params = []) {
       const isSelect = sql.trimStart().toUpperCase().startsWith('SELECT');
       if (isSelect) {
-        return { rows: database.prepare(sql).all(...params) };
+        return { rows: database.prepare(sql).all(...sqliteParams(params)) };
       }
-      const result = database.prepare(sql).run(...params);
+      const result = database.prepare(sql).run(...sqliteParams(params));
       return { rows: [], rowCount: result.changes };
     },
-  }))();
+  };
+
+  database.exec('BEGIN');
+  try {
+    const result = await fn(tx);
+    database.exec('COMMIT');
+    return result;
+  } catch (err) {
+    database.exec('ROLLBACK');
+    throw err;
+  }
 }
 
 module.exports = { getDb, closeDb, query, exec, transaction, isPostgres };

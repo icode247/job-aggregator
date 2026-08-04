@@ -1,5 +1,6 @@
 const { query, transaction, isPostgres } = require('../connection');
 const logger = require('../../logger');
+const { aliasGroup, isShortAlias } = require('../../utils/location-aliases');
 
 /**
  * Build WHERE clauses from filters.
@@ -108,13 +109,30 @@ function buildFilters(filters = {}) {
     }
   }
 
-  // Location — multi-value free-text match (OR'd)
+  // Location — multi-value free-text match (OR'd), with country-alias expansion so e.g.
+  // "UAE" also matches jobs stored as "United Arab Emirates" (and USA/US<->United States,
+  // UK<->United Kingdom, ...). Long unambiguous aliases use a substring match; short ones
+  // (us/uk/usa/uae) use a word-boundary regex so "us" doesn't match "Houston".
   {
     const locs = toList(filters.location);
     if (locs.length > 0) {
-      const groups = locs.map(() => 'j.location ILIKE ?');
-      clauses.push('(' + groups.join(' OR ') + ')');
-      for (const l of locs) params.push(`%${l}%`);
+      const or = [];
+      for (const l of locs) {
+        const raw = String(l).trim().toLowerCase();
+        const group = aliasGroup(l);
+        // Match the term itself plus every alias in its country group (deduped).
+        const terms = group ? Array.from(new Set([raw, ...group])) : [l];
+        for (const term of terms) {
+          // Word-boundary only for KNOWN short aliases (us/uk/usa/uae) so they match as whole
+          // words; everything else (incl. arbitrary short input like "NY") stays substring.
+          if (isPostgres && isShortAlias(term) && aliasGroup(term)) {
+            or.push("j.location ~* ('\\y' || ? || '\\y')"); params.push(String(term).toLowerCase());
+          } else {
+            or.push('j.location ILIKE ?'); params.push(`%${term}%`);
+          }
+        }
+      }
+      clauses.push('(' + or.join(' OR ') + ')');
     }
   }
 
@@ -258,15 +276,34 @@ const jobsRepo = {
   async syncForCompany(companyId, ats, incomingJobs) {
     let added = 0;
     let updated = 0;
-    let removed = 0;
-    let skippedRemoval = false;
 
     // NOTE: posting age is a query-time concern (the API/UI filters by posted_at),
     // NOT an ingest-time one. We used to drop >30-day-old postings from the incoming
     // set before upserting, which meant any company whose live inventory skewed old
-    // never got those rows' last_seen_at refreshed — they'd sit unrefreshed until
-    // the skip-removal guard below (see the missingCount comment) froze them forever.
-    // Always upsert everything the adapter returns.
+    // never got those rows' last_seen_at refreshed. Always upsert everything the
+    // adapter returns.
+    //
+    // Removal no longer happens here at all. It used to be list-diff based (mark
+    // removed_at on any stored external_id missing from this sync's incoming set),
+    // guarded by a >50%-missing skip heuristic meant to protect against partial API
+    // responses. In production that guard caused more harm than it prevented: it
+    // conflated "adapter had a bad response" with "this company's inventory
+    // genuinely shrank," freezing real closures forever (confirmed via ashby's
+    // jerry.ai: 350 stored -> 48 actually open, frozen because 97% were "missing").
+    // Worse, list-diffing itself is unreliable — external_id churn (a job reposted
+    // under a new id while still live at the same URL) showed up independently on
+    // both Greenhouse (bayada: 603 "missing" jobs, 15/15 HTTP-verified still alive)
+    // and Workday (stout, same pattern at 23-job scale) — see
+    // docs/DATA-QUALITY-PLAN.md and the project_greenhouse_external_id_churn memory.
+    // A blind list-diff would have deleted hundreds of live jobs.
+    //
+    // Removal is now handled entirely by pruneDeadJobs() in
+    // src/tasks/dead-job-check.js, which only marks a job removed on an
+    // HTTP-confirmed 404/410 or an explicit "no longer available" page — never on
+    // a diff heuristic. Its eligibility query is extended to prioritize jobs whose
+    // company just completed a sync that didn't touch them (see there), so the
+    // "missing from latest sync" population gets verified promptly instead of
+    // waiting out the general 30-day-old rotation.
 
     await transaction(async (tx) => {
       const { rows: existingJobs } = await tx.query(
@@ -275,9 +312,47 @@ const jobsRepo = {
       );
 
       const existingMap = new Map(existingJobs.map(j => [j.external_id, j.id]));
-      const incomingIds = new Set(incomingJobs.map(j => j.external_id));
 
-      for (const job of incomingJobs) {
+      // Deduplicate by external_id before batching. A multi-row INSERT ... ON CONFLICT
+      // errors outright ("cannot affect row a second time") if one statement carries the
+      // same conflict key twice, and adapters do occasionally emit a duplicate posting.
+      // Last occurrence wins, which is what the old row-at-a-time loop ended up with.
+      const deduped = [...new Map(incomingJobs.map(j => [j.external_id, j])).values()];
+
+      for (const job of deduped) {
+        if (existingMap.has(job.external_id)) updated++;
+        else added++;
+      }
+
+      // Insert in chunks rather than one statement per job. The whole loop runs inside a
+      // single transaction, so a round-trip per job meant a big tenant held its connection
+      // (as "idle in transaction") for minutes — with ~11 crawlers doing that concurrently
+      // the essential-2 40-connection cap was permanently near exhaustion. Batching cuts
+      // round-trips ~200x and the hold time from minutes to seconds.
+      //
+      // CHUNK is bounded by Postgres's 65535 bind-parameter ceiling: 20 params/row, so
+      // 200 rows = 4000 params, comfortably clear.
+      const CHUNK = 200;
+      for (let i = 0; i < deduped.length; i += CHUNK) {
+        const slice = deduped.slice(i, i + CHUNK);
+        const rowSql = `(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`;
+        const params = [];
+        for (const job of slice) {
+          params.push(
+            job.external_id, companyId, ats,
+            job.title, job.department || null, job.location,
+            job.workplace_type || null, job.employment_type || null,
+            job.salary_min || null, job.salary_max || null,
+            job.salary_currency || null, job.salary_interval || null,
+            job.description || null, job.url, job.posted_at || null,
+            JSON.stringify(job.raw_data || null),
+            job.visa_sponsorship || '',
+            job.experience_level || '',
+            job.is_remote || false,
+            job.remote_worldwide || false
+          );
+        }
+
         await tx.query(
           `INSERT INTO jobs (
             external_id, company_id, ats, title, department, location,
@@ -287,7 +362,7 @@ const jobsRepo = {
             visa_sponsorship, experience_level, is_remote, remote_worldwide,
             first_seen_at, last_seen_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+          VALUES ${slice.map(() => rowSql).join(', ')}
           ON CONFLICT(external_id, company_id) DO UPDATE SET
             title = EXCLUDED.title,
             department = EXCLUDED.department,
@@ -308,53 +383,16 @@ const jobsRepo = {
             remote_worldwide = EXCLUDED.remote_worldwide,
             last_seen_at = datetime('now'),
             removed_at = NULL`,
-          [
-            job.external_id, companyId, ats,
-            job.title, job.department || null, job.location,
-            job.workplace_type || null, job.employment_type || null,
-            job.salary_min || null, job.salary_max || null,
-            job.salary_currency || null, job.salary_interval || null,
-            job.description || null, job.url, job.posted_at || null,
-            JSON.stringify(job.raw_data || null),
-            job.visa_sponsorship || '',
-            job.experience_level || '',
-            job.is_remote || false,
-            job.remote_worldwide || false,
-          ]
+          params
         );
-        if (existingMap.has(job.external_id)) {
-          updated++;
-        } else {
-          added++;
-        }
-      }
-
-      // Guard against partial API responses wiping out jobs
-      const existingCount = existingMap.size;
-      const missingCount = [...existingMap.keys()].filter(id => !incomingIds.has(id)).length;
-      const skipRemoval = existingCount > 0 && (
-        incomingJobs.length === 0 ||
-        missingCount / existingCount > 0.5
-      );
-
-      if (skipRemoval) {
-        skippedRemoval = true;
-        logger.warn(
-          { companyId, ats, existingCount, incomingCount: incomingJobs.length, missingCount },
-          'Skipping job removal — incoming count dropped too much, likely partial API response'
-        );
-      } else {
-        for (const [externalId, dbId] of existingMap) {
-          if (!incomingIds.has(externalId)) {
-            await tx.query("UPDATE jobs SET removed_at = datetime('now') WHERE id = ?", [dbId]);
-            removed++;
-          }
-        }
       }
     });
 
-    logger.info({ companyId, added, updated, removed, skippedRemoval }, 'Job sync diff complete');
-    return { added, updated, removed };
+    logger.info({ companyId, added, updated }, 'Job sync diff complete');
+    // removed is always 0 now — see the comment above. Kept in the return shape
+    // since sync.queue.js reports it in metrics/logs; a non-zero removal count
+    // will only ever come from pruneDeadJobs, not from here.
+    return { added, updated, removed: 0 };
   },
 };
 
