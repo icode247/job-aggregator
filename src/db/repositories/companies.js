@@ -37,12 +37,23 @@ const companiesRepo = {
     //                                                 state was just staleness — oracle hadn't
     //                                                 synced since 03-23, so its rows aged out of
     //                                                 the 90d window. 326/427 slugs are well-formed.
-    // Other platforms (workable, recruitee, pinpoint, jazzhr, personio, rippling,
-    // zoho, comeet, paylocity) remain PAUSED — their existing rows stay in the DB
+    //   jazzhr                                       — enabled 2026-08-04: adapter works, but
+    //                                                 544 rows carried the slug "apply" — the
+    //                                                 path segment of {board}.applytojob.com/apply
+    //                                                 rather than the subdomain. JazzHR answers
+    //                                                 HTTP 200 with an EMPTY widget for an unknown
+    //                                                 client, so this never surfaced as a failure;
+    //                                                 it just fetched nothing. Slugs rebuilt from
+    //                                                 the career_url subdomain and each one
+    //                                                 verified against the widget before writing.
+    // Other platforms (workable, recruitee, pinpoint, personio, rippling, zoho,
+    // comeet, paylocity) remain PAUSED — their existing rows stay in the DB
     // but no new sync cycles run. (workable 403-blocks direct API access.)
-    // NOTE: 'oraclecloud' (357 cos) is the SAME platform under a different label, but
-    // its slugs are bare tenants (no region/siteNumber) that need reconstruction +
-    // siteNumber discovery before they're worth scheduling — handled separately.
+    // NOTE: 'oraclecloud' was the SAME platform under a different label. Its 448 active
+    // rows were all stuck on the slug "hcmUI" (again a path segment) and had never been
+    // crawled — there is no oraclecloud adapter. Migrated 2026-08-04 onto ats='oracle'
+    // with "tenant.region" slugs (the adapter discovers siteNumber itself), so the label
+    // no longer needs scheduling of its own.
     // Stale threshold: 60 min — job boards rarely update faster than hourly.
     //
     // PER-PLATFORM ROUND-ROBIN: rank each platform's due companies by staleness, then
@@ -58,7 +69,7 @@ const companiesRepo = {
         FROM companies
         WHERE status = 'active'
           AND ats IS NOT NULL
-          AND ats IN ('ashby','greenhouse','breezy','smartrecruiters','bamboohr','lever','workday','icims','oracle','recruitee','zoho','successfactors','paylocity')
+          AND ats IN ('ashby','greenhouse','breezy','smartrecruiters','bamboohr','lever','workday','icims','oracle','recruitee','zoho','successfactors','paylocity','jazzhr')
           AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '60 minutes')
       ) ranked
       ORDER BY rn, last_synced_at ASC NULLS FIRST
