@@ -15,7 +15,22 @@ const fs = require('fs');
 const { BATCH_JSON, SCRAPED_CSV, REVIEW_JSON, PREVIEW_HTML, isVendor, HIGH_CONFIDENCE } = require('./lib');
 
 const CONC = 24;
-const MAX_BYTES = 220 * 1024; // skip anything too heavy to inline
+const MAX_BYTES = 420 * 1024; // skip anything too heavy to inline
+
+// Plenty of hosts serve a perfectly good logo as application/octet-stream (Paylocity's
+// GetLogoFileById does it for ~half its images), so trusting Content-Type alone silently
+// dropped them from review. Sniff the magic bytes and believe those instead.
+function sniffImageType(buf) {
+  if (buf.length < 4) return null;
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'image/png';
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return 'image/gif';
+  if (buf.slice(0, 4).toString('ascii') === 'RIFF' && buf.slice(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
+  if (buf[0] === 0x00 && buf[1] === 0x00 && buf[2] === 0x01 && buf[3] === 0x00) return 'image/x-icon';
+  const head = buf.slice(0, 300).toString('utf8').trimStart();
+  if (head.startsWith('<svg') || (head.startsWith('<?xml') && head.includes('<svg'))) return 'image/svg+xml';
+  return null;
+}
 
 function parseCsv(text) {
   const rows = [];
@@ -55,10 +70,13 @@ async function toDataUri(url) {
     });
     clearTimeout(timer);
     if (!res.ok) return null;
-    const type = (res.headers.get('content-type') || '').split(';')[0] || 'image/png';
-    if (!/^image\//.test(type)) return null;
     const buf = Buffer.from(await res.arrayBuffer());
     if (!buf.length || buf.length > MAX_BYTES) return null;
+    // Header first, then fall back to sniffing — an HTML error page must still be
+    // rejected, so a non-image header only gets a second chance if the bytes agree.
+    const header = (res.headers.get('content-type') || '').split(';')[0];
+    const type = /^image\//.test(header) ? header : sniffImageType(buf);
+    if (!type) return null;
     return `data:${type};base64,${buf.toString('base64')}`;
   } catch { return null; }
 }
