@@ -165,6 +165,50 @@ function renderHtml(items) {
 </script>`;
 }
 
+/**
+ * Shrink inlined thumbnails through a headless canvas.
+ *
+ * Company-uploaded logos are often 300KB+ each, which made a 45-card page weigh 15MB
+ * and would have stretched the recovery set across ~24 review rounds. The cards render
+ * at 80px tall anyway, so the full-resolution bytes buy nothing. Uses puppeteer (already
+ * a dependency) instead of pulling in an image library.
+ */
+async function downscale(items) {
+  const puppeteer = require('puppeteer');
+  const browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox', '--disable-gpu'] });
+  try {
+    const page = await browser.newPage();
+    const CHUNK = 40;
+    for (let i = 0; i < items.length; i += CHUNK) {
+      const slice = items.slice(i, i + CHUNK);
+      const shrunk = await page.evaluate(async (uris) => Promise.all(uris.map(uri => new Promise(resolve => {
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const scale = Math.min(1, 180 / Math.max(img.width, img.height));
+            if (scale === 1 && uri.length < 60000) return resolve(uri); // already small
+            const c = document.createElement('canvas');
+            c.width = Math.max(1, Math.round(img.width * scale));
+            c.height = Math.max(1, Math.round(img.height * scale));
+            const ctx = c.getContext('2d');
+            // Logos are frequently transparent PNGs and the cards sit on white, so
+            // flatten onto white before encoding as JPEG — otherwise alpha goes black.
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, c.width, c.height);
+            ctx.drawImage(img, 0, 0, c.width, c.height);
+            resolve(c.toDataURL('image/jpeg', 0.82));
+          } catch { resolve(uri); }
+        };
+        img.onerror = () => resolve(uri); // SVGs without intrinsic size, etc.
+        img.src = uri;
+      }))), slice.map(it => it.data_uri));
+      slice.forEach((it, n) => { if (shrunk[n]) it.data_uri = shrunk[n]; });
+    }
+  } finally {
+    await browser.close();
+  }
+}
+
 async function main() {
   const companies = JSON.parse(fs.readFileSync(BATCH_JSON, 'utf8'));
   // The scraper echoes back the URL it actually fetched (scheme added, trailing slash),
@@ -190,6 +234,8 @@ async function main() {
     const data_uri = await toDataUri(it.logo_url);
     return data_uri ? { ...it, data_uri } : null;
   })).filter(Boolean);
+
+  if (process.env.THUMB !== '0') await downscale(withImages);
 
   // Pre-select the ones the scraper is confident about and that aren't ATS boilerplate;
   // the human pass is about unchecking the misses, not hunting for the hits.
