@@ -15,7 +15,22 @@ const fs = require('fs');
 const { BATCH_JSON, SCRAPED_CSV, REVIEW_JSON, PREVIEW_HTML, isVendor, HIGH_CONFIDENCE } = require('./lib');
 
 const CONC = 24;
-const MAX_BYTES = 220 * 1024; // skip anything too heavy to inline
+const MAX_BYTES = 420 * 1024; // skip anything too heavy to inline
+
+// Plenty of hosts serve a perfectly good logo as application/octet-stream (Paylocity's
+// GetLogoFileById does it for ~half its images), so trusting Content-Type alone silently
+// dropped them from review. Sniff the magic bytes and believe those instead.
+function sniffImageType(buf) {
+  if (buf.length < 4) return null;
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'image/png';
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return 'image/gif';
+  if (buf.slice(0, 4).toString('ascii') === 'RIFF' && buf.slice(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
+  if (buf[0] === 0x00 && buf[1] === 0x00 && buf[2] === 0x01 && buf[3] === 0x00) return 'image/x-icon';
+  const head = buf.slice(0, 300).toString('utf8').trimStart();
+  if (head.startsWith('<svg') || (head.startsWith('<?xml') && head.includes('<svg'))) return 'image/svg+xml';
+  return null;
+}
 
 function parseCsv(text) {
   const rows = [];
@@ -55,10 +70,13 @@ async function toDataUri(url) {
     });
     clearTimeout(timer);
     if (!res.ok) return null;
-    const type = (res.headers.get('content-type') || '').split(';')[0] || 'image/png';
-    if (!/^image\//.test(type)) return null;
     const buf = Buffer.from(await res.arrayBuffer());
     if (!buf.length || buf.length > MAX_BYTES) return null;
+    // Header first, then fall back to sniffing — an HTML error page must still be
+    // rejected, so a non-image header only gets a second chance if the bytes agree.
+    const header = (res.headers.get('content-type') || '').split(';')[0];
+    const type = /^image\//.test(header) ? header : sniffImageType(buf);
+    if (!type) return null;
     return `data:${type};base64,${buf.toString('base64')}`;
   } catch { return null; }
 }
@@ -147,6 +165,50 @@ function renderHtml(items) {
 </script>`;
 }
 
+/**
+ * Shrink inlined thumbnails through a headless canvas.
+ *
+ * Company-uploaded logos are often 300KB+ each, which made a 45-card page weigh 15MB
+ * and would have stretched the recovery set across ~24 review rounds. The cards render
+ * at 80px tall anyway, so the full-resolution bytes buy nothing. Uses puppeteer (already
+ * a dependency) instead of pulling in an image library.
+ */
+async function downscale(items) {
+  const puppeteer = require('puppeteer');
+  const browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox', '--disable-gpu'] });
+  try {
+    const page = await browser.newPage();
+    const CHUNK = 40;
+    for (let i = 0; i < items.length; i += CHUNK) {
+      const slice = items.slice(i, i + CHUNK);
+      const shrunk = await page.evaluate(async (uris) => Promise.all(uris.map(uri => new Promise(resolve => {
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const scale = Math.min(1, 180 / Math.max(img.width, img.height));
+            if (scale === 1 && uri.length < 60000) return resolve(uri); // already small
+            const c = document.createElement('canvas');
+            c.width = Math.max(1, Math.round(img.width * scale));
+            c.height = Math.max(1, Math.round(img.height * scale));
+            const ctx = c.getContext('2d');
+            // Logos are frequently transparent PNGs and the cards sit on white, so
+            // flatten onto white before encoding as JPEG — otherwise alpha goes black.
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, c.width, c.height);
+            ctx.drawImage(img, 0, 0, c.width, c.height);
+            resolve(c.toDataURL('image/jpeg', 0.82));
+          } catch { resolve(uri); }
+        };
+        img.onerror = () => resolve(uri); // SVGs without intrinsic size, etc.
+        img.src = uri;
+      }))), slice.map(it => it.data_uri));
+      slice.forEach((it, n) => { if (shrunk[n]) it.data_uri = shrunk[n]; });
+    }
+  } finally {
+    await browser.close();
+  }
+}
+
 async function main() {
   const companies = JSON.parse(fs.readFileSync(BATCH_JSON, 'utf8'));
   // The scraper echoes back the URL it actually fetched (scheme added, trailing slash),
@@ -172,6 +234,8 @@ async function main() {
     const data_uri = await toDataUri(it.logo_url);
     return data_uri ? { ...it, data_uri } : null;
   })).filter(Boolean);
+
+  if (process.env.THUMB !== '0') await downscale(withImages);
 
   // Pre-select the ones the scraper is confident about and that aren't ATS boilerplate;
   // the human pass is about unchecking the misses, not hunting for the hits.

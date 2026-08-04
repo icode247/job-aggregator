@@ -98,6 +98,29 @@ async function main() {
     assert.strictEqual(rows[0].experience_level, 'senior', `level=${rows[0].experience_level}`);
   });
 
+  // 5b. The bug that erased an 18.5-hour backfill: an ATS whose list response has no
+  //     salary passes NULL every sync, which used to overwrite a backfilled value.
+  await check('null salary does not erase a backfilled one', async () => {
+    await jobsRepo.syncForCompany(cid, 'greenhouse', [mk(3500)]);
+    await query('UPDATE jobs SET salary_min = ?, salary_max = ?, salary_currency = ?, salary_interval = ? WHERE external_id = ? AND company_id = ?',
+      ['90000', '120000', 'USD', 'year', 'job-3500', cid]);
+    await jobsRepo.syncForCompany(cid, 'greenhouse', [mk(3500)]); // adapter supplies no salary
+    const { rows } = await query('SELECT salary_min, salary_max, salary_currency, salary_interval FROM jobs WHERE external_id = ? AND company_id = ?', ['job-3500', cid]);
+    assert.strictEqual(String(rows[0].salary_min), '90000', `salary_min=${rows[0].salary_min}`);
+    assert.strictEqual(String(rows[0].salary_max), '120000', `salary_max=${rows[0].salary_max}`);
+    assert.strictEqual(rows[0].salary_currency, 'USD', `currency=${rows[0].salary_currency}`);
+    assert.strictEqual(rows[0].salary_interval, 'year', `interval=${rows[0].salary_interval}`);
+  });
+
+  // 5c. But a real incoming salary must still update.
+  await check('incoming salary still overwrites', async () => {
+    await jobsRepo.syncForCompany(cid, 'greenhouse', [mk(3600, { salary_min: '10', salary_max: '20' })]);
+    await jobsRepo.syncForCompany(cid, 'greenhouse', [mk(3600, { salary_min: '55', salary_max: '75' })]);
+    const { rows } = await query('SELECT salary_min, salary_max FROM jobs WHERE external_id = ? AND company_id = ?', ['job-3600', cid]);
+    assert.strictEqual(String(rows[0].salary_min), '55', `salary_min=${rows[0].salary_min}`);
+    assert.strictEqual(String(rows[0].salary_max), '75', `salary_max=${rows[0].salary_max}`);
+  });
+
   // 6. A previously removed job comes back (removed_at = NULL) on re-sync.
   await check('re-syncing a removed job revives it', async () => {
     await jobsRepo.syncForCompany(cid, 'greenhouse', [mk(4000)]);
