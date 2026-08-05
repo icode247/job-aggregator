@@ -147,6 +147,38 @@ async function migrate() {
     await exec('CREATE INDEX IF NOT EXISTS idx_jobs_last_checked ON jobs(last_checked_at) WHERE removed_at IS NULL');
   }
 
+  // Facet/aggregate indexes. The sidebar counts (/api/facets) and the totals on the landing
+  // page GROUP BY these columns across every live job. Without a partial index covering the
+  // grouped column they are sequential scans of ~2.8M rows: measured 37-64 SECONDS each, and
+  // they ran ~18k times apiece — by total execution time they were the single largest load on
+  // the database, far above anything the crawlers did.
+  //
+  // The index alone is not enough. An index-only scan needs the visibility map, which is empty
+  // until the table is vacuumed — on a freshly restored database these same queries still took
+  // 45s WITH the indexes present, and only dropped to sub-second after VACUUM. See the
+  // autovacuum settings below: if autovacuum falls behind, the visibility map goes stale and
+  // every one of these silently reverts to a full scan.
+  if (isPostgres) {
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_emptype_active ON jobs (employment_type) WHERE removed_at IS NULL AND employment_type IS NOT NULL');
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_ats_active ON jobs (ats) WHERE removed_at IS NULL');
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_workplace_active ON jobs (workplace_type) WHERE removed_at IS NULL AND workplace_type IS NOT NULL');
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_location_active ON jobs (location) WHERE removed_at IS NULL AND location IS NOT NULL');
+    // COUNT(*) + COUNT(*) FILTER (WHERE is_remote) on the landing page. The pre-existing
+    // idx_jobs_is_remote only covers is_remote = TRUE, so it could not serve the total.
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_isremote_all_active ON jobs (is_remote) WHERE removed_at IS NULL');
+    // "Hot locations in the last 24h" — first_seen_at alone still needed a heap fetch per row
+    // for location; carrying location in the index makes it index-only (9.5s -> 0.3s).
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_active_fs_loc ON jobs (first_seen_at DESC, location) WHERE removed_at IS NULL');
+
+    // jobs churns constantly (every sync touches last_seen_at). At the default scale factor
+    // autovacuum waits for ~20% of 4.4M rows to change before running, by which point the
+    // visibility map is stale and the index-only scans above degrade to seq scans. Vacuum far
+    // more eagerly on this one table — it is the difference between a 0.4s and a 45s sidebar.
+    try {
+      await exec('ALTER TABLE jobs SET (autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.01)');
+    } catch { /* not permitted on some plans */ }
+  }
+
   // Full-text search (PostgreSQL only)
   if (isPostgres) {
     await exec(`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS search_vector tsvector`);
