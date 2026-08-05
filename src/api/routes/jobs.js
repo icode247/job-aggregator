@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const { jobsRepo } = require('../../db');
-const { query } = require('../../db/connection');
+const { query, queryWithTimeout } = require('../../db/connection');
 const { stripHtml } = require('../../utils/html');
 const { recordSearchDemand, getTopDemand } = require('../searchDemand');
 
@@ -198,7 +198,7 @@ router.get('/api/trending', async (req, res) => {
     { rows: newToday },
   ] = await Promise.all([
     // Trending roles — most posted in last 24 hours
-    query(
+    queryWithTimeout(
       `SELECT role, COUNT(*) as job_count FROM (
         SELECT CASE
           WHEN title ILIKE '%software engineer%' OR title ILIKE '%software developer%' THEN 'Software Engineer'
@@ -228,7 +228,7 @@ router.get('/api/trending', async (req, res) => {
       GROUP BY role ORDER BY job_count DESC LIMIT 15`
     ),
     // Hot locations — most new jobs in last 24 hours
-    query(
+    queryWithTimeout(
       `SELECT location, COUNT(*) as job_count
       FROM jobs
       WHERE removed_at IS NULL AND location IS NOT NULL
@@ -238,7 +238,7 @@ router.get('/api/trending', async (req, res) => {
       LIMIT 20`
     ),
     // Top hiring companies — most new jobs in last 24 hours
-    query(
+    queryWithTimeout(
       `SELECT c.company_name as name, c.domain, c.logo_url, COUNT(j.id) as job_count
       FROM companies c JOIN jobs j ON j.company_id = c.id
       WHERE j.removed_at IS NULL AND j.first_seen_at > NOW() - INTERVAL '24 hours'
@@ -248,7 +248,7 @@ router.get('/api/trending', async (req, res) => {
       LIMIT 20`
     ),
     // Remote job trends
-    query(
+    queryWithTimeout(
       `SELECT
         COUNT(*) as total,
         COUNT(*) FILTER (WHERE first_seen_at > NOW() - INTERVAL '7 days') as new_this_week,
@@ -256,7 +256,7 @@ router.get('/api/trending', async (req, res) => {
       FROM jobs WHERE removed_at IS NULL AND is_remote = true`
     ),
     // Visa sponsorship trends
-    query(
+    queryWithTimeout(
       `SELECT
         COUNT(*) as total,
         COUNT(*) FILTER (WHERE first_seen_at > NOW() - INTERVAL '7 days') as new_this_week,
@@ -264,7 +264,7 @@ router.get('/api/trending', async (req, res) => {
       FROM jobs WHERE removed_at IS NULL AND visa_sponsorship = 'yes'`
     ),
     // New jobs today count
-    query(
+    queryWithTimeout(
       `SELECT COUNT(*) as count
       FROM jobs WHERE removed_at IS NULL AND first_seen_at > NOW() - INTERVAL '1 day'`
     ),
@@ -404,7 +404,7 @@ router.get('/api/roles', async (req, res) => {
     return res.json({ data: rolesCache });
   }
 
-  const { rows } = await query(
+  const { rows } = await queryWithTimeout(
     `SELECT
       CASE
         WHEN title ILIKE '%software engineer%' OR title ILIKE '%software developer%' THEN 'Software Engineer'
