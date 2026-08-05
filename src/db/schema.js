@@ -170,6 +170,17 @@ async function migrate() {
     // for location; carrying location in the index makes it index-only (9.5s -> 0.3s).
     await exec('CREATE INDEX IF NOT EXISTS idx_jobs_active_fs_loc ON jobs (first_seen_at DESC, location) WHERE removed_at IS NULL');
 
+    // Location filtering is `location ILIKE '%text%'`, which no btree index can serve because
+    // of the leading wildcard — so it was evaluated row by row against every job matching the
+    // keyword. That, not the plan shape, is what made "engineer" + "%remote%" take 15-17s
+    // whichever way the query was written. A trigram index makes the ILIKE indexable:
+    //   engineer + %remote%, order-then-filter   16,750ms -> 4,571ms
+    //   engineer + %remote%, materialised CTE    14,944ms -> 2,499ms
+    // 142 MB on 2.8M live jobs.
+    try {
+      await exec('CREATE INDEX IF NOT EXISTS idx_jobs_location_trgm ON jobs USING GIN (location gin_trgm_ops) WHERE removed_at IS NULL');
+    } catch { /* needs pg_trgm, created above; skip if the extension was not permitted */ }
+
     // jobs churns constantly (every sync touches last_seen_at). At the default scale factor
     // autovacuum waits for ~20% of 4.4M rows to change before running, by which point the
     // visibility map is stale and the index-only scans above degrade to seq scans. Vacuum far
