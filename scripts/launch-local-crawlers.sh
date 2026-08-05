@@ -41,7 +41,7 @@ launch A "bamboohr,lever"                          "$LOG/crawl-A.log" "$COMMON P
 # don't IP-block, so the laptop's own residential IP is enough — the proxy added nothing
 # but a socket leak. On the metered IPRoyal proxy they ran 100% errors (EADDRNOTAVAIL,
 # ephemeral-port exhaustion) for ~71h and stored 0 jobs; direct they flow at hundreds/min.
-launch B "smartrecruiters,recruitee,zoho,breezy"   "$LOG/crawl-B.log" "$COMMON PROXY_DISABLED=1"
+launch B "smartrecruiters,recruitee,breezy"        "$LOG/crawl-B.log" "$COMMON PROXY_DISABLED=1"
 launch C "ashby,greenhouse"                         "$LOG/crawl-C.log" "$COMMON PROXY_DISABLED=1"
 launch F "rippling"                                "$LOG/crawl-F.log" "$COMMON PROXY_DISABLED=1"
 # Instance J (jazzhr): applytojob.com JSON API, works DIRECT. Added when the ats-slugs
@@ -60,6 +60,15 @@ launch Cm "comeet"                                 "$LOG/crawl-Cm.log" "$COMMON 
 # Jobs live in a `window.pageData` blob (feed API is dead) — see src/adapters/paylocity.js.
 # Works direct (no proxy); the adapter self-throttles with jitter+backoff.
 launch Pay "paylocity"                              "$LOG/crawl-Pay.log" "$COMMON PROXY_DISABLED=1"
+# Instance Z (zoho): split out of instance B, which was sharing one worker across four
+# ATS. Zoho is now the largest local partition — 1,497 active boards after importing 506
+# verified tenants from the role-keyword discovery — and it is the slowest per company,
+# because the adapter fetches each job's detail page (DETAIL_BATCH_SIZE=3) on top of the
+# board page. Sharing a quarter of one instance meant the new boards would take days to
+# reach their first sync. Crawls direct; the tenant resolves on .com/.in/.com.au and the
+# adapter probes those in turn. Keep zoho OUT of B — the partitions must stay disjoint or
+# both instances hammer the same ATS.
+launch Z "zoho"                                    "$LOG/crawl-Z.log" "$COMMON PROXY_DISABLED=1"
 # Instance E (workable direct via IPRoyal proxy) is intentionally NOT auto-started
 # here: it uses the METERED residential proxy, so it must be a controlled one-time
 # drain, not an always-on refresh loop (a 60-min refresh would burn the GB plan).
