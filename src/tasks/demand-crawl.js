@@ -38,7 +38,7 @@ const https = require('https');
 const { query, closeDb } = require('../db/connection');
 const logger = require('../logger');
 const { classifyJob } = require('../utils/classify');
-const { isSupportedAts } = require('../utils/supported-ats');
+const { isSupportedAts, normalizeAts, SUPPORTED_ATS } = require('../utils/supported-ats');
 
 const THRESHOLD = parseInt(process.env.DEMAND_MAX_RESULTS || '10', 10);
 const BATCH = parseInt(process.env.DEMAND_BATCH || '25', 10);
@@ -82,6 +82,9 @@ const ATS_HOST_MAP = { greenhouse: 'greenhouse', lever: 'lever', ashby: 'ashby',
   bamboohr: 'bamboohr', smartrecruiters: 'smartrecruiters', recruitee: 'recruitee', breezy: 'breezy',
   personio: 'personio', pinpoint: 'pinpoint', jazzhr: 'jazzhr', rippling: 'rippling', zoho: 'zoho' };
 
+// ATS where the tenant is the subdomain and no dedicated branch above handles it.
+const SUBDOMAIN_TENANT_ATS = new Set(['personio', 'zoho']);
+
 // URL path words that name a section, never an employer.
 const GENERIC_PATH_SEGMENT = /^(company|companies|jobs?|job-openings|careers?|careersection|opportunities|positions|openings|talent|people|team|about|home|index|search|apply|hiring|main|portal|site|page|default|external|internal|psc|en|us|www|vacancies|listings|recruiting|recruitment|employment|work|join|joinus|current-openings|view|list|all|browse|find|explore)$/i;
 
@@ -91,7 +94,10 @@ function deriveCompany(applyUrl, atsHint, companyName, sourceName) {
   let host = '', parts = [], proto = 'https:';
   try { const u = new URL(clean); host = u.hostname.toLowerCase().replace(/^www\./, ''); parts = u.pathname.split('/').filter(Boolean); proto = u.protocol; } catch {}
   const sub = host.split('.')[0];
-  let ats = (atsHint || '').toLowerCase() || null, slug = null, careerUrl = null;
+  // Fold alias labels (grnhse, taleo_careersection, …) to the adapter that can actually crawl
+  // them — stored verbatim they pass the ingest gate but throw in getAdapter(), so the row can
+  // never sync. See src/utils/supported-ats.js.
+  let ats = normalizeAts(atsHint) || null, slug = null, careerUrl = null;
   // Subdomain-tenant ATS (tenant lives in the hostname)
   if (host.endsWith('.myworkdayjobs.com')) { ats = 'workday'; slug = sub; careerUrl = `https://${sub}.myworkdayjobs.com`; }
   else if (host.endsWith('.icims.com')) { ats = 'icims'; slug = sub; careerUrl = `https://${sub}.icims.com`; }
@@ -99,6 +105,14 @@ function deriveCompany(applyUrl, atsHint, companyName, sourceName) {
   else if (host.endsWith('.recruitee.com')) { ats = 'recruitee'; slug = sub; careerUrl = `https://${sub}.recruitee.com`; }
   else if (host.endsWith('.breezy.hr')) { ats = 'breezy'; slug = sub; careerUrl = `https://${sub}.breezy.hr`; }
   else if (host.includes('teamtailor.com') && sub !== 'teamtailor') { ats = 'teamtailor'; slug = sub; careerUrl = `https://${sub}.teamtailor.com`; }
+  // Taleo: the tenant is the subdomain ({tenant}.taleo.net/careersection/...). Without this the
+  // generic fallback slugged them "careersection". Taleo Business Edition ({x}.tbe.taleo.net/
+  // {portal}/ats/careers/...) is a separate product the taleo adapter cannot read, so drop it
+  // rather than store a row that looks healthy and never syncs.
+  else if (host.endsWith('.taleo.net')) {
+    if (host.endsWith('.tbe.taleo.net')) return { ats: 'taleo', slug: null, careerUrl: null, domain: null };
+    ats = 'taleo'; slug = sub; careerUrl = `https://${sub}.taleo.net`;
+  }
   // Paylocity: the tenant is a GUID in the path (/Recruiting/Jobs/All/{guid}). Job-detail and
   // apply links carry ONLY a numeric job id — no tenant — so they must be dropped, not stored.
   // Without this branch they fell to the generic fallback below, which slugged them "Recruiting"
@@ -128,7 +142,27 @@ function deriveCompany(applyUrl, atsHint, companyName, sourceName) {
     // 625 different employers. Drop the job instead — a row we can never crawl is worse
     // than no row. (Only the fallback is guarded; the branches above read the tenant from
     // the hostname, where "people.bamboohr.com" is a legitimate tenant named "people".)
-    if (host && parts[0] && GENERIC_PATH_SEGMENT.test(parts[0])) return { ats: ats || ATS_HOST_MAP[sub] || sourceName, slug: null, careerUrl: null, domain: null };
+    if (host && parts[0] && GENERIC_PATH_SEGMENT.test(parts[0])) {
+      const a = ats || ATS_HOST_MAP[sub] || null;
+      // ...unless the tenant lives in the hostname. acme.jobs.personio.de/job/123 and
+      // acme.zohorecruit.com/jobs/Careers both start with a generic path word, but the
+      // subdomain still names the employer, so key the row on the host root instead of
+      // dropping it. (The other subdomain-tenant platforms have explicit branches above;
+      // this list stays narrow on purpose — a wrong guess here recreates the one-row-per-host
+      // collapse that made this guard necessary.)
+      if (a && SUBDOMAIN_TENANT_ATS.has(a) && host.includes(a) && sub !== a && !GENERIC_PATH_SEGMENT.test(sub)) {
+        return { ats: a, slug: sub, careerUrl: `${proto}//${host}`, domain: host };
+      }
+      return { ats: a || sourceName, slug: null, careerUrl: null, domain: null };
+    }
+    // The feed named a real ATS but the URL is on the employer's own domain — i.e. an embedded
+    // board. The path segment is then a page name, not a tenant id ("join-our-team", not
+    // "meritamerica"), and the true token is only discoverable by fetching the page, which
+    // ingest does not do. Storing it is the worst outcome: the row passes every check, resolves
+    // to a real adapter, and harvests nothing forever. Drop it instead.
+    if (host && ats && SUPPORTED_ATS.has(ats) && !ATS_HOST_MAP[sub] && !host.includes(ats)) {
+      return { ats, slug: null, careerUrl: null, domain: null };
+    }
     if (host && parts[0]) { slug = parts[0]; careerUrl = `${proto}//${host}/${slug}`; }
     else if (host) { slug = sub; careerUrl = `${proto}//${host}`; }
     else { slug = (companyName || 'unknown').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); careerUrl = `${sourceName}://${slug}`; }

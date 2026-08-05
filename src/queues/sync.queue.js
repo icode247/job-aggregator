@@ -13,7 +13,11 @@ const { classifyJob } = require('../utils/classify');
 const QUEUE_NAME = 'sync';
 
 // Per-ATS concurrency limits for platforms with aggressive rate limiting
-const ATS_MAX_CONCURRENT = { workable: 1, recruitee: 3, workday: 2, lever: 2, icims: 3, oracle: 2, breezy: 3, zoho: 2, successfactors: 2, paylocity: 3 };
+// taleo: 2 — Taleo refuses under concurrency. Probing 153 tenants 5-wide on 2026-08-04
+// returned "dead" for every one of them; re-probing the same tenants serially returned
+// HTTP 200 with live jobs. A high cap here would not just be slow, it would feed false
+// negatives to the sync guard. Its adapter also fetches every job's detail page.
+const ATS_MAX_CONCURRENT = { workable: 1, recruitee: 3, workday: 2, lever: 2, icims: 3, oracle: 2, breezy: 3, zoho: 2, successfactors: 2, paylocity: 3, taleo: 2 };
 // Per-ATS delay (ms) between consecutive jobs to avoid rate limits
 const ATS_POST_DELAY = { workable: 5000 };
 const atsConcurrency = {};

@@ -37,6 +37,15 @@ const companiesRepo = {
     //                                                 state was just staleness — oracle hadn't
     //                                                 synced since 03-23, so its rows aged out of
     //                                                 the 90d window. 326/427 slugs are well-formed.
+    //   taleo                                        — enabled 2026-08-04: 79 boards were
+    //                                                 relabelled off the adapter-less alias
+    //                                                 labels taleo_careersection/_selectminds
+    //                                                 and each slug was verified live via
+    //                                                 careersection/sitemap.jss before writing.
+    //                                                 Without this they sit active-and-correct
+    //                                                 but are never selected. Capped at 2 in
+    //                                                 sync.queue: Taleo refuses under
+    //                                                 concurrency and returns false negatives.
     //   jazzhr                                       — enabled 2026-08-04: adapter works, but
     //                                                 544 rows carried the slug "apply" — the
     //                                                 path segment of {board}.applytojob.com/apply
@@ -69,7 +78,7 @@ const companiesRepo = {
         FROM companies
         WHERE status = 'active'
           AND ats IS NOT NULL
-          AND ats IN ('ashby','greenhouse','breezy','smartrecruiters','bamboohr','lever','workday','icims','oracle','recruitee','zoho','successfactors','paylocity','jazzhr')
+          AND ats IN ('ashby','greenhouse','breezy','smartrecruiters','bamboohr','lever','workday','icims','oracle','recruitee','zoho','successfactors','paylocity','jazzhr','taleo')
           AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '60 minutes')
       ) ranked
       ORDER BY rn, last_synced_at ASC NULLS FIRST
