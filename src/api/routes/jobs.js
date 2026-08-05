@@ -426,7 +426,18 @@ router.get('/api/roles', async (req, res) => {
  * GET /api/facets
  * Aggregated counts for filter sidebar (employment types, experience levels, ATS platforms)
  */
-router.get('/api/facets', async (req, res) => {
+// Cached like the roles endpoint above. Even index-only, these four aggregates scan every
+// live job: ~2.8s for the endpoint when run together, and it was being called ~18k times per
+// query. The counts move slowly (a sync shifts them by a fraction of a percent), so serving a
+// few-minute-old sidebar is indistinguishable to a user and removes the load entirely.
+// A single stale-while-revalidate slot also stops a burst of concurrent requests all firing
+// the same scan — the first caller refreshes, the rest are served the previous value.
+let facetsCache = null;
+let facetsCacheExpiry = 0;
+let facetsInFlight = null;
+const FACETS_TTL_MS = 5 * 60 * 1000;
+
+async function loadFacets() {
   const [empTypes, expLevels, atsPlatforms, workModes] = await Promise.all([
     query(`SELECT employment_type, COUNT(*) as count FROM jobs
       WHERE removed_at IS NULL AND employment_type IS NOT NULL
@@ -441,14 +452,32 @@ router.get('/api/facets', async (req, res) => {
       WHERE removed_at IS NULL AND workplace_type IS NOT NULL
       GROUP BY workplace_type ORDER BY count DESC`),
   ]);
-  res.json({
-    data: {
-      employment_types: empTypes.rows,
-      experience_levels: expLevels.rows,
-      ats_platforms: atsPlatforms.rows,
-      work_modes: workModes.rows,
-    },
-  });
+  return {
+    employment_types: empTypes.rows,
+    experience_levels: expLevels.rows,
+    ats_platforms: atsPlatforms.rows,
+    work_modes: workModes.rows,
+  };
+}
+
+router.get('/api/facets', async (req, res) => {
+  if (facetsCache && Date.now() < facetsCacheExpiry) {
+    return res.json({ data: facetsCache });
+  }
+  // Serve the stale value while a refresh is already running, rather than piling on.
+  if (facetsInFlight && facetsCache) return res.json({ data: facetsCache });
+  try {
+    facetsInFlight = facetsInFlight || loadFacets();
+    const data = await facetsInFlight;
+    facetsCache = data;
+    facetsCacheExpiry = Date.now() + FACETS_TTL_MS;
+    res.json({ data });
+  } catch (err) {
+    if (facetsCache) return res.json({ data: facetsCache }); // stale beats an error page
+    throw err;
+  } finally {
+    facetsInFlight = null;
+  }
 });
 
 router.get('/api/jobs/:id', async (req, res) => {
