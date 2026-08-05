@@ -184,11 +184,25 @@ router.get('/api/stats', async (req, res) => {
 let trendingCache = null;
 let trendingCacheExpiry = 0;
 
+// Single in-flight slot. This endpoint fires ~6 full-table aggregates per request and the
+// cache only fills once they succeed, so without this each concurrent visitor launched
+// another 6. Under real traffic that consumed every connection in the pool — 14 of 14 active
+// on these queries — and starved even the cached endpoints, which then failed too.
+let trendingInFlight = null;
+
 router.get('/api/trending', async (req, res) => {
   if (trendingCache && Date.now() < trendingCacheExpiry) {
     return res.json(trendingCache);
   }
+  // A refresh is already running: serve the previous value rather than piling on. With no
+  // previous value there is nothing to serve, so wait for the one in flight instead of
+  // starting a competing copy.
+  if (trendingInFlight) {
+    if (trendingCache) return res.json(trendingCache);
+    try { return res.json(await trendingInFlight); } catch { return res.status(503).json({ error: 'warming' }); }
+  }
 
+  trendingInFlight = (async () => {
   const [
     { rows: recentRoles },
     { rows: hotLocations },
@@ -283,7 +297,17 @@ router.get('/api/trending', async (req, res) => {
 
   trendingCache = result;
   trendingCacheExpiry = Date.now() + 60 * 60 * 1000; // 1 hour
-  res.json(result);
+  return result;
+  })();
+
+  try {
+    res.json(await trendingInFlight);
+  } catch (err) {
+    if (trendingCache) return res.json(trendingCache); // stale beats an error page
+    throw err;
+  } finally {
+    trendingInFlight = null;
+  }
 });
 
 /**
@@ -399,11 +423,18 @@ router.get('/api/locations', async (req, res) => {
 let rolesCache = null;
 let rolesCacheExpiry = 0;
 
+let rolesInFlight = null;
+
 router.get('/api/roles', async (req, res) => {
   if (rolesCache && Date.now() < rolesCacheExpiry) {
     return res.json({ data: rolesCache });
   }
+  if (rolesInFlight) {
+    if (rolesCache) return res.json({ data: rolesCache });
+    try { return res.json({ data: await rolesInFlight }); } catch { return res.status(503).json({ error: 'warming' }); }
+  }
 
+  rolesInFlight = (async () => {
   const { rows } = await queryWithTimeout(
     `SELECT
       CASE
@@ -440,7 +471,17 @@ router.get('/api/roles', async (req, res) => {
   );
   rolesCache = rows;
   rolesCacheExpiry = Date.now() + 60 * 60 * 1000; // 1 hour
-  res.json({ data: rows });
+  return rows;
+  })();
+
+  try {
+    res.json({ data: await rolesInFlight });
+  } catch (err) {
+    if (rolesCache) return res.json({ data: rolesCache });
+    throw err;
+  } finally {
+    rolesInFlight = null;
+  }
 });
 
 /**
