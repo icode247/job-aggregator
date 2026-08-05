@@ -1,7 +1,8 @@
 const { query, transaction, isPostgres } = require('../connection');
 const logger = require('../../logger');
 const { aliasGroup, isShortAlias } = require('../../utils/location-aliases');
-const { normalizeEmploymentType } = require('../../utils/extract');
+const { normalizeEmploymentType, normalizeWorkplaceType } = require('../../utils/extract');
+const { classifyRoleCategory } = require('../../utils/classify');
 
 /**
  * Build WHERE clauses from filters.
@@ -384,7 +385,7 @@ const jobsRepo = {
             // Normalised here rather than at each caller: every sync path (worker queue,
             // local crawler, demand crawl) funnels through this insert, and each ATS spells
             // the same type differently. Storing raw gave 4,784 distinct values.
-            job.workplace_type || null, normalizeEmploymentType(job.employment_type),
+            normalizeWorkplaceType(job.workplace_type), normalizeEmploymentType(job.employment_type),
             job.salary_min || null, job.salary_max || null,
             job.salary_currency || null, job.salary_interval || null,
             job.description || null, job.url, job.posted_at || null,

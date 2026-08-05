@@ -447,4 +447,46 @@ function classifyJob(job) {
   };
 }
 
-module.exports = { classifyJob, classifyRemote, classifyVisa, classifyExperienceLevel, classifyRemoteWorldwide };
+
+// Role category, derived from the job title.
+//
+// This logic used to live only as a ~25-branch CASE inside /api/roles and /api/trending,
+// evaluated against every live job on each cache miss — a 40s full scan that Heroku's router
+// killed at 30s, so the endpoint could never populate its own cache. Deriving it once at write
+// time and storing it turns those endpoints into an indexed GROUP BY.
+//
+// Order matters and mirrors the original CASE exactly: the first match wins, so the specific
+// patterns ("data engineer") must precede the general ones ("data analyst" vs "analyst").
+const ROLE_RULES = [
+  [/software engineer|software developer/i, 'Software Engineer'],
+  [/frontend|front-end|front end/i,         'Frontend Developer'],
+  [/backend|back-end|back end/i,            'Backend Developer'],
+  [/full stack|fullstack/i,                 'Fullstack Developer'],
+  [/data scientist/i,                       'Data Scientist'],
+  [/data analyst/i,                         'Data Analyst'],
+  [/data engineer/i,                        'Data Engineer'],
+  [/machine learning|ML engineer|AI engineer/i, 'ML / AI Engineer'],
+  [/product manager/i,                      'Product Manager'],
+  [/project manager/i,                      'Project Manager'],
+  [/product designer|UX designer|UI designer/i, 'Product Designer'],
+  [/devops|site reliability|SRE/i,          'DevOps / SRE'],
+  [/QA|quality assurance|test engineer/i,   'QA Engineer'],
+  [/mobile|iOS|android/i,                   'Mobile Developer'],
+  [/marketing/i,                            'Marketing'],
+  [/sales|account executive|business development/i, 'Sales'],
+  [/customer success|customer support/i,    'Customer Support'],
+  [/security|cybersecurity/i,               'Security Engineer'],
+  [/cloud|infrastructure/i,                 'Cloud / Infrastructure'],
+  [/technical writer|content writer/i,      'Technical Writer'],
+  [/recruiter|talent/i,                     'Recruiter'],
+  [/finance|accountant|financial/i,         'Finance'],
+  [/human resources|HR /i,                  'Human Resources'],
+];
+
+function classifyRoleCategory(title) {
+  if (!title) return 'Other';
+  for (const [re, label] of ROLE_RULES) if (re.test(title)) return label;
+  return 'Other';
+}
+
+module.exports = { classifyRoleCategory, classifyJob, classifyRemote, classifyVisa, classifyExperienceLevel, classifyRemoteWorldwide };

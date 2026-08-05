@@ -159,6 +159,13 @@ async function migrate() {
   // autovacuum settings below: if autovacuum falls behind, the visibility map goes stale and
   // every one of these silently reverts to a full scan.
   if (isPostgres) {
+    // role_category is derived from the title at write time (classifyRoleCategory). It used
+    // to be computed at query time by a ~25-branch CASE over every live job, which made
+    // /api/roles a 40s full scan that Heroku's router killed at 30s — so the endpoint could
+    // never populate its own cache. Stored and indexed, that becomes an indexed GROUP BY.
+    await exec('ALTER TABLE jobs ADD COLUMN IF NOT EXISTS role_category TEXT');
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_role_category_active ON jobs (role_category) WHERE removed_at IS NULL');
+
     await exec('CREATE INDEX IF NOT EXISTS idx_jobs_emptype_active ON jobs (employment_type) WHERE removed_at IS NULL AND employment_type IS NOT NULL');
     await exec('CREATE INDEX IF NOT EXISTS idx_jobs_ats_active ON jobs (ats) WHERE removed_at IS NULL');
     await exec('CREATE INDEX IF NOT EXISTS idx_jobs_workplace_active ON jobs (workplace_type) WHERE removed_at IS NULL AND workplace_type IS NOT NULL');

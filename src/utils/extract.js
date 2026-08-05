@@ -205,4 +205,20 @@ function normalizeEmploymentType(raw) {
   return null; // unrecognised free text is dropped rather than shown as a filter option
 }
 
-module.exports = { extractSalary, extractWorkplaceType, extractEmploymentType, normalizeEmploymentType, EMPLOYMENT_TYPES };
+
+// Canonical workplace types. Same disease as employment_type, smaller: the column holds 9
+// distinct values that are really three concepts (onsite / on_site / OnSite / On-site), which
+// forced the work_mode filter to use unindexable ILIKE matching.
+const WORKPLACE_TYPES = ['Remote', 'Hybrid', 'Onsite'];
+
+function normalizeWorkplaceType(raw) {
+  if (!raw) return null;
+  const t = String(raw).toLowerCase().replace(/[_\-\s]+/g, ' ').trim();
+  if (!t || t === 'unspecified' || t === 'other' || t === 'n/a' || t === 'unknown') return null;
+  if (/\bhybrid\b/.test(t)) return 'Hybrid';                 // before remote: "hybrid remote" is hybrid
+  if (/\bremote\b|\bwork from home\b|\bwfh\b/.test(t)) return 'Remote';
+  if (/\bon ?site\b|\bin office\b|\bin person\b|\boffice\b/.test(t)) return 'Onsite';
+  return null;
+}
+
+module.exports = { extractSalary, extractWorkplaceType, extractEmploymentType, normalizeEmploymentType, EMPLOYMENT_TYPES, normalizeWorkplaceType, WORKPLACE_TYPES };
