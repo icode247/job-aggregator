@@ -141,17 +141,38 @@ router.get('/api/demand', async (req, res) => {
  * GET /api/stats
  * Global stats for landing pages and SEO
  */
+// Cached for the same reason as /api/facets below. By total execution time this was the
+// second heaviest query on the database — 240,361s across 18,979 calls — because every one
+// of those counts scans the whole live set. The numbers are headline figures on a landing
+// page; a few minutes stale is invisible, and it was 64s cold.
+let statsCache = null;
+let statsCacheExpiry = 0;
+let statsInFlight = null;
+const STATS_TTL_MS = 5 * 60 * 1000;
+
 router.get('/api/stats', async (req, res) => {
-  const { rows } = await query(
-    `SELECT
-      COUNT(*) as total_jobs,
-      COUNT(*) FILTER (WHERE is_remote = true) as remote_jobs,
-      COUNT(*) FILTER (WHERE visa_sponsorship = 'yes') as visa_sponsorship_jobs,
-      COUNT(DISTINCT company_id) as companies,
-      COUNT(DISTINCT ats) as platforms
-    FROM jobs WHERE removed_at IS NULL`
-  );
-  res.json({ data: rows[0] });
+  if (statsCache && Date.now() < statsCacheExpiry) return res.json({ data: statsCache });
+  if (statsInFlight && statsCache) return res.json({ data: statsCache });
+  try {
+    statsInFlight = statsInFlight || query(
+      `SELECT
+        COUNT(*) as total_jobs,
+        COUNT(*) FILTER (WHERE is_remote = true) as remote_jobs,
+        COUNT(*) FILTER (WHERE visa_sponsorship = 'yes') as visa_sponsorship_jobs,
+        COUNT(DISTINCT company_id) as companies,
+        COUNT(DISTINCT ats) as platforms
+      FROM jobs WHERE removed_at IS NULL`
+    ).then((r) => r.rows[0]);
+    const data = await statsInFlight;
+    statsCache = data;
+    statsCacheExpiry = Date.now() + STATS_TTL_MS;
+    res.json({ data });
+  } catch (err) {
+    if (statsCache) return res.json({ data: statsCache }); // stale beats an error page
+    throw err;
+  } finally {
+    statsInFlight = null;
+  }
 });
 
 /**
