@@ -20,6 +20,12 @@ function getDb() {
         // over a third of the budget on its own — measured 2026-08-05 with the pool hitting
         // 40/40 and sync queries failing with "too many connections for role". Processes that
         // genuinely need more set PG_POOL_MAX explicitly (see scripts/launch-local-crawlers.sh).
+        //
+        // DO NOT let the web dyno run on this default. src/web.js serves live traffic and a
+        // pool of 6 was not enough: within a minute of trying it, /api/jobs returned 500s with
+        // "timeout exceeded when trying to connect" (connectionTimeoutMillis=10s) and the router
+        // logged H12s. fastapply-board runs with PG_POOL_MAX=14. Background crawlers can be
+        // starved briefly and retry; a user-facing request cannot.
         max: parseInt(process.env.PG_POOL_MAX, 10) || 6,
         idleTimeoutMillis: 10000,
         connectionTimeoutMillis: 10000,
