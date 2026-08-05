@@ -4,6 +4,9 @@ const { aliasGroup, isShortAlias } = require('../../utils/location-aliases');
 const { normalizeEmploymentType, normalizeWorkplaceType } = require('../../utils/extract');
 const { classifyRoleCategory } = require('../../utils/classify');
 
+// Upper bound on result counts — see countActive. Env-tunable.
+const COUNT_CAP = parseInt(process.env.SEARCH_COUNT_CAP, 10) || 10000;
+
 /**
  * Build WHERE clauses from filters.
  * Returns { clauses: string[], params: any[], needsJoin: boolean }
@@ -20,19 +23,26 @@ function buildFilters(filters = {}) {
     const roles = filters.q.split(',').map(r => r.trim()).filter(Boolean);
 
     if (isPostgres) {
-      if (roles.length === 1) {
-        // Single role: AND all words together
-        const tsquery = roles[0].split(/\s+/).filter(Boolean).join(' & ');
+      // ONE tsquery, not one per role. Words within a role are AND'd, roles are OR'd:
+      //   "data analyst, product manager" -> (data & analyst) | (product & manager)
+      //
+      // This used to emit a separate `search_vector @@ to_tsquery(...)` per role, OR'd in
+      // SQL. The automation sends up to 22 roles in a single request, which meant 22 GIN
+      // index lookups instead of one. Measured on 2.8M live jobs, 10 roles + a location
+      // filter: 16,405ms as separate clauses vs 1,738ms combined — 9.4x.
+      //
+      // Terms are stripped of tsquery syntax characters (& | ! : * ( ) ') because they are
+      // interpolated into the query string, not passed as data. An unsanitised apostrophe or
+      // ampersand in a job title would otherwise be a syntax error that fails the whole
+      // search — and the single combined query means one bad term would take out every role.
+      const clean = (word) => word.replace(/[^\p{L}\p{N}_-]+/gu, '');
+      const groups = roles
+        .map((role) => role.split(/\s+/).map(clean).filter(Boolean).join(' & '))
+        .filter(Boolean)
+        .map((g) => `(${g})`);
+      if (groups.length) {
         clauses.push("j.search_vector @@ to_tsquery('english', ?)");
-        params.push(tsquery);
-      } else {
-        // Multiple roles: each role is AND'd internally, roles are OR'd together
-        const tsqueries = roles.map(role => {
-          const words = role.split(/\s+/).filter(Boolean).join(' & ');
-          params.push(words);
-          return "j.search_vector @@ to_tsquery('english', ?)";
-        });
-        clauses.push('(' + tsqueries.join(' OR ') + ')');
+        params.push(groups.join(' | '));
       }
     } else {
       if (roles.length === 1) {
@@ -84,17 +94,33 @@ function buildFilters(filters = {}) {
   {
     const modes = toList(filters.workMode).map((m) => m.toLowerCase()).filter((m) => m !== 'any');
     if (modes.length > 0) {
+      // Exact matches, not ILIKE. workplace_type holds 9 distinct values that are really
+      // three concepts (onsite / on_site / OnSite / On-site), so listing the variants lets
+      // idx_jobs_workplace_active serve the filter; a leading-wildcard ILIKE cannot use it.
+      // Remote uses the indexed is_remote boolean, which is also what the separate
+      // `remote=true` filter uses — previously the two disagreed, and requests sending both
+      // paid for an unindexable scan on top of an indexed one.
+      //
+      // Measured on 2.8M live jobs: the old three-way ILIKE for remote took 41,296ms vs
+      // 6,347ms for the boolean. Note the boolean matches slightly MORE rows (353,862 vs
+      // 342,965) because classifyJob also infers remoteness from the description.
+      // Canonical values first, then the legacy spellings still present in older rows. Listing
+      // both means the filter keeps working across the normalisation backfill in either
+      // direction — no window where onsite silently matches nothing.
+      const WORKPLACE_VARIANTS = {
+        hybrid: ['Hybrid', 'hybrid'],
+        onsite: ['Onsite', 'onsite', 'on_site', 'OnSite', 'On-site', 'on-site'],
+      };
       const groups = [];
       for (const m of modes) {
         if (m === 'remote') {
-          groups.push('(j.workplace_type ILIKE ? OR j.location ILIKE ? OR j.title ILIKE ?)');
-          params.push('%remote%', '%remote%', '%remote%');
+          groups.push('j.is_remote = true');
         } else if (m === 'hybrid') {
-          groups.push('(j.workplace_type ILIKE ? OR j.location ILIKE ?)');
-          params.push('%hybrid%', '%hybrid%');
+          groups.push(`j.workplace_type IN (${WORKPLACE_VARIANTS.hybrid.map(() => '?').join(', ')})`);
+          params.push(...WORKPLACE_VARIANTS.hybrid);
         } else if (m === 'onsite' || m === 'on-site' || m === 'on_site') {
-          groups.push('(j.workplace_type ILIKE ? OR j.workplace_type ILIKE ?)');
-          params.push('%on-site%', '%onsite%');
+          groups.push(`j.workplace_type IN (${WORKPLACE_VARIANTS.onsite.map(() => '?').join(', ')})`);
+          params.push(...WORKPLACE_VARIANTS.onsite);
         }
       }
       if (groups.length > 0) clauses.push('(' + groups.join(' OR ') + ')');
@@ -105,9 +131,21 @@ function buildFilters(filters = {}) {
   {
     const types = toList(filters.employmentType).filter((t) => t.toLowerCase() !== 'any');
     if (types.length > 0) {
-      const groups = types.map(() => '(j.employment_type ILIKE ? OR j.title ILIKE ?)');
-      clauses.push('(' + groups.join(' OR ') + ')');
-      for (const t of types) params.push(`%${t}%`, `%${t}%`);
+      // Exact match on the canonical value, normalising the caller's input through the same
+      // function that normalises writes ("full-time" -> "Full-time").
+      //
+      // This used to be `employment_type ILIKE '%x%' OR title ILIKE '%x%'`. The title
+      // fallback existed because employment_type held 4,784 free-text spellings of about six
+      // real values, so matching the column alone missed jobs. That column is now normalised,
+      // making the fallback both unnecessary and expensive: an unindexable substring scan of
+      // title on every filtered search. Measured on 2.8M live jobs — 27,829ms with the
+      // fallback vs 6,068ms without, for a 0.1% difference in rows matched (1,402,461 ->
+      // 1,401,111).
+      const canon = [...new Set(types.map(normalizeEmploymentType).filter(Boolean))];
+      if (canon.length) {
+        clauses.push(`j.employment_type IN (${canon.map(() => '?').join(', ')})`);
+        params.push(...canon);
+      }
     }
   }
 
@@ -151,12 +189,18 @@ function buildFilters(filters = {}) {
         // else first_seen_at (which equals created_at — the UI's own fallback). Filtering on
         // first_seen_at alone surfaced freshly-crawled but long-posted listings (a newly
         // onboarded company's back-catalog) under "last 24h" — 94% of results weren't actually
-        // posted in-window. The OR-form is equivalent to COALESCE(posted_at, first_seen_at) but
-        // keeps an accurate planner row estimate (no posted_at index exists). Per-row single
-        // value => still monotonic across windows.
+        // posted in-window. Per-row single value => still monotonic across windows.
+        //
+        // This used to be spelled as an OR to keep planner estimates accurate, because no
+        // posted_at index existed. One does now, so the COALESCE form is both equivalent and
+        // indexable — see below.
         if (isPostgres) {
           const t = `NOW() - INTERVAL '${n} ${unit}'`;
-          clauses.push(`(j.posted_at >= ${t} OR (j.posted_at IS NULL AND j.first_seen_at >= ${t}))`);
+          // COALESCE, not the OR form, so it can use idx_jobs_active_posted_ats — an
+          // expression index on (COALESCE(posted_at, first_seen_at), ats). The OR form is
+          // logically identical but unindexable, and countActive over it took 60s for a
+          // 24h+ats filter; via the index the same count is 1.6s.
+          clauses.push(`COALESCE(j.posted_at, j.first_seen_at) >= ${t}`);
         } else {
           // SQLite has no 'weeks' modifier — express weeks as days.
           const sUnit = unit === 'weeks' ? 'days' : unit;
@@ -225,30 +269,23 @@ const jobsRepo = {
         j.is_remote, j.remote_worldwide, j.visa_sponsorship, j.experience_level,
         c.domain, c.ats_slug, c.company_name, c.logo_url${descCol}`;
 
-    let sql;
-    // Keyword searches take a different shape on purpose.
+    // With ORDER BY first_seen_at DESC + LIMIT the planner walks idx_jobs_active_firstseen in
+    // date order and filters each row, ignoring the GIN index, because it assumes it will hit
+    // the LIMIT quickly. Add a location/ats filter and it must walk far deeper — that is the
+    // shape that ran 100-240s on 2026-08-05 and exhausted the pool.
     //
-    // With ORDER BY first_seen_at DESC + LIMIT, the planner prefers to walk
-    // idx_jobs_active_firstseen in date order and filter each row, because that avoids a
-    // sort and it assumes it will hit the LIMIT quickly. For a common word that is true.
-    // For a selective one it is catastrophic: it walks millions of rows before finding 50,
-    // ignoring the GIN index built for exactly this. On 2026-08-05 those searches ran
-    // 100-240s each, held every pool connection, and took the site down.
-    //
-    // Materialising the filter first removes the ORDER BY that makes the date index look
-    // attractive, so the planner uses the GIN index, and the sort happens over the matched
-    // set only. Worst case becomes proportional to how many jobs actually match, instead of
-    // how deep into the table we must walk to find them.
-    //
-    // But ONLY when the search is narrowed by something else. Measured on 2.8M live jobs:
-    //   bare common term ("software")            order-then-filter 379ms | CTE 10,653ms
-    //   bare rare term                                            264ms | CTE    236ms
-    //   term + location + ats (the 240s shape)                  1,305ms | CTE    537ms
-    // A bare keyword matches plenty of recent jobs, so walking the date index fills the
-    // LIMIT almost immediately and materialising every match instead is 28x worse. It is the
-    // extra narrowing filters that make the walk go deep, and that is where the CTE wins.
+    // Materialising the filter first drops the ORDER BY that makes the date index look
+    // attractive, so the GIN index is used and the sort covers only matching rows. Applied
+    // ONLY when the search is narrowed, because measured on 2.8M live jobs:
+    //   bare common term ("software")     order-then-filter   379ms | CTE 10,653ms
+    //   bare rare term                                        264ms | CTE    236ms
+    //   term + location + ats                               1,305ms | CTE    537ms
+    // A bare keyword matches plenty of recent jobs, so the date walk fills the LIMIT almost
+    // immediately and materialising every match instead is 28x worse.
     const narrowed = !!(filters.location || filters.ats || filters.companyId
       || filters.employmentType || filters.experienceLevel);
+
+    let sql;
     if (isPostgres && filters.q && narrowed) {
       sql = `WITH matched AS MATERIALIZED (
           SELECT j.id, j.first_seen_at, j.random_rank
@@ -294,14 +331,18 @@ const jobsRepo = {
       if (estimate > 0) return estimate;
     }
 
-    let sql;
-    if (needsJoin) {
-      sql = `SELECT COUNT(*) as count FROM jobs j JOIN companies c ON j.company_id = c.id WHERE ${clauses.join(' AND ')}`;
-    } else {
-      sql = `SELECT COUNT(*) as count FROM jobs j WHERE ${clauses.join(' AND ')}`;
-    }
+    // Counting is capped. An exact count has to visit every matching row, so it scales with
+    // how popular the filter is rather than with what the user sees: a filter matching 1.4M
+    // jobs was costing 40-60s under load while the 20 rows actually rendered took ~300ms.
+    // Stopping at COUNT_CAP+1 makes the cost bounded no matter how broad the search.
+    //
+    // The cap is deliberately far beyond real paging (10,000 = 200 pages at 50/page). Callers
+    // can tell a capped count from an exact one because it comes back as exactly COUNT_CAP+1.
+    const inner = needsJoin
+      ? `SELECT 1 FROM jobs j JOIN companies c ON j.company_id = c.id WHERE ${clauses.join(' AND ')} LIMIT ${COUNT_CAP + 1}`
+      : `SELECT 1 FROM jobs j WHERE ${clauses.join(' AND ')} LIMIT ${COUNT_CAP + 1}`;
 
-    const { rows } = await query(sql, params);
+    const { rows } = await query(`SELECT COUNT(*) as count FROM (${inner}) t`, params);
     return parseInt(rows[0].count, 10);
   },
 
@@ -449,3 +490,4 @@ const jobsRepo = {
 };
 
 module.exports = jobsRepo;
+module.exports.COUNT_CAP = COUNT_CAP;

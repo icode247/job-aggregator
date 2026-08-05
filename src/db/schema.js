@@ -187,6 +187,15 @@ async function migrate() {
     try {
       await exec('CREATE INDEX IF NOT EXISTS idx_jobs_location_trgm ON jobs USING GIN (location gin_trgm_ops) WHERE removed_at IS NULL');
     } catch { /* needs pg_trgm, created above; skip if the extension was not permitted */ }
+    // The "posted in the last N" filter is COALESCE(posted_at, first_seen_at) >= t. posted_at
+    // had no index at all, so countActive over a 24h + ats filter scanned a huge slice of the
+    // table: 60s, which blew the statement timeout and returned 500s. The expression index
+    // makes the predicate indexable, and carrying ats in it makes the count index-only:
+    //   count, OR form (unindexable)              60,551ms
+    //   count, COALESCE + expression index        17,149ms
+    //   count, COALESCE + (expr, ats) composite    1,610ms
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_active_posted_eff ON jobs (COALESCE(posted_at, first_seen_at) DESC) WHERE removed_at IS NULL');
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_active_posted_ats ON jobs (COALESCE(posted_at, first_seen_at) DESC, ats) WHERE removed_at IS NULL');
 
     // jobs churns constantly (every sync touches last_seen_at). At the default scale factor
     // autovacuum waits for ~20% of 4.4M rows to change before running, by which point the

@@ -91,6 +91,39 @@ function sqliteParams(params) {
 }
 
 /**
+ * Run one query with a longer statement_timeout than the pool default.
+ *
+ * The global timeout is deliberately tight (15s) so a slow request cannot hold a pool
+ * connection past Heroku's 30s router timeout. A couple of endpoints legitimately need
+ * longer: /api/roles and /api/trending aggregate the entire live job set behind a
+ * one-hour cache, and measured 20.9s. With the tight timeout their first call after a
+ * dyno restart always failed, so the cache never populated and every later call failed
+ * too — a slow endpoint became a permanently broken one.
+ *
+ * Checks out a dedicated client so the SET cannot leak to other queries sharing the pool,
+ * and always restores the default before releasing it.
+ */
+async function queryWithTimeout(sql, params = [], timeoutMs = 60000) {
+  if (!isPostgres) return query(sql, params);
+  const client = await getDb().connect();
+  try {
+    await client.query(`SET statement_timeout = ${parseInt(timeoutMs, 10)}`);
+    let idx = 0;
+    const finalSql = sql.replace(/\?/g, () => `$${++idx}`)
+      .replace(/datetime\('now'\)/gi, 'NOW()');
+    // query_timeout is a POOL-level option, so the client inherits the tight default and
+    // aborts long before the raised statement_timeout above ever applies — /api/roles died
+    // at 20s with "Query read timeout" despite being allowed 60s server-side. pg accepts a
+    // per-query override in the config object, so raise both together.
+    const result = await client.query({ text: finalSql, values: params, query_timeout: timeoutMs + 5000 });
+    return { rows: result.rows, rowCount: result.rowCount, lastId: result.rows?.[0]?.id || null };
+  } finally {
+    try { await client.query('SET statement_timeout = DEFAULT'); } catch { /* connection is going away anyway */ }
+    client.release();
+  }
+}
+
+/**
  * Unified query helper. Works with both SQLite and PostgreSQL.
  * - sql: SQL string with ? placeholders (auto-converted to $1,$2... for PG)
  * - params: array of parameters
@@ -205,4 +238,4 @@ async function transaction(fn) {
   }
 }
 
-module.exports = { getDb, closeDb, query, exec, transaction, isPostgres };
+module.exports = { getDb, closeDb, query, queryWithTimeout, exec, transaction, isPostgres };

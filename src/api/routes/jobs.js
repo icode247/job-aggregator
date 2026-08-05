@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const { jobsRepo } = require('../../db');
-const { query } = require('../../db/connection');
+const { query, queryWithTimeout } = require('../../db/connection');
 const { stripHtml } = require('../../utils/html');
 const { recordSearchDemand, getTopDemand } = require('../searchDemand');
 
@@ -99,14 +99,22 @@ router.get('/api/jobs', async (req, res) => {
     jobsRepo.countActive(filters),
   ]);
 
+  // countActive stops at COUNT_CAP+1, so a value above the cap means "at least this many"
+  // rather than an exact figure. Report the cap and say so, instead of implying precision we
+  // did not pay for. Real paging never reaches 10,000 results (200 pages at 50/page).
+  const { COUNT_CAP } = jobsRepo;
+  const totalIsCapped = total > COUNT_CAP;
+  const reportedTotal = totalIsCapped ? COUNT_CAP : total;
+
   const page = Math.floor(offset / limit) + 1;
-  const totalPages = Math.ceil(total / limit);
-  const hasNext = offset + limit < total;
+  const totalPages = Math.ceil(reportedTotal / limit);
+  const hasNext = offset + limit < reportedTotal;
   const hasPrev = offset > 0;
 
   res.json({
     meta: {
-      total,
+      total: reportedTotal,
+      totalIsCapped,
       limit,
       offset,
       page,
@@ -184,11 +192,25 @@ router.get('/api/stats', async (req, res) => {
 let trendingCache = null;
 let trendingCacheExpiry = 0;
 
+// Single in-flight slot. This endpoint fires ~6 full-table aggregates per request and the
+// cache only fills once they succeed, so without this each concurrent visitor launched
+// another 6. Under real traffic that consumed every connection in the pool — 14 of 14 active
+// on these queries — and starved even the cached endpoints, which then failed too.
+let trendingInFlight = null;
+
 router.get('/api/trending', async (req, res) => {
   if (trendingCache && Date.now() < trendingCacheExpiry) {
     return res.json(trendingCache);
   }
+  // A refresh is already running: serve the previous value rather than piling on. With no
+  // previous value there is nothing to serve, so wait for the one in flight instead of
+  // starting a competing copy.
+  if (trendingInFlight) {
+    if (trendingCache) return res.json(trendingCache);
+    try { return res.json(await trendingInFlight); } catch { return res.status(503).json({ error: 'warming' }); }
+  }
 
+  trendingInFlight = (async () => {
   const [
     { rows: recentRoles },
     { rows: hotLocations },
@@ -198,7 +220,7 @@ router.get('/api/trending', async (req, res) => {
     { rows: newToday },
   ] = await Promise.all([
     // Trending roles — most posted in last 24 hours
-    query(
+    queryWithTimeout(
       `SELECT role, COUNT(*) as job_count FROM (
         SELECT CASE
           WHEN title ILIKE '%software engineer%' OR title ILIKE '%software developer%' THEN 'Software Engineer'
@@ -228,7 +250,7 @@ router.get('/api/trending', async (req, res) => {
       GROUP BY role ORDER BY job_count DESC LIMIT 15`
     ),
     // Hot locations — most new jobs in last 24 hours
-    query(
+    queryWithTimeout(
       `SELECT location, COUNT(*) as job_count
       FROM jobs
       WHERE removed_at IS NULL AND location IS NOT NULL
@@ -238,7 +260,7 @@ router.get('/api/trending', async (req, res) => {
       LIMIT 20`
     ),
     // Top hiring companies — most new jobs in last 24 hours
-    query(
+    queryWithTimeout(
       `SELECT c.company_name as name, c.domain, c.logo_url, COUNT(j.id) as job_count
       FROM companies c JOIN jobs j ON j.company_id = c.id
       WHERE j.removed_at IS NULL AND j.first_seen_at > NOW() - INTERVAL '24 hours'
@@ -248,7 +270,7 @@ router.get('/api/trending', async (req, res) => {
       LIMIT 20`
     ),
     // Remote job trends
-    query(
+    queryWithTimeout(
       `SELECT
         COUNT(*) as total,
         COUNT(*) FILTER (WHERE first_seen_at > NOW() - INTERVAL '7 days') as new_this_week,
@@ -256,7 +278,7 @@ router.get('/api/trending', async (req, res) => {
       FROM jobs WHERE removed_at IS NULL AND is_remote = true`
     ),
     // Visa sponsorship trends
-    query(
+    queryWithTimeout(
       `SELECT
         COUNT(*) as total,
         COUNT(*) FILTER (WHERE first_seen_at > NOW() - INTERVAL '7 days') as new_this_week,
@@ -264,7 +286,7 @@ router.get('/api/trending', async (req, res) => {
       FROM jobs WHERE removed_at IS NULL AND visa_sponsorship = 'yes'`
     ),
     // New jobs today count
-    query(
+    queryWithTimeout(
       `SELECT COUNT(*) as count
       FROM jobs WHERE removed_at IS NULL AND first_seen_at > NOW() - INTERVAL '1 day'`
     ),
@@ -283,7 +305,17 @@ router.get('/api/trending', async (req, res) => {
 
   trendingCache = result;
   trendingCacheExpiry = Date.now() + 60 * 60 * 1000; // 1 hour
-  res.json(result);
+  return result;
+  })();
+
+  try {
+    res.json(await trendingInFlight);
+  } catch (err) {
+    if (trendingCache) return res.json(trendingCache); // stale beats an error page
+    throw err;
+  } finally {
+    trendingInFlight = null;
+  }
 });
 
 /**
@@ -399,12 +431,22 @@ router.get('/api/locations', async (req, res) => {
 let rolesCache = null;
 let rolesCacheExpiry = 0;
 
-router.get('/api/roles', async (req, res) => {
-  if (rolesCache && Date.now() < rolesCacheExpiry) {
-    return res.json({ data: rolesCache });
-  }
+let rolesInFlight = null;
 
-  const { rows } = await query(
+// Refreshing OFF the request path.
+//
+// This aggregate takes ~40s: it applies two dozen ILIKE patterns to every live job because
+// the role category is derived at query time rather than stored. Heroku's router abandons a
+// request at 30s, so whichever user triggered the refresh always got a 503 even though the
+// query itself would finish — the cache filled, but only after somebody ate an error.
+//
+// Running it at boot and on a timer means the cache is always warm before anyone asks. The
+// real fix is a stored role_category column so this stops being a full scan; until then this
+// keeps the endpoint working without a user ever waiting on it.
+function refreshRoles() {
+  if (rolesInFlight) return rolesInFlight;
+  rolesInFlight = (async () => {
+  const { rows } = await queryWithTimeout(
     `SELECT
       CASE
         WHEN title ILIKE '%software engineer%' OR title ILIKE '%software developer%' THEN 'Software Engineer'
@@ -440,7 +482,17 @@ router.get('/api/roles', async (req, res) => {
   );
   rolesCache = rows;
   rolesCacheExpiry = Date.now() + 60 * 60 * 1000; // 1 hour
-  res.json({ data: rows });
+  return rows;
+  })().finally(() => { rolesInFlight = null; });
+  return rolesInFlight;
+}
+
+router.get('/api/roles', async (req, res) => {
+  if (rolesCache) return res.json({ data: rolesCache, stale: Date.now() >= rolesCacheExpiry });
+  // Cold start only: nothing cached yet. Kick the refresh off and say so rather than holding
+  // the request open for 40s to be killed by the router at 30s.
+  refreshRoles().catch(() => {});
+  return res.status(503).json({ error: 'warming', retry_after: 60 });
 });
 
 /**
@@ -511,3 +563,9 @@ router.get('/api/jobs/:id', async (req, res) => {
 });
 
 module.exports = router;
+
+// Prime the expensive aggregates at boot and refresh them before they expire, so no user
+// request ever pays for them. Unref'd so the timer cannot hold the process open.
+refreshRoles().catch(() => {});
+const rolesTimer = setInterval(() => refreshRoles().catch(() => {}), 50 * 60 * 1000);
+if (rolesTimer.unref) rolesTimer.unref();
