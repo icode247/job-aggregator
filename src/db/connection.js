@@ -78,7 +78,11 @@ async function queryWithTimeout(sql, params = [], timeoutMs = 60000) {
     let idx = 0;
     const finalSql = sql.replace(/\?/g, () => `$${++idx}`)
       .replace(/datetime\('now'\)/gi, 'NOW()');
-    const result = await client.query(finalSql, params);
+    // query_timeout is a POOL-level option, so the client inherits the tight default and
+    // aborts long before the raised statement_timeout above ever applies — /api/roles died
+    // at 20s with "Query read timeout" despite being allowed 60s server-side. pg accepts a
+    // per-query override in the config object, so raise both together.
+    const result = await client.query({ text: finalSql, values: params, query_timeout: timeoutMs + 5000 });
     return { rows: result.rows, rowCount: result.rowCount, lastId: result.rows?.[0]?.id || null };
   } finally {
     try { await client.query('SET statement_timeout = DEFAULT'); } catch { /* connection is going away anyway */ }
