@@ -69,6 +69,13 @@ launch Pay "paylocity"                              "$LOG/crawl-Pay.log" "$COMMO
 # adapter probes those in turn. Keep zoho OUT of B — the partitions must stay disjoint or
 # both instances hammer the same ATS.
 launch Z "zoho"                                    "$LOG/crawl-Z.log" "$COMMON PROXY_DISABLED=1"
+# Instance T (taleo): 109 boards relabelled off the adapter-less taleo_* alias labels, each
+# slug verified live via careersection/sitemap.jss. NOTE: adding 'taleo' to findDueForSync
+# does NOT make it crawl — BullMQ/Redis is retired, so nothing calls that query; the ATS env
+# list on these instances is the real allowlist. Concurrency 2 and a longer per-company
+# timeout because taleo has no bulk listing endpoint: every job needs its own detail page
+# (see src/adapters/taleo.js), so a board is slow even after the adapter was parallelised.
+launch T "taleo"                                   "$LOG/crawl-T.log" "CONCURRENCY=2 DELAY_MS=400 PG_POOL_MAX=2 FETCH_TIMEOUT=240000 PROXY_DISABLED=1"
 # Instance E (workable direct via IPRoyal proxy) is intentionally NOT auto-started
 # here: it uses the METERED residential proxy, so it must be a controlled one-time
 # drain, not an always-on refresh loop (a 60-min refresh would burn the GB plan).
