@@ -69,6 +69,13 @@ launch Pay "paylocity"                              "$LOG/crawl-Pay.log" "$COMMO
 # adapter probes those in turn. Keep zoho OUT of B — the partitions must stay disjoint or
 # both instances hammer the same ATS.
 launch Z "zoho"                                    "$LOG/crawl-Z.log" "$COMMON PROXY_DISABLED=1"
+# Instance T (taleo): 109 boards relabelled off the adapter-less taleo_* alias labels, each
+# slug verified live via careersection/sitemap.jss. NOTE: adding 'taleo' to findDueForSync
+# does NOT make it crawl — BullMQ/Redis is retired, so nothing calls that query; the ATS env
+# list on these instances is the real allowlist. Concurrency 2 and a longer per-company
+# timeout because taleo has no bulk listing endpoint: every job needs its own detail page
+# (see src/adapters/taleo.js), so a board is slow even after the adapter was parallelised.
+launch T "taleo"                                   "$LOG/crawl-T.log" "CONCURRENCY=2 DELAY_MS=400 PG_POOL_MAX=2 FETCH_TIMEOUT=240000 PROXY_DISABLED=1"
 # Instance E (workable direct via IPRoyal proxy) is intentionally NOT auto-started
 # here: it uses the METERED residential proxy, so it must be a controlled one-time
 # drain, not an always-on refresh loop (a 60-min refresh would burn the GB plan).
@@ -77,7 +84,7 @@ launch Z "zoho"                                    "$LOG/crawl-Z.log" "$COMMON P
 # Marketplace deep crawl: one-shot walk of the full ~170k; auto-restart resumes
 # from the top if it dies (upserts dedupe, so re-walking is harmless).
 nohup bash -c "while true; do \
-  env MARKETPLACE_MAX_PAGES=8500 PG_POOL_MAX=4 node src/tasks/crawl-workable-marketplace.js; \
+  env MARKETPLACE_MAX_PAGES=8500 PG_POOL_MAX=2 node src/tasks/crawl-workable-marketplace.js; \
   echo \"[\$(date)] MKT exited rc=\$? — restarting in 30s\"; sleep 30; \
 done" >"$LOG/crawl-MKT.log" 2>&1 &
 echo "launched MKT (workable marketplace deep) -> $LOG/crawl-MKT.log  wrapper pid $!"
@@ -86,7 +93,7 @@ echo "launched MKT (workable marketplace deep) -> $LOG/crawl-MKT.log  wrapper pi
 # job's SEO page (og:description), fetched via Bright Data. LOOP re-checks for newly
 # crawled jobs; auto-restart wrapper survives OS reaping of the idle sleep.
 nohup bash -c "while true; do \
-  env LOOP=1 CONCURRENCY=6 BATCH=200 RECHECK_S=900 PG_POOL_MAX=2 node scripts/backfill-comeet-desc.js; \
+  env LOOP=1 CONCURRENCY=6 BATCH=200 RECHECK_S=900 PG_POOL_MAX=1 node scripts/backfill-comeet-desc.js; \
   echo \"[\$(date)] comeet-desc exited rc=\$? — restarting in 30s\"; sleep 30; \
 done" >"$LOG/backfill-comeet.log" 2>&1 &
 echo "launched comeet description backfill -> $LOG/backfill-comeet.log  wrapper pid $!"
@@ -96,7 +103,7 @@ echo "launched comeet description backfill -> $LOG/backfill-comeet.log  wrapper 
 # fetchPaylocityDescription). Direct fetch, no proxy; self-throttles (UA-rotation + jitter).
 # LOOP re-checks for newly crawled jobs; batch/concurrency come from ATS_CONFIG (60/3).
 nohup bash -c "while true; do \
-  env LOOP=1 RECHECK_S=900 PG_POOL_MAX=2 node scripts/backfill-desc-generic.js paylocity; \
+  env LOOP=1 RECHECK_S=900 PG_POOL_MAX=1 node scripts/backfill-desc-generic.js paylocity; \
   echo \"[\$(date)] paylocity-desc exited rc=\$? — restarting in 30s\"; sleep 30; \
 done" >"$LOG/backfill-paylocity.log" 2>&1 &
 echo "launched paylocity description backfill -> $LOG/backfill-paylocity.log  wrapper pid $!"
@@ -122,7 +129,7 @@ IPROYAL_ENVS="$(grep -E "^IPROYAL_PROXY_(HOST|PORT|USER|PASS|LIFETIME)=" .env 2>
 # PG_POOL_MAX=2: it runs all ATS in parallel so it bursts connections; keep it small to stay under
 # the essential-2 40-conn cap alongside the ~9 crawlers + other backfills + Render + web dynos.
 nohup bash -c "while true; do \
-  env PG_POOL_MAX=2 $IPROYAL_ENVS node scripts/local-backfill-descriptions.js; \
+  env PG_POOL_MAX=1 $IPROYAL_ENVS node scripts/local-backfill-descriptions.js; \
   echo \"[\$(date)] desc-backfill exited rc=\$? — restarting in 30s\"; sleep 30; \
 done" >"$LOG/backfill-desc.log" 2>&1 &
 echo "launched general description backfill -> $LOG/backfill-desc.log  wrapper pid $!"
