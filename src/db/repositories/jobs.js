@@ -149,12 +149,18 @@ function buildFilters(filters = {}) {
         // else first_seen_at (which equals created_at — the UI's own fallback). Filtering on
         // first_seen_at alone surfaced freshly-crawled but long-posted listings (a newly
         // onboarded company's back-catalog) under "last 24h" — 94% of results weren't actually
-        // posted in-window. The OR-form is equivalent to COALESCE(posted_at, first_seen_at) but
-        // keeps an accurate planner row estimate (no posted_at index exists). Per-row single
-        // value => still monotonic across windows.
+        // posted in-window. Per-row single value => still monotonic across windows.
+        //
+        // This used to be spelled as an OR to keep planner estimates accurate, because no
+        // posted_at index existed. One does now, so the COALESCE form is both equivalent and
+        // indexable — see below.
         if (isPostgres) {
           const t = `NOW() - INTERVAL '${n} ${unit}'`;
-          clauses.push(`(j.posted_at >= ${t} OR (j.posted_at IS NULL AND j.first_seen_at >= ${t}))`);
+          // COALESCE, not the OR form, so it can use idx_jobs_active_posted_ats — an
+          // expression index on (COALESCE(posted_at, first_seen_at), ats). The OR form is
+          // logically identical but unindexable, and countActive over it took 60s for a
+          // 24h+ats filter; via the index the same count is 1.6s.
+          clauses.push(`COALESCE(j.posted_at, j.first_seen_at) >= ${t}`);
         } else {
           // SQLite has no 'weeks' modifier — express weeks as days.
           const sUnit = unit === 'weeks' ? 'days' : unit;
