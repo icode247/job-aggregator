@@ -29,11 +29,26 @@ function getDb() {
         max: parseInt(process.env.PG_POOL_MAX, 10) || 6,
         idleTimeoutMillis: 10000,
         connectionTimeoutMillis: 10000,
-        // Abort any query that runs longer than 60s instead of hanging forever on a
+        // Abort any query that runs longer than this instead of hanging forever on a
         // half-dead connection (the SA->us-east-1 link drops mid-query and, without
         // these, a query never returns — freezing the whole crawl loop).
-        statement_timeout: 60000,
-        query_timeout: 60000,
+        //
+        // 15s, not 60s. Heroku's router gives up on a request at 30s, so a 60s ceiling meant
+        // a doomed query kept holding its pool connection for a further 30s after the user
+        // had already been sent an error. On 2026-08-05 a handful of cold-cache searches
+        // running 100-240s occupied all 14 web connections, and *every* request then failed
+        // with "timeout exceeded when trying to connect" — a few slow queries took the whole
+        // site down rather than just themselves. Failing the slow query fast is strictly
+        // better: it frees the connection while the rest of the site keeps serving.
+        //
+        // Maintenance work that legitimately runs long (VACUUM, bulk UPDATE, index builds)
+        // overrides this per session with `SET statement_timeout = 0`, or per process via
+        // PG_STATEMENT_TIMEOUT.
+        statement_timeout: parseInt(process.env.PG_STATEMENT_TIMEOUT, 10) || 15000,
+        // Client-side counterpart of statement_timeout above; kept slightly higher so the
+        // server's own cancel wins and we get a real Postgres error rather than a dangling
+        // client-side abort.
+        query_timeout: (parseInt(process.env.PG_STATEMENT_TIMEOUT, 10) || 15000) + 5000,
       });
       // Idle clients can be terminated by the server (Heroku) or a flaky link; pg
       // emits 'error' on the pool for those. Without a listener Node treats it as an

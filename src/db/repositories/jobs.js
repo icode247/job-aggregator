@@ -218,14 +218,53 @@ const jobsRepo = {
     // Always join companies for company data in response
     // Optionally include description (excluded by default for performance)
     const descCol = filters.includeDescription ? ', j.description' : '';
-    let sql = `SELECT j.id, j.external_id, j.company_id, j.ats, j.title, j.department,
+    const cols = `SELECT j.id, j.external_id, j.company_id, j.ats, j.title, j.department,
         j.location, j.workplace_type, j.employment_type, j.salary_min, j.salary_max,
         j.salary_currency, j.salary_interval, j.url, j.posted_at, j.first_seen_at,
         j.is_remote, j.remote_worldwide, j.visa_sponsorship, j.experience_level,
-        c.domain, c.ats_slug, c.company_name, c.logo_url${descCol}
+        c.domain, c.ats_slug, c.company_name, c.logo_url${descCol}`;
+
+    let sql;
+    // Keyword searches take a different shape on purpose.
+    //
+    // With ORDER BY first_seen_at DESC + LIMIT, the planner prefers to walk
+    // idx_jobs_active_firstseen in date order and filter each row, because that avoids a
+    // sort and it assumes it will hit the LIMIT quickly. For a common word that is true.
+    // For a selective one it is catastrophic: it walks millions of rows before finding 50,
+    // ignoring the GIN index built for exactly this. On 2026-08-05 those searches ran
+    // 100-240s each, held every pool connection, and took the site down.
+    //
+    // Materialising the filter first removes the ORDER BY that makes the date index look
+    // attractive, so the planner uses the GIN index, and the sort happens over the matched
+    // set only. Worst case becomes proportional to how many jobs actually match, instead of
+    // how deep into the table we must walk to find them.
+    //
+    // But ONLY when the search is narrowed by something else. Measured on 2.8M live jobs:
+    //   bare common term ("software")            order-then-filter 379ms | CTE 10,653ms
+    //   bare rare term                                            264ms | CTE    236ms
+    //   term + location + ats (the 240s shape)                  1,305ms | CTE    537ms
+    // A bare keyword matches plenty of recent jobs, so walking the date index fills the
+    // LIMIT almost immediately and materialising every match instead is 28x worse. It is the
+    // extra narrowing filters that make the walk go deep, and that is where the CTE wins.
+    const narrowed = !!(filters.location || filters.ats || filters.companyId
+      || filters.employmentType || filters.experienceLevel);
+    if (isPostgres && filters.q && narrowed) {
+      sql = `WITH matched AS MATERIALIZED (
+          SELECT j.id, j.first_seen_at, j.random_rank
+            FROM jobs j JOIN companies c ON j.company_id = c.id
+           WHERE ${clauses.join(' AND ')}
+        )
+        ${cols}
+          FROM matched m
+          JOIN jobs j ON j.id = m.id
+          JOIN companies c ON j.company_id = c.id
+         ORDER BY m.first_seen_at DESC, m.random_rank`;
+    } else {
+      sql = `${cols}
       FROM jobs j JOIN companies c ON j.company_id = c.id
       WHERE ${clauses.join(' AND ')}
       ORDER BY j.first_seen_at DESC, j.random_rank`;
+    }
 
     if (filters.limit) {
       sql += ' LIMIT ?';
