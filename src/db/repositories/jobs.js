@@ -1,6 +1,7 @@
 const { query, transaction, isPostgres } = require('../connection');
 const logger = require('../../logger');
 const { aliasGroup, isShortAlias } = require('../../utils/location-aliases');
+const { normalizeEmploymentType } = require('../../utils/extract');
 
 /**
  * Build WHERE clauses from filters.
@@ -18,19 +19,26 @@ function buildFilters(filters = {}) {
     const roles = filters.q.split(',').map(r => r.trim()).filter(Boolean);
 
     if (isPostgres) {
-      if (roles.length === 1) {
-        // Single role: AND all words together
-        const tsquery = roles[0].split(/\s+/).filter(Boolean).join(' & ');
+      // ONE tsquery, not one per role. Words within a role are AND'd, roles are OR'd:
+      //   "data analyst, product manager" -> (data & analyst) | (product & manager)
+      //
+      // This used to emit a separate `search_vector @@ to_tsquery(...)` per role, OR'd in
+      // SQL. The automation sends up to 22 roles in a single request, which meant 22 GIN
+      // index lookups instead of one. Measured on 2.8M live jobs, 10 roles + a location
+      // filter: 16,405ms as separate clauses vs 1,738ms combined — 9.4x.
+      //
+      // Terms are stripped of tsquery syntax characters (& | ! : * ( ) ') because they are
+      // interpolated into the query string, not passed as data. An unsanitised apostrophe or
+      // ampersand in a job title would otherwise be a syntax error that fails the whole
+      // search — and the single combined query means one bad term would take out every role.
+      const clean = (word) => word.replace(/[^\p{L}\p{N}_-]+/gu, '');
+      const groups = roles
+        .map((role) => role.split(/\s+/).map(clean).filter(Boolean).join(' & '))
+        .filter(Boolean)
+        .map((g) => `(${g})`);
+      if (groups.length) {
         clauses.push("j.search_vector @@ to_tsquery('english', ?)");
-        params.push(tsquery);
-      } else {
-        // Multiple roles: each role is AND'd internally, roles are OR'd together
-        const tsqueries = roles.map(role => {
-          const words = role.split(/\s+/).filter(Boolean).join(' & ');
-          params.push(words);
-          return "j.search_vector @@ to_tsquery('english', ?)";
-        });
-        clauses.push('(' + tsqueries.join(' OR ') + ')');
+        params.push(groups.join(' | '));
       }
     } else {
       if (roles.length === 1) {
@@ -82,17 +90,30 @@ function buildFilters(filters = {}) {
   {
     const modes = toList(filters.workMode).map((m) => m.toLowerCase()).filter((m) => m !== 'any');
     if (modes.length > 0) {
+      // Exact matches, not ILIKE. workplace_type holds 9 distinct values that are really
+      // three concepts (onsite / on_site / OnSite / On-site), so listing the variants lets
+      // idx_jobs_workplace_active serve the filter; a leading-wildcard ILIKE cannot use it.
+      // Remote uses the indexed is_remote boolean, which is also what the separate
+      // `remote=true` filter uses — previously the two disagreed, and requests sending both
+      // paid for an unindexable scan on top of an indexed one.
+      //
+      // Measured on 2.8M live jobs: the old three-way ILIKE for remote took 41,296ms vs
+      // 6,347ms for the boolean. Note the boolean matches slightly MORE rows (353,862 vs
+      // 342,965) because classifyJob also infers remoteness from the description.
+      const WORKPLACE_VARIANTS = {
+        hybrid: ['hybrid', 'Hybrid'],
+        onsite: ['onsite', 'on_site', 'OnSite', 'On-site', 'on-site'],
+      };
       const groups = [];
       for (const m of modes) {
         if (m === 'remote') {
-          groups.push('(j.workplace_type ILIKE ? OR j.location ILIKE ? OR j.title ILIKE ?)');
-          params.push('%remote%', '%remote%', '%remote%');
+          groups.push('j.is_remote = true');
         } else if (m === 'hybrid') {
-          groups.push('(j.workplace_type ILIKE ? OR j.location ILIKE ?)');
-          params.push('%hybrid%', '%hybrid%');
+          groups.push(`j.workplace_type IN (${WORKPLACE_VARIANTS.hybrid.map(() => '?').join(', ')})`);
+          params.push(...WORKPLACE_VARIANTS.hybrid);
         } else if (m === 'onsite' || m === 'on-site' || m === 'on_site') {
-          groups.push('(j.workplace_type ILIKE ? OR j.workplace_type ILIKE ?)');
-          params.push('%on-site%', '%onsite%');
+          groups.push(`j.workplace_type IN (${WORKPLACE_VARIANTS.onsite.map(() => '?').join(', ')})`);
+          params.push(...WORKPLACE_VARIANTS.onsite);
         }
       }
       if (groups.length > 0) clauses.push('(' + groups.join(' OR ') + ')');
@@ -103,9 +124,21 @@ function buildFilters(filters = {}) {
   {
     const types = toList(filters.employmentType).filter((t) => t.toLowerCase() !== 'any');
     if (types.length > 0) {
-      const groups = types.map(() => '(j.employment_type ILIKE ? OR j.title ILIKE ?)');
-      clauses.push('(' + groups.join(' OR ') + ')');
-      for (const t of types) params.push(`%${t}%`, `%${t}%`);
+      // Exact match on the canonical value, normalising the caller's input through the same
+      // function that normalises writes ("full-time" -> "Full-time").
+      //
+      // This used to be `employment_type ILIKE '%x%' OR title ILIKE '%x%'`. The title
+      // fallback existed because employment_type held 4,784 free-text spellings of about six
+      // real values, so matching the column alone missed jobs. That column is now normalised,
+      // making the fallback both unnecessary and expensive: an unindexable substring scan of
+      // title on every filtered search. Measured on 2.8M live jobs — 27,829ms with the
+      // fallback vs 6,068ms without, for a 0.1% difference in rows matched (1,402,461 ->
+      // 1,401,111).
+      const canon = [...new Set(types.map(normalizeEmploymentType).filter(Boolean))];
+      if (canon.length) {
+        clauses.push(`j.employment_type IN (${canon.map(() => '?').join(', ')})`);
+        params.push(...canon);
+      }
     }
   }
 
