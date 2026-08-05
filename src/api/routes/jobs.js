@@ -99,14 +99,22 @@ router.get('/api/jobs', async (req, res) => {
     jobsRepo.countActive(filters),
   ]);
 
+  // countActive stops at COUNT_CAP+1, so a value above the cap means "at least this many"
+  // rather than an exact figure. Report the cap and say so, instead of implying precision we
+  // did not pay for. Real paging never reaches 10,000 results (200 pages at 50/page).
+  const { COUNT_CAP } = jobsRepo;
+  const totalIsCapped = total > COUNT_CAP;
+  const reportedTotal = totalIsCapped ? COUNT_CAP : total;
+
   const page = Math.floor(offset / limit) + 1;
-  const totalPages = Math.ceil(total / limit);
-  const hasNext = offset + limit < total;
+  const totalPages = Math.ceil(reportedTotal / limit);
+  const hasNext = offset + limit < reportedTotal;
   const hasPrev = offset > 0;
 
   res.json({
     meta: {
-      total,
+      total: reportedTotal,
+      totalIsCapped,
       limit,
       offset,
       page,
@@ -425,15 +433,18 @@ let rolesCacheExpiry = 0;
 
 let rolesInFlight = null;
 
-router.get('/api/roles', async (req, res) => {
-  if (rolesCache && Date.now() < rolesCacheExpiry) {
-    return res.json({ data: rolesCache });
-  }
-  if (rolesInFlight) {
-    if (rolesCache) return res.json({ data: rolesCache });
-    try { return res.json({ data: await rolesInFlight }); } catch { return res.status(503).json({ error: 'warming' }); }
-  }
-
+// Refreshing OFF the request path.
+//
+// This aggregate takes ~40s: it applies two dozen ILIKE patterns to every live job because
+// the role category is derived at query time rather than stored. Heroku's router abandons a
+// request at 30s, so whichever user triggered the refresh always got a 503 even though the
+// query itself would finish — the cache filled, but only after somebody ate an error.
+//
+// Running it at boot and on a timer means the cache is always warm before anyone asks. The
+// real fix is a stored role_category column so this stops being a full scan; until then this
+// keeps the endpoint working without a user ever waiting on it.
+function refreshRoles() {
+  if (rolesInFlight) return rolesInFlight;
   rolesInFlight = (async () => {
   const { rows } = await queryWithTimeout(
     `SELECT
@@ -472,16 +483,16 @@ router.get('/api/roles', async (req, res) => {
   rolesCache = rows;
   rolesCacheExpiry = Date.now() + 60 * 60 * 1000; // 1 hour
   return rows;
-  })();
+  })().finally(() => { rolesInFlight = null; });
+  return rolesInFlight;
+}
 
-  try {
-    res.json({ data: await rolesInFlight });
-  } catch (err) {
-    if (rolesCache) return res.json({ data: rolesCache });
-    throw err;
-  } finally {
-    rolesInFlight = null;
-  }
+router.get('/api/roles', async (req, res) => {
+  if (rolesCache) return res.json({ data: rolesCache, stale: Date.now() >= rolesCacheExpiry });
+  // Cold start only: nothing cached yet. Kick the refresh off and say so rather than holding
+  // the request open for 40s to be killed by the router at 30s.
+  refreshRoles().catch(() => {});
+  return res.status(503).json({ error: 'warming', retry_after: 60 });
 });
 
 /**
@@ -552,3 +563,9 @@ router.get('/api/jobs/:id', async (req, res) => {
 });
 
 module.exports = router;
+
+// Prime the expensive aggregates at boot and refresh them before they expire, so no user
+// request ever pays for them. Unref'd so the timer cannot hold the process open.
+refreshRoles().catch(() => {});
+const rolesTimer = setInterval(() => refreshRoles().catch(() => {}), 50 * 60 * 1000);
+if (rolesTimer.unref) rolesTimer.unref();

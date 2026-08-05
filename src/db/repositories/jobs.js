@@ -1,7 +1,10 @@
 const { query, transaction, isPostgres } = require('../connection');
 const logger = require('../../logger');
 const { aliasGroup, isShortAlias } = require('../../utils/location-aliases');
-const { normalizeEmploymentType } = require('../../utils/extract');
+const { normalizeEmploymentType, normalizeWorkplaceType } = require('../../utils/extract');
+
+// Upper bound on result counts — see countActive. Env-tunable.
+const COUNT_CAP = parseInt(process.env.SEARCH_COUNT_CAP, 10) || 10000;
 
 /**
  * Build WHERE clauses from filters.
@@ -100,9 +103,12 @@ function buildFilters(filters = {}) {
       // Measured on 2.8M live jobs: the old three-way ILIKE for remote took 41,296ms vs
       // 6,347ms for the boolean. Note the boolean matches slightly MORE rows (353,862 vs
       // 342,965) because classifyJob also infers remoteness from the description.
+      // Canonical values first, then the legacy spellings still present in older rows. Listing
+      // both means the filter keeps working across the normalisation backfill in either
+      // direction — no window where onsite silently matches nothing.
       const WORKPLACE_VARIANTS = {
-        hybrid: ['hybrid', 'Hybrid'],
-        onsite: ['onsite', 'on_site', 'OnSite', 'On-site', 'on-site'],
+        hybrid: ['Hybrid', 'hybrid'],
+        onsite: ['Onsite', 'onsite', 'on_site', 'OnSite', 'On-site', 'on-site'],
       };
       const groups = [];
       for (const m of modes) {
@@ -324,14 +330,18 @@ const jobsRepo = {
       if (estimate > 0) return estimate;
     }
 
-    let sql;
-    if (needsJoin) {
-      sql = `SELECT COUNT(*) as count FROM jobs j JOIN companies c ON j.company_id = c.id WHERE ${clauses.join(' AND ')}`;
-    } else {
-      sql = `SELECT COUNT(*) as count FROM jobs j WHERE ${clauses.join(' AND ')}`;
-    }
+    // Counting is capped. An exact count has to visit every matching row, so it scales with
+    // how popular the filter is rather than with what the user sees: a filter matching 1.4M
+    // jobs was costing 40-60s under load while the 20 rows actually rendered took ~300ms.
+    // Stopping at COUNT_CAP+1 makes the cost bounded no matter how broad the search.
+    //
+    // The cap is deliberately far beyond real paging (10,000 = 200 pages at 50/page). Callers
+    // can tell a capped count from an exact one because it comes back as exactly COUNT_CAP+1.
+    const inner = needsJoin
+      ? `SELECT 1 FROM jobs j JOIN companies c ON j.company_id = c.id WHERE ${clauses.join(' AND ')} LIMIT ${COUNT_CAP + 1}`
+      : `SELECT 1 FROM jobs j WHERE ${clauses.join(' AND ')} LIMIT ${COUNT_CAP + 1}`;
 
-    const { rows } = await query(sql, params);
+    const { rows } = await query(`SELECT COUNT(*) as count FROM (${inner}) t`, params);
     return parseInt(rows[0].count, 10);
   },
 
@@ -402,7 +412,9 @@ const jobsRepo = {
           [
             job.external_id, companyId, ats,
             job.title, job.department || null, job.location,
-            job.workplace_type || null, job.employment_type || null,
+            // Normalised at the single point every sync path funnels through, so the
+            // filters above can match canonical values exactly instead of scanning with ILIKE.
+            normalizeWorkplaceType(job.workplace_type), normalizeEmploymentType(job.employment_type),
             job.salary_min || null, job.salary_max || null,
             job.salary_currency || null, job.salary_interval || null,
             job.description || null, job.url, job.posted_at || null,
@@ -450,3 +462,4 @@ const jobsRepo = {
 };
 
 module.exports = jobsRepo;
+module.exports.COUNT_CAP = COUNT_CAP;
