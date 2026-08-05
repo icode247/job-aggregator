@@ -13,9 +13,21 @@ function getDb() {
       pool = new Pool({
         connectionString: process.env.DATABASE_URL,
         ssl: config.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-        max: 15,
+        max: parseInt(process.env.PG_POOL_MAX, 10) || 15,
         idleTimeoutMillis: 10000,
         connectionTimeoutMillis: 10000,
+        // Without a statement timeout a slow query runs until it finishes. On 2026-08-05 a
+        // handful of cold-cache searches ran 100-240s each, and because Heroku's router
+        // abandons the request at 30s they kept holding their pool connection long after the
+        // user had already been sent an error. All 15 connections ended up occupied and every
+        // request then failed with "timeout exceeded when trying to connect" — a few slow
+        // queries took the whole site down rather than just themselves.
+        //
+        // 15s is deliberately below the router's 30s: fail the doomed query, free the
+        // connection, keep the rest of the site serving. Maintenance work overrides this per
+        // session with `SET statement_timeout = 0`, or per process via PG_STATEMENT_TIMEOUT.
+        statement_timeout: parseInt(process.env.PG_STATEMENT_TIMEOUT, 10) || 15000,
+        query_timeout: (parseInt(process.env.PG_STATEMENT_TIMEOUT, 10) || 15000) + 5000,
       });
       logger.info('PostgreSQL pool connected');
     }

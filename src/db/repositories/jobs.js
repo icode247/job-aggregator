@@ -217,14 +217,46 @@ const jobsRepo = {
     // Always join companies for company data in response
     // Optionally include description (excluded by default for performance)
     const descCol = filters.includeDescription ? ', j.description' : '';
-    let sql = `SELECT j.id, j.external_id, j.company_id, j.ats, j.title, j.department,
+    const cols = `SELECT j.id, j.external_id, j.company_id, j.ats, j.title, j.department,
         j.location, j.workplace_type, j.employment_type, j.salary_min, j.salary_max,
         j.salary_currency, j.salary_interval, j.url, j.posted_at, j.first_seen_at,
         j.is_remote, j.remote_worldwide, j.visa_sponsorship, j.experience_level,
-        c.domain, c.ats_slug, c.company_name, c.logo_url${descCol}
+        c.domain, c.ats_slug, c.company_name, c.logo_url${descCol}`;
+
+    // With ORDER BY first_seen_at DESC + LIMIT the planner walks idx_jobs_active_firstseen in
+    // date order and filters each row, ignoring the GIN index, because it assumes it will hit
+    // the LIMIT quickly. Add a location/ats filter and it must walk far deeper — that is the
+    // shape that ran 100-240s on 2026-08-05 and exhausted the pool.
+    //
+    // Materialising the filter first drops the ORDER BY that makes the date index look
+    // attractive, so the GIN index is used and the sort covers only matching rows. Applied
+    // ONLY when the search is narrowed, because measured on 2.8M live jobs:
+    //   bare common term ("software")     order-then-filter   379ms | CTE 10,653ms
+    //   bare rare term                                        264ms | CTE    236ms
+    //   term + location + ats                               1,305ms | CTE    537ms
+    // A bare keyword matches plenty of recent jobs, so the date walk fills the LIMIT almost
+    // immediately and materialising every match instead is 28x worse.
+    const narrowed = !!(filters.location || filters.ats || filters.companyId
+      || filters.employmentType || filters.experienceLevel);
+
+    let sql;
+    if (isPostgres && filters.q && narrowed) {
+      sql = `WITH matched AS MATERIALIZED (
+          SELECT j.id, j.first_seen_at, j.random_rank
+            FROM jobs j JOIN companies c ON j.company_id = c.id
+           WHERE ${clauses.join(' AND ')}
+        )
+        ${cols}
+          FROM matched m
+          JOIN jobs j ON j.id = m.id
+          JOIN companies c ON j.company_id = c.id
+         ORDER BY m.first_seen_at DESC, m.random_rank`;
+    } else {
+      sql = `${cols}
       FROM jobs j JOIN companies c ON j.company_id = c.id
       WHERE ${clauses.join(' AND ')}
       ORDER BY j.first_seen_at DESC, j.random_rank`;
+    }
 
     if (filters.limit) {
       sql += ' LIMIT ?';
