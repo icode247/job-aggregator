@@ -20,8 +20,9 @@ export NODE_ENV=production
 [ -z "$DATABASE_URL" ] && { echo "FATAL: no DATABASE_URL"; exit 1; }
 
 LOG=/tmp
-# essential-2 Postgres caps at 40 connections; keep per-crawler pools small so the
-# ~7 instances + backfill + Heroku dynos stay well under the cap.
+# Postgres is standard-0 since 2026-08-05: 200 connections, not the 40 of essential-2.
+# Pools are still kept small — the web dyno must always be able to open one (it was starved
+# at 40/40 once, see feedback in git log) — but the fleet is no longer the binding constraint.
 COMMON="CONCURRENCY=3 DELAY_MS=400 PG_POOL_MAX=2"
 
 launch() { # name  ATS-list  logfile  [env-override]
