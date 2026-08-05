@@ -13,7 +13,14 @@ function getDb() {
       pool = new Pool({
         connectionString: process.env.DATABASE_URL,
         ssl: config.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-        max: parseInt(process.env.PG_POOL_MAX, 10) || 15,
+        // Default 6, not 15. The Heroku role caps at 40 connections (rolconnlimit; note
+        // max_connections reads 1706 and is server-wide/misleading), and that 40 is shared by
+        // the local crawler fleet, the Render worker's several processes, the web dyno and any
+        // ad-hoc script. At a default of 15 a single process that forgot PG_POOL_MAX could take
+        // over a third of the budget on its own — measured 2026-08-05 with the pool hitting
+        // 40/40 and sync queries failing with "too many connections for role". Processes that
+        // genuinely need more set PG_POOL_MAX explicitly (see scripts/launch-local-crawlers.sh).
+        max: parseInt(process.env.PG_POOL_MAX, 10) || 6,
         idleTimeoutMillis: 10000,
         connectionTimeoutMillis: 10000,
         // Abort any query that runs longer than 60s instead of hanging forever on a
