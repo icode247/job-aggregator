@@ -40,10 +40,15 @@ function buildFilter(filters = {}) {
     for (const m of modes) {
       if (m === 'remote') or.push('is_remote = true');
       else if (m === 'hybrid') or.push(`workplace_type = ${q('Hybrid')}`);
-      else if (['onsite', 'on-site', 'on_site'].includes(m)) or.push(`workplace_type = ${q('Onsite')}`);
-      // workplace_type is only partially normalised in Postgres (the backfill was deferred),
-      // so legacy spellings still exist there. They are normalised on the way INTO the index by
-      // toDocument's source row, meaning the index is the clean copy — no legacy variants here.
+      else if (['onsite', 'on-site', 'on_site'].includes(m)) {
+        // Both spellings, because the index is NOT the clean copy this line once assumed.
+        // toDocument copies workplace_type through untouched, so the deferred Postgres backfill
+        // left `on_site` sitting next to `onsite` — 49,820 documents that a single equality
+        // filter silently drops. Postgres matches both, so filtering on one under-counted by
+        // exactly that population. Equality is case-insensitive, so casing is not the issue.
+        or.push(`workplace_type = ${q('Onsite')}`);
+        or.push(`workplace_type = ${q('on_site')}`);
+      }
     }
     if (or.length) parts.push(`(${or.join(' OR ')})`);
   }
