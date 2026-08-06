@@ -147,6 +147,114 @@ async function migrate() {
     await exec('CREATE INDEX IF NOT EXISTS idx_jobs_last_checked ON jobs(last_checked_at) WHERE removed_at IS NULL');
   }
 
+  // Facet/aggregate indexes. The sidebar counts (/api/facets) and the totals on the landing
+  // page GROUP BY these columns across every live job. Without a partial index covering the
+  // grouped column they are sequential scans of ~2.8M rows: measured 37-64 SECONDS each, and
+  // they ran ~18k times apiece — by total execution time they were the single largest load on
+  // the database, far above anything the crawlers did.
+  //
+  // The index alone is not enough. An index-only scan needs the visibility map, which is empty
+  // until the table is vacuumed — on a freshly restored database these same queries still took
+  // 45s WITH the indexes present, and only dropped to sub-second after VACUUM. See the
+  // autovacuum settings below: if autovacuum falls behind, the visibility map goes stale and
+  // every one of these silently reverts to a full scan.
+  if (isPostgres) {
+    // role_category is derived from the title at write time (classifyRoleCategory). It used
+    // to be computed at query time by a ~25-branch CASE over every live job, which made
+    // /api/roles a 40s full scan that Heroku's router killed at 30s — so the endpoint could
+    // never populate its own cache. Stored and indexed, that becomes an indexed GROUP BY.
+    await exec('ALTER TABLE jobs ADD COLUMN IF NOT EXISTS role_category TEXT');
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_role_category_active ON jobs (role_category) WHERE removed_at IS NULL');
+
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_emptype_active ON jobs (employment_type) WHERE removed_at IS NULL AND employment_type IS NOT NULL');
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_ats_active ON jobs (ats) WHERE removed_at IS NULL');
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_workplace_active ON jobs (workplace_type) WHERE removed_at IS NULL AND workplace_type IS NOT NULL');
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_location_active ON jobs (location) WHERE removed_at IS NULL AND location IS NOT NULL');
+    // COUNT(*) + COUNT(*) FILTER (WHERE is_remote) on the landing page. The pre-existing
+    // idx_jobs_is_remote only covers is_remote = TRUE, so it could not serve the total.
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_isremote_all_active ON jobs (is_remote) WHERE removed_at IS NULL');
+    // "Hot locations in the last 24h" — first_seen_at alone still needed a heap fetch per row
+    // for location; carrying location in the index makes it index-only (9.5s -> 0.3s).
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_active_fs_loc ON jobs (first_seen_at DESC, location) WHERE removed_at IS NULL');
+
+    // Location filtering is `location ILIKE '%text%'`, which no btree index can serve because
+    // of the leading wildcard — so it was evaluated row by row against every job matching the
+    // keyword. That, not the plan shape, is what made "engineer" + "%remote%" take 15-17s
+    // whichever way the query was written. A trigram index makes the ILIKE indexable:
+    //   engineer + %remote%, order-then-filter   16,750ms -> 4,571ms
+    //   engineer + %remote%, materialised CTE    14,944ms -> 2,499ms
+    // 142 MB on 2.8M live jobs.
+    try {
+      await exec('CREATE INDEX IF NOT EXISTS idx_jobs_location_trgm ON jobs USING GIN (location gin_trgm_ops) WHERE removed_at IS NULL');
+    } catch { /* needs pg_trgm, created above; skip if the extension was not permitted */ }
+    // The "posted in the last N" filter is COALESCE(posted_at, first_seen_at) >= t. posted_at
+    // had no index at all, so countActive over a 24h + ats filter scanned a huge slice of the
+    // table: 60s, which blew the statement timeout and returned 500s. The expression index
+    // makes the predicate indexable, and carrying ats in it makes the count index-only:
+    //   count, OR form (unindexable)              60,551ms
+    //   count, COALESCE + expression index        17,149ms
+    //   count, COALESCE + (expr, ats) composite    1,610ms
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_active_posted_eff ON jobs (COALESCE(posted_at, first_seen_at) DESC) WHERE removed_at IS NULL');
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_active_posted_ats ON jobs (COALESCE(posted_at, first_seen_at) DESC, ats) WHERE removed_at IS NULL');
+
+    // jobs churns constantly (every sync touches last_seen_at). At the default scale factor
+    // autovacuum waits for ~20% of 4.4M rows to change before running, by which point the
+    // visibility map is stale and the index-only scans above degrade to seq scans. Vacuum far
+    // more eagerly on this one table — it is the difference between a 0.4s and a 45s sidebar.
+    try {
+      await exec('ALTER TABLE jobs SET (autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.01)');
+    } catch { /* not permitted on some plans */ }
+  }
+
+  // Search-index outbox.
+  //
+  // The external search index has to learn about every row change, and there are ~30 distinct
+  // writers: syncForCompany, the dead-job pruner, the stale-job DELETE, four description/salary/
+  // classification backfills, two crawlers with their own upserts, and a long tail of one-off
+  // scripts that run on a laptop and will never import application code. Polling cannot catch
+  // them either: `jobs` has no updated_at, and the backfills deliberately touch no timestamp,
+  // so "changed since T" would silently miss every description and salary fill.
+  //
+  // A trigger is the only thing that sees all of them. index_dirty_at is set on INSERT and on
+  // any UPDATE that alters an indexed field; the sync task clears it once the document is
+  // shipped. Deletes are handled separately — the stale-job cleanup already RETURNs the ids it
+  // removed, and soft-deletes come through as an ordinary UPDATE of removed_at.
+  if (isPostgres) {
+    await exec('ALTER TABLE jobs ADD COLUMN IF NOT EXISTS index_dirty_at TIMESTAMP');
+    // Partial index: only dirty rows are ever scanned, so this stays tiny (it is the work
+    // queue, not a copy of the table).
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_index_dirty ON jobs (index_dirty_at) WHERE index_dirty_at IS NOT NULL');
+    await exec(`
+      CREATE OR REPLACE FUNCTION jobs_mark_index_dirty() RETURNS trigger AS $$
+      BEGIN
+        IF TG_OP = 'INSERT' THEN
+          NEW.index_dirty_at := NOW();
+          RETURN NEW;
+        END IF;
+        -- Only re-index when something the index actually stores changed. Without this guard
+        -- every sync would dirty every row it touches (syncForCompany bumps last_seen_at on
+        -- ~every job, every cycle) and the queue would never drain.
+        IF (NEW.title, NEW.location, NEW.company_id, NEW.ats, NEW.department,
+            NEW.workplace_type, NEW.employment_type, NEW.experience_level,
+            NEW.visa_sponsorship, NEW.is_remote, NEW.remote_worldwide,
+            NEW.role_category, NEW.salary_min, NEW.salary_max, NEW.url,
+            NEW.posted_at, NEW.removed_at)
+           IS DISTINCT FROM
+           (OLD.title, OLD.location, OLD.company_id, OLD.ats, OLD.department,
+            OLD.workplace_type, OLD.employment_type, OLD.experience_level,
+            OLD.visa_sponsorship, OLD.is_remote, OLD.remote_worldwide,
+            OLD.role_category, OLD.salary_min, OLD.salary_max, OLD.url,
+            OLD.posted_at, OLD.removed_at)
+        THEN
+          NEW.index_dirty_at := NOW();
+        END IF;
+        RETURN NEW;
+      END $$ LANGUAGE plpgsql
+    `);
+    await exec('DROP TRIGGER IF EXISTS trig_jobs_index_dirty ON jobs');
+    await exec('CREATE TRIGGER trig_jobs_index_dirty BEFORE INSERT OR UPDATE ON jobs FOR EACH ROW EXECUTE FUNCTION jobs_mark_index_dirty()');
+  }
+
   // Full-text search (PostgreSQL only)
   if (isPostgres) {
     await exec(`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS search_vector tsvector`);
