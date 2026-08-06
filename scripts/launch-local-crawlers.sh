@@ -127,14 +127,23 @@ done" >"$LOG/backfill-paylocity.log" 2>&1 &
 echo "launched paylocity description backfill -> $LOG/backfill-paylocity.log  wrapper pid $!"
 
 
-# Local half of the dead-job-pruning split (see src/tasks/dead-job-check.js and
-# src/worker.js on Render, which owns the even-id partition). Verifies the odd-id
-# partition via real HTTP checks against each job's own career-page URL — only an
-# HTTP-confirmed 404/410 or explicit dead-page phrase removes anything. Small
-# PG_POOL_MAX: the essential-2 plan caps at 40 connections and we're already close
-# with ~11 crawler instances + 2 backfill loops + the Render worker's own pool.
+# Local half of the dead-job-pruning split. Render's worker owns the EVEN ids; this owns the
+# ODD ones. Verified by real HTTP checks against each job's own career-page URL — only a
+# confirmed 404/410 or an explicit dead-page phrase removes anything, never a guess.
+#
+# LIMIT 500 -> 5000 and CONCURRENCY 10 -> 25 on 2026-08-06, after removing the ORDER BY that
+# made the candidate query scan and sort the entire backlog per batch (see dead-job-check.js).
+# Unordered it is 3.4s for 500 rows and 33s for 20,000, so a big batch is now affordable where
+# 1,000 previously could not finish at all. Measured backlog was ~2.7M eligible jobs against
+# 400/hr — a full pass every 281 days. This side does ~25,000/hr.
+#
+# PG_STATEMENT_TIMEOUT is raised because the pool default (15s) is tuned for the API, and the
+# scan legitimately runs longer than that here. PG_POOL_MAX stays small — the 40-connection
+# ceiling in this comment's original form is long gone (standard-0 allows 200, ~25 in use), but
+# there is no reason for a background loop to hold more than it needs.
 nohup bash -c "while true; do \
-  env LOOP=1 INTERVAL_S=1200 LIMIT=500 CONCURRENCY=10 PG_POOL_MAX=1 node scripts/prune-dead-jobs-local.js; \
+  env LOOP=1 INTERVAL_S=300 LIMIT=5000 CONCURRENCY=25 PARTITION_REMAINDER=1 \
+      PG_STATEMENT_TIMEOUT=120000 PG_POOL_MAX=2 node scripts/prune-dead-jobs-local.js; \
   echo \"[\$(date)] prune-dead-local exited rc=\$? — restarting in 30s\"; sleep 30; \
 done" >"$LOG/prune-dead-local.log" 2>&1 &
 echo "launched prune-dead-jobs-local (odd-id partition) -> $LOG/prune-dead-local.log  wrapper pid $!"
