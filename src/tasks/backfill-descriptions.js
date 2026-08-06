@@ -974,21 +974,40 @@ async function runWithConcurrency(items, concurrency, fn) {
   return results;
 }
 
+// Where each ATS's walk has reached. Module-level so it survives between cycles in a long-lived
+// worker; a restart simply begins the rotation again from the start.
+const descCursor = new Map();
+
 async function backfillForAts(ats, batchSize, concurrency) {
+  // Keyset walk on the primary key, NOT `ORDER BY random()`.
+  //
+  // random() was chosen for a real reason: failed jobs stay description=NULL, so a fixed
+  // ordering re-selects the SAME newest batch every cycle, and when the newest N are all
+  // unfillable (dead / SPA / soft-block) that wall blocks the fillable jobs behind it forever.
+  //
+  // But random() has to compute a value for every candidate row and sort the lot to pick a few
+  // dozen, so its cost scales with the backlog rather than the batch — the same fault that had
+  // dead-job pruning timing out on every run. Measured on this table, that shape of query goes
+  // from seconds to over a minute.
+  //
+  // A cursor solves the wall without the scan: it only ever moves forward, so an unfillable
+  // batch is passed over rather than re-selected, and it wraps at the end to re-sample the ones
+  // that failed. Same property random() was bought for, at index cost.
+  const from = descCursor.get(ats) || 0;
   const { rows: jobs } = await query(
     `SELECT j.id, j.ats, j.external_id, j.url, j.raw_data, c.ats_slug
      FROM jobs j JOIN companies c ON j.company_id = c.id
      WHERE j.removed_at IS NULL
      AND j.description IS NULL
      AND j.ats = ?
-     -- random() (not first_seen_at DESC): failed jobs stay description=NULL, so a fixed ordering
-     -- re-selects the SAME newest batch every cycle. When the newest N are all unfillable (dead/
-     -- SPA/soft-block) that wall blocks the thousands of fillable older jobs behind it forever.
-     -- Random sampling drains the fillable ones and merely re-samples the stuck ones occasionally.
-     ORDER BY random()
+     AND j.id > ?
+     ORDER BY j.id
      LIMIT ?`,
-    [ats, batchSize]
+    [ats, from, batchSize]
   );
+  // Short read means the end of the table — wrap so the next cycle re-samples from the start,
+  // picking up rows that failed earlier and anything new below the cursor.
+  descCursor.set(ats, jobs.length < batchSize ? 0 : jobs[jobs.length - 1].id);
 
   if (jobs.length === 0) return { filled: 0, failed: 0 };
 
