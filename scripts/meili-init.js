@@ -26,26 +26,24 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const mode = process.argv.includes('--seed') ? 'seed' : 'probe';
   console.log(`mode=${mode} host=${meili.HOST || '(unset)'} index=${meili.INDEX} enabled=${meili.enabled}`);
 
-  if (!meili.enabled) {
-    console.error('MEILI_HOST is not set — nothing to do');
-    process.exit(1);
-  }
-
-  const h = await meili.health();
-  console.log('health:', JSON.stringify(h));
-  if (!h.ok) {
-    console.error('index unreachable — check MEILI_HOST host:port and that both services are in the same region');
-    process.exit(1);
-  }
-
-  console.log('applying index settings...');
-  await meili.ensureIndex();
-  console.log('settings applied');
-
-  const before = await meili.stats().catch(() => null);
-  console.log('index stats:', JSON.stringify(before));
-
+  // --seed only marks rows in Postgres; the worker's sync loop is what talks to the index.
+  // So the seed can run from anywhere, including a laptop that cannot reach the private
+  // service. Only --probe genuinely needs connectivity.
   if (mode === 'probe') {
+    if (!meili.enabled) {
+      console.error('MEILI_HOST is not set — nothing to probe');
+      process.exit(1);
+    }
+    const h = await meili.health();
+    console.log('health:', JSON.stringify(h));
+    if (!h.ok) {
+      console.error('index unreachable — check MEILI_HOST host:port and that both services are in the same region');
+      process.exit(1);
+    }
+    console.log('applying index settings...');
+    await meili.ensureIndex();
+    console.log('settings applied');
+    console.log('index stats:', JSON.stringify(await meili.stats().catch(() => null)));
     await closeDb();
     return;
   }
