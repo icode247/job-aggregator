@@ -110,20 +110,22 @@ async function pruneDeadJobs({
   limit = 400, concurrency = 10, tailDays = 30, recheckDays = 14,
   partitionMod = 1, partitionRemainder = 0,
 } = {}) {
-  const { query, queryWithTimeout } = require('../db/connection');
+  const { query } = require('../db/connection');
   const t = Number(tailDays) || 30;
   const r = Number(recheckDays) || 14;
   const pMod = Number(partitionMod) || 1;
   const pRem = ((Number(partitionRemainder) || 0) % pMod + pMod) % pMod;
 
-  // Deliberately NOT the pool default. This candidate query is a sequential scan over the
-  // whole live set (measured cost ~694k: `id % N` is not sargable, and the OR spans jobs and
-  // companies, so no index covers it) and it runs 15-35s. The pool's 15s statement_timeout
-  // was killing it outright — the loop logged "canceling statement due to statement timeout"
-  // and pruned nothing at all, which reads in the logs like an occasional blip rather than a
-  // stalled backlog. It is a background loop on its own client, so a long timeout here cannot
-  // hold a connection the API needs.
-  const { rows: jobs } = await queryWithTimeout(
+  // NOTE ON limit: this candidate query is a sequential scan over the whole live set (measured
+  // cost ~694k — `id % N` is not sargable and the OR spans jobs and companies, so no index
+  // covers it). The worker's pool allows 60s. At limit 3000 the query exceeded even that and
+  // the loop pruned nothing at all, logging one line that looks identical to an idle cycle.
+  //
+  // Raising the timeout is the wrong lever: the worker runs PG_POOL_MAX=2, so holding a
+  // dedicated client for 90s would leave one connection for every other loop in the process.
+  // Keep the batch to what fits in 60s until the query itself is index-driven; then the limit
+  // can go back up.
+  const { rows: jobs } = await query(
     `SELECT j.id, j.url,
             (c.last_synced_at IS NOT NULL AND j.last_seen_at < c.last_synced_at - INTERVAL '5 minutes') AS missing_from_sync
        FROM jobs j
@@ -138,8 +140,7 @@ async function pruneDeadJobs({
         )
       ORDER BY missing_from_sync DESC, j.last_checked_at ASC NULLS FIRST
       LIMIT $1`,
-    [limit],
-    90000
+    [limit]
   );
   if (!jobs.length) return { checked: 0, dead: 0, uncertain: 0 };
 

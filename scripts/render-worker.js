@@ -122,7 +122,11 @@ async function runDeadPrune() {
   //
   // Batches cannot overlap: the next timer is scheduled after the await, so a slow batch simply
   // delays the following one.
-  try { const r = await pruneDeadJobs({ limit: 3000, concurrency: 10, tailDays: 30, recheckDays: 14 }); if (r.checked) logger.info(r, 'dead-job pruning'); }
+  // 1000, not 3000: at 3000 the candidate scan blew past even the worker's 60s pool timeout and
+  // the loop pruned nothing. 1000 every 20 minutes is ~3000/hr — 7.5x the old 400/hr, a full
+  // pass in ~37 days rather than 281. Getting to the 14-day target needs the candidate query to
+  // be index-driven, not a bigger batch on top of a sequential scan.
+  try { const r = await pruneDeadJobs({ limit: 1000, concurrency: 10, tailDays: 30, recheckDays: 14 }); if (r.checked) logger.info(r, 'dead-job pruning'); }
   catch (e) { logger.error({ err: e.message }, 'dead-job pruning error'); }
   setTimeout(runDeadPrune, 20 * 60 * 1000);
 }
