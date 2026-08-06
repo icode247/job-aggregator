@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const { jobsRepo } = require('../../db');
+const jobsSearch = require('../../db/repositories/jobs-search');
 const { query, queryWithTimeout } = require('../../db/connection');
 const { stripHtml } = require('../../utils/html');
 const { recordSearchDemand, getTopDemand } = require('../searchDemand');
@@ -94,16 +95,31 @@ router.get('/api/jobs', async (req, res) => {
   const includeDesc = req.query.include === 'description';
   if (includeDesc) filters.includeDescription = true;
 
-  const [jobs, total] = await Promise.all([
-    jobsRepo.findActive(filters),
-    jobsRepo.countActive(filters),
-  ]);
+  // Search path: try the index first, fall back to Postgres on any doubt.
+  //
+  // jobsSearch.search() returns null when the index is unset, unreachable, or the filter set
+  // cannot be expressed faithfully — so an index problem degrades to a slower correct answer
+  // rather than a wrong one. SEARCH_ENGINE=postgres forces the old path outright.
+  let jobs, total, totalIsCappedFromIndex = null, servedBy = 'postgres';
+  const useIndex = process.env.SEARCH_ENGINE !== 'postgres';
+  const hit = useIndex ? await jobsSearch.search(filters) : null;
+  if (hit) {
+    jobs = hit.rows;
+    total = hit.total;
+    totalIsCappedFromIndex = hit.totalIsCapped;
+    servedBy = 'meili';
+  } else {
+    [jobs, total] = await Promise.all([
+      jobsRepo.findActive(filters),
+      jobsRepo.countActive(filters),
+    ]);
+  }
 
   // countActive stops at COUNT_CAP+1, so a value above the cap means "at least this many"
   // rather than an exact figure. Report the cap and say so, instead of implying precision we
   // did not pay for. Real paging never reaches 10,000 results (200 pages at 50/page).
   const { COUNT_CAP } = jobsRepo;
-  const totalIsCapped = total > COUNT_CAP;
+  const totalIsCapped = totalIsCappedFromIndex !== null ? totalIsCappedFromIndex : total > COUNT_CAP;
   const reportedTotal = totalIsCapped ? COUNT_CAP : total;
 
   const page = Math.floor(offset / limit) + 1;
@@ -123,6 +139,7 @@ router.get('/api/jobs', async (req, res) => {
       hasPrev,
       nextOffset: hasNext ? offset + limit : null,
       prevOffset: hasPrev ? Math.max(0, offset - limit) : null,
+      servedBy,
     },
     data: jobs.map(j => formatJob(j, includeDesc)),
   });
@@ -475,6 +492,21 @@ let facetsInFlight = null;
 const FACETS_TTL_MS = 5 * 60 * 1000;
 
 async function loadFacets() {
+  // The index returns facet counts as a byproduct of a zero-result search — no GROUP BY, no
+  // scan of 2.8M rows. Falls through to the Postgres aggregates if it is unavailable.
+  const fromIndex = process.env.SEARCH_ENGINE !== 'postgres' ? await jobsSearch.facets() : null;
+  if (fromIndex) {
+    const toRows = (obj, key) => Object.entries(obj || {})
+      .map(([k, count]) => ({ [key]: k, count }))
+      .sort((a, b) => b.count - a.count);
+    return {
+      employment_types: toRows(fromIndex.employment_type, 'employment_type'),
+      experience_levels: toRows(fromIndex.experience_level, 'experience_level'),
+      ats_platforms: toRows(fromIndex.ats, 'ats'),
+      work_modes: toRows(fromIndex.workplace_type, 'workplace_type'),
+    };
+  }
+
   const [empTypes, expLevels, atsPlatforms, workModes] = await Promise.all([
     query(`SELECT employment_type, COUNT(*) as count FROM jobs
       WHERE removed_at IS NULL AND employment_type IS NOT NULL
