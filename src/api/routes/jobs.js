@@ -221,33 +221,14 @@ router.get('/api/trending', async (req, res) => {
   ] = await Promise.all([
     // Trending roles — most posted in last 24 hours
     queryWithTimeout(
-      `SELECT role, COUNT(*) as job_count FROM (
-        SELECT CASE
-          WHEN title ILIKE '%software engineer%' OR title ILIKE '%software developer%' THEN 'Software Engineer'
-          WHEN title ILIKE '%data scientist%' THEN 'Data Scientist'
-          WHEN title ILIKE '%data analyst%' THEN 'Data Analyst'
-          WHEN title ILIKE '%data engineer%' THEN 'Data Engineer'
-          WHEN title ILIKE '%product manager%' THEN 'Product Manager'
-          WHEN title ILIKE '%product designer%' THEN 'Product Designer'
-          WHEN title ILIKE '%devops%' OR title ILIKE '%site reliability%' THEN 'DevOps / SRE'
-          WHEN title ILIKE '%frontend%' OR title ILIKE '%front-end%' OR title ILIKE '%front end%' THEN 'Frontend Developer'
-          WHEN title ILIKE '%backend%' OR title ILIKE '%back-end%' OR title ILIKE '%back end%' THEN 'Backend Developer'
-          WHEN title ILIKE '%full stack%' OR title ILIKE '%fullstack%' THEN 'Full Stack Developer'
-          WHEN title ILIKE '%machine learning%' OR title ILIKE '%ML engineer%' OR title ILIKE '%AI engineer%' THEN 'ML / AI Engineer'
-          WHEN title ILIKE '%cloud%' THEN 'Cloud Engineer'
-          WHEN title ILIKE '%security%' OR title ILIKE '%cybersecurity%' THEN 'Security Engineer'
-          WHEN title ILIKE '%QA%' OR title ILIKE '%quality assurance%' OR title ILIKE '%test engineer%' THEN 'QA Engineer'
-          WHEN title ILIKE '%mobile%' OR title ILIKE '%iOS%' OR title ILIKE '%android%' THEN 'Mobile Developer'
-          WHEN title ILIKE '%UX%' OR title ILIKE '%UI%' OR title ILIKE '%designer%' THEN 'Designer'
-          WHEN title ILIKE '%marketing%' THEN 'Marketing'
-          WHEN title ILIKE '%sales%' OR title ILIKE '%account executive%' THEN 'Sales'
-          WHEN title ILIKE '%customer success%' OR title ILIKE '%customer support%' THEN 'Customer Success'
-          WHEN title ILIKE '%recruiter%' OR title ILIKE '%talent%' THEN 'Recruiting'
-          ELSE NULL
-        END as role
-        FROM jobs WHERE removed_at IS NULL AND first_seen_at > NOW() - INTERVAL '24 hours'
-      ) t WHERE role IS NOT NULL
-      GROUP BY role ORDER BY job_count DESC LIMIT 15`
+      // Stored column, not a ~25-branch CASE over every job in the window. COALESCE covers
+      // rows the backfill has not reached yet; excluding 'Other' keeps the list meaningful.
+      `SELECT role_category AS role, COUNT(*) as job_count
+         FROM jobs
+        WHERE removed_at IS NULL
+          AND first_seen_at > NOW() - INTERVAL '24 hours'
+          AND role_category IS NOT NULL AND role_category <> 'Other'
+        GROUP BY role_category ORDER BY job_count DESC LIMIT 15`
     ),
     // Hot locations — most new jobs in last 24 hours
     queryWithTimeout(
@@ -446,34 +427,17 @@ let rolesInFlight = null;
 function refreshRoles() {
   if (rolesInFlight) return rolesInFlight;
   rolesInFlight = (async () => {
+  // Reads the stored role_category column instead of deriving the category with ~25 ILIKE
+  // patterns over every live job. That derivation was a ~40s sequential scan; two copies of it
+  // running at once starved the pool and returned 500s on /api/stats and /api/jobs even with
+  // nothing else on the database.
+  //
+  // COALESCE covers rows the backfill has not reached yet — it is running in the low-traffic
+  // window only, so this stays correct while the column fills in, and gets cheaper as it does.
+  // jobsRepo already writes role_category for every new row.
   const { rows } = await queryWithTimeout(
     `SELECT
-      CASE
-        WHEN title ILIKE '%software engineer%' OR title ILIKE '%software developer%' THEN 'Software Engineer'
-        WHEN title ILIKE '%frontend%' OR title ILIKE '%front-end%' OR title ILIKE '%front end%' THEN 'Frontend Developer'
-        WHEN title ILIKE '%backend%' OR title ILIKE '%back-end%' OR title ILIKE '%back end%' THEN 'Backend Developer'
-        WHEN title ILIKE '%full stack%' OR title ILIKE '%fullstack%' THEN 'Fullstack Developer'
-        WHEN title ILIKE '%data scientist%' THEN 'Data Scientist'
-        WHEN title ILIKE '%data analyst%' THEN 'Data Analyst'
-        WHEN title ILIKE '%data engineer%' THEN 'Data Engineer'
-        WHEN title ILIKE '%machine learning%' OR title ILIKE '%ML engineer%' OR title ILIKE '%AI engineer%' THEN 'ML / AI Engineer'
-        WHEN title ILIKE '%product manager%' THEN 'Product Manager'
-        WHEN title ILIKE '%project manager%' THEN 'Project Manager'
-        WHEN title ILIKE '%product designer%' OR title ILIKE '%UX designer%' OR title ILIKE '%UI designer%' THEN 'Product Designer'
-        WHEN title ILIKE '%devops%' OR title ILIKE '%site reliability%' OR title ILIKE '%SRE%' THEN 'DevOps / SRE'
-        WHEN title ILIKE '%QA%' OR title ILIKE '%quality assurance%' OR title ILIKE '%test engineer%' THEN 'QA Engineer'
-        WHEN title ILIKE '%mobile%' OR title ILIKE '%iOS%' OR title ILIKE '%android%' THEN 'Mobile Developer'
-        WHEN title ILIKE '%marketing%' THEN 'Marketing'
-        WHEN title ILIKE '%sales%' OR title ILIKE '%account executive%' OR title ILIKE '%business development%' THEN 'Sales'
-        WHEN title ILIKE '%customer success%' OR title ILIKE '%customer support%' THEN 'Customer Support'
-        WHEN title ILIKE '%security%' OR title ILIKE '%cybersecurity%' THEN 'Security Engineer'
-        WHEN title ILIKE '%cloud%' OR title ILIKE '%infrastructure%' THEN 'Cloud / Infrastructure'
-        WHEN title ILIKE '%technical writer%' OR title ILIKE '%content writer%' THEN 'Technical Writer'
-        WHEN title ILIKE '%recruiter%' OR title ILIKE '%talent%' THEN 'Recruiter'
-        WHEN title ILIKE '%finance%' OR title ILIKE '%accountant%' OR title ILIKE '%financial%' THEN 'Finance'
-        WHEN title ILIKE '%human resources%' OR title ILIKE '%HR %' THEN 'Human Resources'
-        ELSE 'Other'
-      END as role,
+      COALESCE(role_category, 'Other') AS role,
       COUNT(*) as job_count,
       COUNT(*) FILTER (WHERE is_remote = true) as remote_count,
       COUNT(*) FILTER (WHERE visa_sponsorship = 'yes') as visa_count
@@ -564,8 +528,14 @@ router.get('/api/jobs/:id', async (req, res) => {
 
 module.exports = router;
 
-// Prime the expensive aggregates at boot and refresh them before they expire, so no user
-// request ever pays for them. Unref'd so the timer cannot hold the process open.
-refreshRoles().catch(() => {});
-const rolesTimer = setInterval(() => refreshRoles().catch(() => {}), 50 * 60 * 1000);
-if (rolesTimer.unref) rolesTimer.unref();
+// Boot-time priming and the refresh timer are DISABLED.
+//
+// The intent was that no user request would pay for this aggregate. In practice it fired the
+// ~40s scan on a schedule regardless of whether anyone wanted it, and the in-flight guard did
+// not hold — two copies were observed running concurrently at 25s each, starving the pool so
+// that /api/stats and /api/jobs returned 500s with nothing else touching the database.
+//
+// The endpoint still self-serves: the first caller triggers refreshRoles() and gets a 503 with
+// retry_after while it warms. That is a worse cold start for one caller, and a far better
+// outcome than the whole site degrading on a timer. Re-enable once role_category is fully
+// backfilled and indexed, when the query is an indexed GROUP BY rather than a full scan.
