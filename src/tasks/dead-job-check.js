@@ -110,13 +110,20 @@ async function pruneDeadJobs({
   limit = 400, concurrency = 10, tailDays = 30, recheckDays = 14,
   partitionMod = 1, partitionRemainder = 0,
 } = {}) {
-  const { query } = require('../db/connection');
+  const { query, queryWithTimeout } = require('../db/connection');
   const t = Number(tailDays) || 30;
   const r = Number(recheckDays) || 14;
   const pMod = Number(partitionMod) || 1;
   const pRem = ((Number(partitionRemainder) || 0) % pMod + pMod) % pMod;
 
-  const { rows: jobs } = await query(
+  // Deliberately NOT the pool default. This candidate query is a sequential scan over the
+  // whole live set (measured cost ~694k: `id % N` is not sargable, and the OR spans jobs and
+  // companies, so no index covers it) and it runs 15-35s. The pool's 15s statement_timeout
+  // was killing it outright — the loop logged "canceling statement due to statement timeout"
+  // and pruned nothing at all, which reads in the logs like an occasional blip rather than a
+  // stalled backlog. It is a background loop on its own client, so a long timeout here cannot
+  // hold a connection the API needs.
+  const { rows: jobs } = await queryWithTimeout(
     `SELECT j.id, j.url,
             (c.last_synced_at IS NOT NULL AND j.last_seen_at < c.last_synced_at - INTERVAL '5 minutes') AS missing_from_sync
        FROM jobs j
@@ -131,7 +138,8 @@ async function pruneDeadJobs({
         )
       ORDER BY missing_from_sync DESC, j.last_checked_at ASC NULLS FIRST
       LIMIT $1`,
-    [limit]
+    [limit],
+    90000
   );
   if (!jobs.length) return { checked: 0, dead: 0, uncertain: 0 };
 
@@ -143,11 +151,22 @@ async function pruneDeadJobs({
     else if (result.alive === null) uncertain++;
   });
 
+  // Write back in chunks with a breath between them. Both columns are indexed, so a single
+  // 3000-row UPDATE is a real write on a 28GB table with 26 indexes — the shape that has
+  // starved the API before. 500 at a time keeps each statement well inside the pool timeout
+  // and leaves gaps for user queries.
+  const writeInChunks = async (sql, ids) => {
+    for (let i = 0; i < ids.length; i += 500) {
+      await query(sql, [ids.slice(i, i + 500)]);
+      if (i + 500 < ids.length) await new Promise((r) => setTimeout(r, 250));
+    }
+  };
+
   if (deadIds.length) {
-    await query('UPDATE jobs SET removed_at = NOW() WHERE id = ANY($1::bigint[])', [deadIds]);
+    await writeInChunks('UPDATE jobs SET removed_at = NOW() WHERE id = ANY($1::bigint[])', deadIds);
   }
   // Stamp every checked job so the rotation advances (including the ones we pruned).
-  await query('UPDATE jobs SET last_checked_at = NOW() WHERE id = ANY($1::bigint[])', [jobs.map((j) => j.id)]);
+  await writeInChunks('UPDATE jobs SET last_checked_at = NOW() WHERE id = ANY($1::bigint[])', jobs.map((j) => j.id));
 
   return { checked: jobs.length, dead: deadIds.length, uncertain };
 }
