@@ -10,6 +10,7 @@
  * the repo has no shared HTTP wrapper to hang it off anyway.
  */
 const logger = require('../logger');
+const { countriesFromLocation } = require('./location-countries');
 
 const HOST = process.env.MEILI_HOST || '';
 const KEY = process.env.MEILI_MASTER_KEY || '';
@@ -69,7 +70,7 @@ async function ensureIndex() {
     filterableAttributes: [
       'ats', 'employment_type', 'workplace_type', 'experience_level',
       'visa_sponsorship', 'is_remote', 'remote_worldwide', 'role_category',
-      'company_id', 'location', 'posted_ts',
+      'company_id', 'location', 'location_countries', 'posted_ts',
     ],
     sortableAttributes: ['posted_ts', 'first_seen_ts'],
     // Match the board's ordering: freshness first. Meilisearch still applies its relevance
@@ -117,6 +118,10 @@ function toDocument(row) {
     title: row.title,
     department: row.department || null,
     location: row.location || null,
+    // Countries resolved once, here, so the query side needs no substring matching. Postgres
+    // matches short aliases (us/uk/uae) with a word-boundary regex; Meilisearch has no such
+    // operator, and CONTAINS "us" would return Houston. An exact filter on this sidesteps both.
+    location_countries: countriesFromLocation(row.location),
     workplace_type: row.workplace_type || null,
     employment_type: row.employment_type || null,
     experience_level: row.experience_level || null,
