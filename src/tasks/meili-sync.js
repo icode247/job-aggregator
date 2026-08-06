@@ -38,7 +38,8 @@ async function syncMeili() {
               j.employment_type, j.experience_level, j.visa_sponsorship, j.role_category,
               j.is_remote, j.remote_worldwide, j.ats, j.url,
               j.salary_min, j.salary_max, j.salary_currency, j.salary_interval,
-              j.posted_at, j.first_seen_at, j.removed_at, j.company_id, j.index_dirty_at,
+              j.posted_at, j.first_seen_at, j.removed_at, j.company_id,
+              j.index_dirty_at::text AS dirty_txt,
               c.company_name, c.domain, c.ats_slug, c.logo_url
          FROM jobs j
          LEFT JOIN companies c ON c.id = j.company_id
@@ -54,18 +55,25 @@ async function syncMeili() {
     if (live.length) await meili.addDocuments(live.map(meili.toDocument));
     if (dead.length) await meili.deleteDocuments(dead.map((r) => r.id));
 
-    // Clear only rows nobody touched while we were shipping. `IS NOT DISTINCT FROM` matters:
-    // a plain = would never match if the value were NULL.
+    // Clear only rows nobody re-dirtied while we were shipping.
+    //
+    // The stamp is compared as TEXT, not as a timestamp. index_dirty_at is `timestamp without
+    // time zone`; passing values back through the driver as timestamptz applies a timezone
+    // conversion, so the comparison never matched — the loop re-shipped the same 20,000 rows
+    // every minute for four hours while reporting success, and the queue never drained.
+    // Round-tripping the exact text Postgres produced removes any conversion from the path.
     const ids = rows.map((r) => r.id);
-    const stamps = rows.map((r) => r.index_dirty_at);
-    await query(
-      `UPDATE jobs
-          SET index_dirty_at = NULL
-         FROM (SELECT unnest($1::int[]) AS id, unnest($2::timestamptz[]) AS stamp) u
-        WHERE jobs.id = u.id
-          AND jobs.index_dirty_at IS NOT DISTINCT FROM u.stamp`,
-      [ids, stamps]
+    const maxStamp = rows.reduce((m, r) => (r.dirty_txt > m ? r.dirty_txt : m), rows[0].dirty_txt);
+    const cleared = await query(
+      `UPDATE jobs SET index_dirty_at = NULL
+        WHERE id = ANY($1::int[])
+          AND index_dirty_at::text <= $2`,
+      [ids, maxStamp]
     );
+    if (!cleared.rowCount) {
+      logger.error({ batch: rows.length }, 'Meili sync cleared 0 rows — queue would loop; aborting');
+      break;
+    }
 
     indexed += live.length;
     removed += dead.length;
