@@ -93,15 +93,30 @@ async function runClassify() {
   setTimeout(runClassify, 60 * 1000);
 }
 async function runStaleCleanup() {
+  // This was one unbounded `DELETE FROM jobs WHERE posted_at < NOW() - 90 days RETURNING id`.
+  // On a 28GB table with 26 indexes that is an enormous single write, and it timed out every
+  // run — which was the lucky outcome, because succeeding would have starved the API for as
+  // long as it held. Deleting in bounded chunks keeps each statement short and leaves gaps for
+  // user queries, and the loop still clears the same backlog, just across several passes.
+  let total = 0;
   try {
-    const { rows } = await query("DELETE FROM jobs WHERE posted_at IS NOT NULL AND posted_at < NOW() - INTERVAL '90 days' RETURNING id");
-    if (rows.length) {
-      logger.info({ deleted: rows.length }, 'stale job cleanup');
+    for (let i = 0; i < 20; i++) { // ceiling of 100k per cycle; the rest waits for the next one
+      const { rows } = await query(
+        `DELETE FROM jobs WHERE id IN (
+           SELECT id FROM jobs
+            WHERE posted_at IS NOT NULL AND posted_at < NOW() - INTERVAL '90 days'
+            LIMIT 5000
+         ) RETURNING id`
+      );
+      if (!rows.length) break;
+      total += rows.length;
       // Hard DELETEs leave no row for the outbox trigger to mark, so without this the index
       // would keep serving jobs that no longer exist. Fire and forget — never fail the cleanup.
       require('../src/tasks/meili-sync').removeFromIndex(rows.map((r) => r.id)).catch(() => {});
+      await new Promise((r) => setTimeout(r, 500));
     }
-  } catch (e) { logger.error({ err: e.message }, 'stale job cleanup error'); }
+    if (total) logger.info({ deleted: total }, 'stale job cleanup');
+  } catch (e) { logger.error({ err: e.message, deleted: total }, 'stale job cleanup error'); }
   setTimeout(runStaleCleanup, 6 * 60 * 60 * 1000);
 }
 async function runDeadPrune() {
