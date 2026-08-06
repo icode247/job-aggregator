@@ -1,0 +1,53 @@
+####################################################################################################
+# Render Blueprint — the board's API, running next to the search index.
+#
+# Why this exists: Meilisearch is a Render *private service* (meilisearch-6fmu), reachable only
+# from inside Render's network. The API on Heroku therefore cannot see it at all — MEILI_HOST is
+# unset there, jobs-search.js returns null on every call, and /api/jobs quietly falls back to
+# Postgres. Moving the API onto the same private network is what makes the cutover possible.
+#
+# This service runs ALONGSIDE Heroku, on its own onrender.com URL. fastapply.co keeps pointing at
+# Heroku until the latency comparison says otherwise, so nothing user-facing is at risk.
+#
+# Branch `render-web` is Heroku's deployed commit (1b3ebbc, release v269) plus the cutover
+# (b125c63) and this file — nothing else. That keeps the A/B honest: same code, same database,
+# same moment, one difference.
+####################################################################################################
+services:
+  - type: web
+    name: job-aggregator-web
+    runtime: node
+    region: virginia # must match meilisearch — private services are region-local
+    plan: starter
+    branch: render-web
+    autoDeploy: false # deploy on demand while this is a comparison, not production
+    buildCommand: npm ci
+    startCommand: node src/web.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # The private-network address. Port 7700 is what Meilisearch listens on; the :10000 in
+      # Render's dashboard is the routing port and does not work from inside the network.
+      - key: MEILI_HOST
+        value: http://meilisearch-6fmu:7700
+
+      # Leave SEARCH_ENGINE unset to serve from the index. Set it to `postgres` to force the old
+      # path — the kill switch, if the comparison goes badly.
+
+      # Deliberately small. This pool is additive to Heroku's, and both point at the same
+      # Standard 0 instance. Raise it only after watching pg_stat_activity under load.
+      - key: PG_POOL_MAX
+        value: "5"
+
+      # Set these in the dashboard — never commit them.
+      #   DATABASE_URL      copy from Heroku: fastapply-board -> Settings -> Config Vars
+      #   API_SECRET        same place; the API rejects requests without it
+      #   MEILI_MASTER_KEY  copy from the meilisearch service's own Environment tab
+      - key: DATABASE_URL
+        sync: false
+      - key: API_SECRET
+        sync: false
+      - key: MEILI_MASTER_KEY
+        sync: false
