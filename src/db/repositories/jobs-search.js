@@ -12,7 +12,8 @@
  * already run, and adds typo tolerance and relevance ranking Postgres full-text cannot.
  */
 const meili = require('../../utils/meili');
-const { aliasGroup, isShortAlias } = require('../../utils/location-aliases');
+const { isShortAlias } = require('../../utils/location-aliases');
+const { resolveCountry } = require('../../utils/location-countries');
 const { normalizeEmploymentType } = require('../../utils/extract');
 
 const COUNT_CAP = parseInt(process.env.SEARCH_COUNT_CAP, 10) || 10000;
@@ -73,21 +74,24 @@ function buildFilter(filters = {}) {
   // CONTAINS is the faithful equivalent of the SQL `ILIKE '%term%'` (it needs the containsFilter
   // experimental flag, enabled on the instance) and is case-insensitive, so terms go in lowered.
   //
-  // Short aliases are the one case it cannot express. location-aliases.js requires us/uk/usa/uae
-  // to match as whole words — CONTAINS "us" would hit Houston and Austin, and Meilisearch has no
-  // word-boundary operator. Any query pulling in a short alias returns null so Postgres, which
-  // does it with a word-boundary regex, answers instead.
+  // A country term does not go through CONTAINS at all. Short aliases can't: location-aliases.js
+  // requires us/uk/uae to match as whole words, and CONTAINS "us" would return Houston. Instead
+  // the term resolves to a country code and filters on location_countries, which meili.js
+  // resolved at index time. The canonical name is OR'd in as a substring so a location that
+  // names the country without a parseable code ("Work from United States") still matches, and
+  // so an ambiguous term keeps its other meaning — "Georgia" finds both the country and Atlanta.
   const locs = toList(filters.location);
   if (locs.length) {
-    const terms = [];
+    const or = [];
     for (const l of locs) {
-      for (const t of aliasGroup(l) ? [String(l).toLowerCase(), ...aliasGroup(l)] : [l]) {
-        if (isShortAlias(t)) return null;
-        terms.push(String(t).toLowerCase());
+      const country = resolveCountry(l);
+      if (country) {
+        or.push(`location_countries = ${q(country.code)}`);
+        or.push(`location CONTAINS ${q(country.name.toLowerCase())}`);
       }
+      if (!country || !isShortAlias(l)) or.push(`location CONTAINS ${q(String(l).toLowerCase())}`);
     }
-    const uniq = [...new Set(terms)];
-    parts.push(`(${uniq.map((t) => `location CONTAINS ${q(t)}`).join(' OR ')})`);
+    parts.push(`(${[...new Set(or)].join(' OR ')})`);
   }
 
   if (filters.posted) {

@@ -75,7 +75,20 @@ async function apiBusy() {
     );
     if (!rows.length) break;
 
-    await meili.addDocuments(rows.map(meili.toDocument));
+    // Retry the push. The index restarted once mid-run (Meilisearch is on a 2GB instance and
+    // indexing is memory-hungry); the in-flight request died with `fetch failed` and took a
+    // 3-hour run with it, because a single throw ends the whole script. Reads from Postgres are
+    // not retried — those failing means something worth stopping for.
+    let lastErr;
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      try { await meili.addDocuments(rows.map(meili.toDocument)); lastErr = null; break; }
+      catch (err) {
+        lastErr = err;
+        console.log(`  push failed (attempt ${attempt}/5): ${err.message}`);
+        await sleep(attempt * 5000);
+      }
+    }
+    if (lastErr) throw lastErr;
 
     from = rows[rows.length - 1].id;
     sent += rows.length;
