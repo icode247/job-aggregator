@@ -12,7 +12,7 @@
  * already run, and adds typo tolerance and relevance ranking Postgres full-text cannot.
  */
 const meili = require('../../utils/meili');
-const { aliasGroup } = require('../../utils/location-aliases');
+const { aliasGroup, isShortAlias } = require('../../utils/location-aliases');
 const { normalizeEmploymentType } = require('../../utils/extract');
 
 const COUNT_CAP = parseInt(process.env.SEARCH_COUNT_CAP, 10) || 10000;
@@ -62,18 +62,32 @@ function buildFilter(filters = {}) {
   if (filters.remoteWorldwide === 'true') parts.push('remote_worldwide = true');
   if (filters.visa) parts.push(`visa_sponsorship = ${q(filters.visa)}`);
 
-  // Location: the SQL path does substring matching plus country-alias expansion. Meilisearch
-  // filters are exact-match, so an equality filter would silently drop "Remote - United States"
-  // when the user asked for "United States". Instead the location terms are folded into the
-  // search query itself, where partial matching is what the engine is for.
+  // Location: the SQL path does substring matching plus country-alias expansion.
+  //
+  // This used to fold the location terms into the free-text query instead, on the reasoning that
+  // an equality filter would drop "Remote - United States" for someone searching "United States".
+  // True, but it made location a ranking signal rather than a filter: `location=London` reported
+  // 10,000+ matches where Postgres found 1,396, and results past the first page drifted to jobs
+  // nowhere near London. An inflated count on the page is worse than a slower query.
+  //
+  // CONTAINS is the faithful equivalent of the SQL `ILIKE '%term%'` (it needs the containsFilter
+  // experimental flag, enabled on the instance) and is case-insensitive, so terms go in lowered.
+  //
+  // Short aliases are the one case it cannot express. location-aliases.js requires us/uk/usa/uae
+  // to match as whole words — CONTAINS "us" would hit Houston and Austin, and Meilisearch has no
+  // word-boundary operator. Any query pulling in a short alias returns null so Postgres, which
+  // does it with a word-boundary regex, answers instead.
   const locs = toList(filters.location);
-  let locationTerms = [];
   if (locs.length) {
+    const terms = [];
     for (const l of locs) {
-      const group = aliasGroup(l);
-      locationTerms.push(...(group ? [String(l).toLowerCase(), ...group] : [l]));
+      for (const t of aliasGroup(l) ? [String(l).toLowerCase(), ...aliasGroup(l)] : [l]) {
+        if (isShortAlias(t)) return null;
+        terms.push(String(t).toLowerCase());
+      }
     }
-    locationTerms = [...new Set(locationTerms)];
+    const uniq = [...new Set(terms)];
+    parts.push(`(${uniq.map((t) => `location CONTAINS ${q(t)}`).join(' OR ')})`);
   }
 
   if (filters.posted) {
@@ -85,13 +99,13 @@ function buildFilter(filters = {}) {
     parts.push(`posted_ts >= ${Math.floor(Date.now() / 1000) - n * secs}`);
   }
 
-  return { filter: parts.length ? parts.join(' AND ') : undefined, locationTerms };
+  return { filter: parts.length ? parts.join(' AND ') : undefined };
 }
 
-/** Build the free-text query. Roles are comma-separated; location terms are appended. */
-function buildQuery(filters, locationTerms) {
+/** Build the free-text query. Roles are comma-separated; location is a filter, not a term. */
+function buildQuery(filters) {
   const roles = filters.q ? String(filters.q).split(',').map((r) => r.trim()).filter(Boolean) : [];
-  return [...roles, ...locationTerms].join(' ').trim();
+  return roles.join(' ').trim();
 }
 
 /**
@@ -109,7 +123,7 @@ async function search(filters = {}) {
 
   try {
     const res = await meili.search({
-      q: buildQuery(filters, built.locationTerms),
+      q: buildQuery(filters),
       filter: built.filter,
       limit,
       offset,
