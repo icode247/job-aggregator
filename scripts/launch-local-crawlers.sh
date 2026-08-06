@@ -34,17 +34,34 @@ launch() { # name  ATS-list  logfile  [env-override]
   echo "launched $name (ATS: $ats) -> $log  wrapper pid $!"
 }
 
-# Instance A (bamboohr,lever): both ATS work fine crawled DIRECT, so force
-# PROXY_DISABLED=1 — the IPRoyal residential proxy is metered/often-down, and
-# routing bamboohr/lever through it just fails (100% errors when the proxy lapses).
-launch A "bamboohr,lever"                          "$LOG/crawl-A.log" "$COMMON PROXY_DISABLED=1"
+# SPLIT WITH THE RENDER WORKER, 2026-08-06. The Render worker (job-aggregator-va, CRAWL_ATS)
+# owns workday, greenhouse, bamboohr, smartrecruiters and rippling — the platforms with working
+# apply automation. They belong on always-on infrastructure: this Mac can be asleep and the home
+# connection can drop, and those are the jobs users actually apply to.
+#
+# This fleet therefore keeps the rest, and picks up the large platforms whose apply automation
+# is not built yet (icims/oracle/successfactors). Prospective inventory is the right thing to
+# run on the machine that might go offline.
+#
+# The partition below must stay DISJOINT FROM CRAWL_ATS as well as within itself — two crawlers
+# on one ATS means duplicate writes and both racing the same last_synced_at claims.
+
+# Instance A (lever): works fine crawled DIRECT, so force PROXY_DISABLED=1 — the IPRoyal
+# residential proxy is metered/often-down, and routing lever through it just fails (100% errors
+# when the proxy lapses). bamboohr moved to the Render worker.
+launch A "lever"                                   "$LOG/crawl-A.log" "$COMMON PROXY_DISABLED=1"
 # B/C/F crawl DIRECT (PROXY_DISABLED=1). These ATS all expose public JSON APIs that
 # don't IP-block, so the laptop's own residential IP is enough — the proxy added nothing
 # but a socket leak. On the metered IPRoyal proxy they ran 100% errors (EADDRNOTAVAIL,
 # ephemeral-port exhaustion) for ~71h and stored 0 jobs; direct they flow at hundreds/min.
-launch B "smartrecruiters,recruitee,breezy"        "$LOG/crawl-B.log" "$COMMON PROXY_DISABLED=1"
-launch C "ashby,greenhouse"                         "$LOG/crawl-C.log" "$COMMON PROXY_DISABLED=1"
-launch F "rippling"                                "$LOG/crawl-F.log" "$COMMON PROXY_DISABLED=1"
+launch B "recruitee,breezy"                        "$LOG/crawl-B.log" "$COMMON PROXY_DISABLED=1"
+launch C "ashby"                                   "$LOG/crawl-C.log" "$COMMON PROXY_DISABLED=1"
+# Instance F took rippling, which is now the Render worker's. Repointed to icims — one of the
+# three largest platforms and, per the product decision on 2026-08-06, one nothing is crawling
+# because its apply automation is not built. Building the inventory now costs a local instance
+# and nothing else. oracle and successfactors are the obvious next two; add them as their own
+# instances once icims is shown to be behaving, not all three at once.
+launch F "icims"                                   "$LOG/crawl-F.log" "$COMMON PROXY_DISABLED=1"
 # Instance J (jazzhr): applytojob.com JSON API, works DIRECT. Added when the ats-slugs
 # seed brought in ~2.5k jazzhr companies that nothing was crawling.
 launch J "jazzhr"                                  "$LOG/crawl-J.log" "$COMMON PROXY_DISABLED=1"
