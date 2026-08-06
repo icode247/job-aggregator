@@ -55,13 +55,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await query('SET statement_timeout = 0');
   let from = 0, marked = 0, batches = 0;
   for (;;) {
+    // Walk the primary key, do not filter on index_dirty_at IS NULL.
+    //
+    // idx_jobs_index_dirty is a PARTIAL index covering only non-null rows — it is the work
+    // queue, not a copy of the table — so `WHERE index_dirty_at IS NULL` cannot use it and
+    // degenerates into a scan that starts from the beginning each batch. Measured: selecting
+    // 25k rows that way took 87s of a 113s batch, and would have got worse every batch.
+    // Keyset-walking id uses the primary key and stays flat.
     const res = await query(
       `WITH batch AS (
          SELECT id FROM jobs
-          WHERE id > ${from} AND removed_at IS NULL AND index_dirty_at IS NULL
+          WHERE id > ${from} AND removed_at IS NULL
           ORDER BY id LIMIT ${SEED_BATCH}
        )
-       UPDATE jobs SET index_dirty_at = NOW()
+       UPDATE jobs SET index_dirty_at = COALESCE(index_dirty_at, NOW())
         WHERE id IN (SELECT id FROM batch)
        RETURNING id`
     );
