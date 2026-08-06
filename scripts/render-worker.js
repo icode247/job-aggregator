@@ -105,9 +105,26 @@ async function runStaleCleanup() {
   setTimeout(runStaleCleanup, 6 * 60 * 60 * 1000);
 }
 async function runDeadPrune() {
-  try { const r = await pruneDeadJobs({ limit: 400, concurrency: 10, tailDays: 30, recheckDays: 14 }); if (r.checked) logger.info(r, 'dead-job pruning'); }
+  // 400/hr against a ~2.7M eligible population is one full pass every 281 days, against a
+  // recheckDays of 14 — measured 2026-08-06: 92% of live jobs had never been checked once, and
+  // the batches that did run came back 28% dead. That backlog is dead postings served as live.
+  //
+  // The candidate SELECT is a sequential scan (cost ~694k, no usable index — `id % N` is not
+  // sargable and the OR spans jobs and companies), and that cost is paid once per call whatever
+  // the limit. So take more per call rather than calling more often: 3000 every 20 minutes is
+  // ~9000/hr and a full pass in ~12 days, for roughly the same number of scans per hour.
+  //
+  // concurrency stays at 10 ON PURPOSE. checkUrl buffers each response twice (res.text() then
+  // .toLowerCase()), so peak memory scales with concurrency, not with limit — the batch array
+  // itself is only ~600KB at 3000 rows. This runs in the parent process, which shares the
+  // 512MB Starter with the 224MB-capped crawler child; raising concurrency is what would put
+  // that child's headroom at risk.
+  //
+  // Batches cannot overlap: the next timer is scheduled after the await, so a slow batch simply
+  // delays the following one.
+  try { const r = await pruneDeadJobs({ limit: 3000, concurrency: 10, tailDays: 30, recheckDays: 14 }); if (r.checked) logger.info(r, 'dead-job pruning'); }
   catch (e) { logger.error({ err: e.message }, 'dead-job pruning error'); }
-  setTimeout(runDeadPrune, 60 * 60 * 1000);
+  setTimeout(runDeadPrune, 20 * 60 * 1000);
 }
 // Demand-driven crawl (Phase 2): moved off the Mac to the cloud so home-network outages don't
 // pause it. Runs IN this parent process (not a fork) — it's I/O-bound + low-memory (one API
