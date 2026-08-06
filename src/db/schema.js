@@ -206,6 +206,55 @@ async function migrate() {
     } catch { /* not permitted on some plans */ }
   }
 
+  // Search-index outbox.
+  //
+  // The external search index has to learn about every row change, and there are ~30 distinct
+  // writers: syncForCompany, the dead-job pruner, the stale-job DELETE, four description/salary/
+  // classification backfills, two crawlers with their own upserts, and a long tail of one-off
+  // scripts that run on a laptop and will never import application code. Polling cannot catch
+  // them either: `jobs` has no updated_at, and the backfills deliberately touch no timestamp,
+  // so "changed since T" would silently miss every description and salary fill.
+  //
+  // A trigger is the only thing that sees all of them. index_dirty_at is set on INSERT and on
+  // any UPDATE that alters an indexed field; the sync task clears it once the document is
+  // shipped. Deletes are handled separately — the stale-job cleanup already RETURNs the ids it
+  // removed, and soft-deletes come through as an ordinary UPDATE of removed_at.
+  if (isPostgres) {
+    await exec('ALTER TABLE jobs ADD COLUMN IF NOT EXISTS index_dirty_at TIMESTAMP');
+    // Partial index: only dirty rows are ever scanned, so this stays tiny (it is the work
+    // queue, not a copy of the table).
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_index_dirty ON jobs (index_dirty_at) WHERE index_dirty_at IS NOT NULL');
+    await exec(`
+      CREATE OR REPLACE FUNCTION jobs_mark_index_dirty() RETURNS trigger AS $$
+      BEGIN
+        IF TG_OP = 'INSERT' THEN
+          NEW.index_dirty_at := NOW();
+          RETURN NEW;
+        END IF;
+        -- Only re-index when something the index actually stores changed. Without this guard
+        -- every sync would dirty every row it touches (syncForCompany bumps last_seen_at on
+        -- ~every job, every cycle) and the queue would never drain.
+        IF (NEW.title, NEW.location, NEW.company_id, NEW.ats, NEW.department,
+            NEW.workplace_type, NEW.employment_type, NEW.experience_level,
+            NEW.visa_sponsorship, NEW.is_remote, NEW.remote_worldwide,
+            NEW.role_category, NEW.salary_min, NEW.salary_max, NEW.url,
+            NEW.posted_at, NEW.removed_at)
+           IS DISTINCT FROM
+           (OLD.title, OLD.location, OLD.company_id, OLD.ats, OLD.department,
+            OLD.workplace_type, OLD.employment_type, OLD.experience_level,
+            OLD.visa_sponsorship, OLD.is_remote, OLD.remote_worldwide,
+            OLD.role_category, OLD.salary_min, OLD.salary_max, OLD.url,
+            OLD.posted_at, OLD.removed_at)
+        THEN
+          NEW.index_dirty_at := NOW();
+        END IF;
+        RETURN NEW;
+      END $$ LANGUAGE plpgsql
+    `);
+    await exec('DROP TRIGGER IF EXISTS trig_jobs_index_dirty ON jobs');
+    await exec('CREATE TRIGGER trig_jobs_index_dirty BEFORE INSERT OR UPDATE ON jobs FOR EACH ROW EXECUTE FUNCTION jobs_mark_index_dirty()');
+  }
+
   // Full-text search (PostgreSQL only)
   if (isPostgres) {
     await exec(`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS search_vector tsvector`);
