@@ -255,6 +255,38 @@ async function migrate() {
     await exec('CREATE TRIGGER trig_jobs_index_dirty BEFORE INSERT OR UPDATE ON jobs FOR EACH ROW EXECUTE FUNCTION jobs_mark_index_dirty()');
   }
 
+  // Company changes also invalidate index documents.
+  //
+  // Each job document carries denormalised company fields — logo_url, company_name, domain,
+  // ats_slug — so a logo refresh or a rename makes every one of that company's documents
+  // stale. The jobs trigger cannot see that: updating `companies` touches no job row.
+  //
+  // The flag goes on the COMPANY, not on its jobs. Marking jobs directly would fan out
+  // immediately — 36 jobs per company on average but up to 39,523 for the largest, and ~59k
+  // companies change in a week — which is the bulk-UPDATE pattern that starves the API. With
+  // the flag on the company, only ~100k rows can ever be marked, and the fan-out happens in
+  // the sync loop where it is already batched and throttled.
+  if (isPostgres) {
+    await exec('ALTER TABLE companies ADD COLUMN IF NOT EXISTS index_dirty_at TIMESTAMP');
+    await exec('CREATE INDEX IF NOT EXISTS idx_companies_index_dirty ON companies (index_dirty_at) WHERE index_dirty_at IS NOT NULL');
+    await exec(`
+      CREATE OR REPLACE FUNCTION companies_mark_index_dirty() RETURNS trigger AS $$
+      BEGIN
+        -- Only the fields the index actually stores. Without this guard every last_synced_at
+        -- bump would re-index the company's whole job set.
+        IF (NEW.logo_url, NEW.company_name, NEW.domain, NEW.ats_slug)
+           IS DISTINCT FROM
+           (OLD.logo_url, OLD.company_name, OLD.domain, OLD.ats_slug)
+        THEN
+          NEW.index_dirty_at := NOW();
+        END IF;
+        RETURN NEW;
+      END $$ LANGUAGE plpgsql
+    `);
+    await exec('DROP TRIGGER IF EXISTS trig_companies_index_dirty ON companies');
+    await exec('CREATE TRIGGER trig_companies_index_dirty BEFORE UPDATE ON companies FOR EACH ROW EXECUTE FUNCTION companies_mark_index_dirty()');
+  }
+
   // Full-text search (PostgreSQL only)
   if (isPostgres) {
     await exec(`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS search_vector tsvector`);

@@ -80,8 +80,61 @@ async function syncMeili() {
     if (rows.length < BATCH) break;
   }
 
-  if (indexed || removed) logger.info({ indexed, removed, batches }, 'Meili sync complete');
-  return { indexed, removed, batches };
+  // Companies whose indexed fields changed (logo, name, domain, slug) invalidate every one of
+  // their job documents. Handled here rather than by marking those jobs in Postgres: the
+  // largest company has ~39k live jobs and ~59k companies change per week, so marking would
+  // be a bulk UPDATE. Re-pushing straight from the read side keeps the cost in this loop,
+  // where it is already batched.
+  const companies = await syncDirtyCompanies();
+
+  if (indexed || removed || companies) {
+    logger.info({ indexed, removed, batches, companies }, 'Meili sync complete');
+  }
+  return { indexed, removed, batches, companies };
+}
+
+const COMPANY_BATCH = parseInt(process.env.MEILI_COMPANY_BATCH || '20', 10);
+
+async function syncDirtyCompanies() {
+  const { rows: dirty } = await query(
+    `SELECT id, index_dirty_at::text AS dirty_txt FROM companies
+      WHERE index_dirty_at IS NOT NULL ORDER BY index_dirty_at LIMIT ${COMPANY_BATCH}`
+  );
+  if (!dirty.length) return 0;
+
+  let done = 0;
+  for (const co of dirty) {
+    // Page through this company's jobs so one large employer cannot produce a huge request.
+    let after = 0;
+    for (;;) {
+      const { rows } = await query(
+        `SELECT j.id, j.external_id, j.title, j.department, j.location, j.workplace_type,
+                j.employment_type, j.experience_level, j.visa_sponsorship, j.role_category,
+                j.is_remote, j.remote_worldwide, j.ats, j.url,
+                j.salary_min, j.salary_max, j.salary_currency, j.salary_interval,
+                j.posted_at, j.first_seen_at, j.company_id,
+                c.company_name, c.domain, c.ats_slug, c.logo_url
+           FROM jobs j JOIN companies c ON c.id = j.company_id
+          WHERE j.company_id = $1 AND j.removed_at IS NULL AND j.id > $2
+          ORDER BY j.id LIMIT 1000`,
+        [co.id, after]
+      );
+      if (!rows.length) break;
+      await meili.addDocuments(rows.map(meili.toDocument));
+      after = rows[rows.length - 1].id;
+      if (rows.length < 1000) break;
+    }
+    // Clear only if nothing changed again meanwhile — text comparison for the same reason as
+    // the jobs path: index_dirty_at is `timestamp without time zone` and a timestamptz
+    // round-trip through the driver shifts it so the comparison never matches.
+    await query(
+      `UPDATE companies SET index_dirty_at = NULL
+        WHERE id = $1 AND index_dirty_at::text <= $2`,
+      [co.id, co.dirty_txt]
+    );
+    done++;
+  }
+  return done;
 }
 
 /** Remove documents for rows that were hard-deleted (worker.js stale-job cleanup). */
