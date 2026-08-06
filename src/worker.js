@@ -84,6 +84,10 @@ async function main() {
       `);
       if (rows.length > 0) {
         logger.info({ deleted: rows.length }, 'Stale job cleanup: removed jobs older than 90 days');
+        // Hard DELETEs leave no row for the outbox trigger to mark, so the index would keep
+        // serving jobs that no longer exist. Fire and forget — a failed removal is corrected
+        // by the next full reconcile, and must never fail the cleanup itself.
+        require('./tasks/meili-sync').removeFromIndex(rows.map((r) => r.id)).catch(() => {});
       }
     } catch (err) {
       logger.error({ err: err.message }, 'Stale job cleanup error');
@@ -91,6 +95,24 @@ async function main() {
     setTimeout(runStaleJobCleanup, 6 * 60 * 60 * 1000);
   }
   setTimeout(runStaleJobCleanup, 5 * 60 * 1000);
+
+  // Ship changed jobs into the search index. Driven by the index_dirty_at outbox column, so it
+  // sees writes from every source including the laptop scripts. No-ops entirely when MEILI_HOST
+  // is unset, so this is safe to ship before the index exists.
+  let meiliSyncRunning = false;
+  async function runMeiliSync() {
+    if (meiliSyncRunning) return;
+    meiliSyncRunning = true;
+    try {
+      await require('./tasks/meili-sync').syncMeili();
+    } catch (err) {
+      logger.error({ err: err.message }, 'Meili sync error');
+    } finally {
+      meiliSyncRunning = false;
+      setTimeout(runMeiliSync, 60 * 1000);
+    }
+  }
+  setTimeout(runMeiliSync, 90 * 1000);
 
   // Dead-job pruning: verify a rotating batch of jobs against their career pages
   // and remove confirmed-dead postings. This is now the ONLY removal path (see

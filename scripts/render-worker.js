@@ -95,7 +95,12 @@ async function runClassify() {
 async function runStaleCleanup() {
   try {
     const { rows } = await query("DELETE FROM jobs WHERE posted_at IS NOT NULL AND posted_at < NOW() - INTERVAL '90 days' RETURNING id");
-    if (rows.length) logger.info({ deleted: rows.length }, 'stale job cleanup');
+    if (rows.length) {
+      logger.info({ deleted: rows.length }, 'stale job cleanup');
+      // Hard DELETEs leave no row for the outbox trigger to mark, so without this the index
+      // would keep serving jobs that no longer exist. Fire and forget — never fail the cleanup.
+      require('../src/tasks/meili-sync').removeFromIndex(rows.map((r) => r.id)).catch(() => {});
+    }
   } catch (e) { logger.error({ err: e.message }, 'stale job cleanup error'); }
   setTimeout(runStaleCleanup, 6 * 60 * 60 * 1000);
 }
@@ -110,6 +115,24 @@ async function runDeadPrune() {
 // env: LiftMyCV + jobhose need no key; Wonsulting needs WONSULTING_COOKIE; googledork a paid
 // SERPER_API_KEY. A single crawl guard prevents overlap.
 let demandRunning = false;
+// Ship changed jobs into the search index. Driven by the index_dirty_at outbox column, so it
+// picks up writes from every source — this worker, the local crawler fleet, and the one-off
+// scripts. No-ops entirely when MEILI_HOST is unset.
+let meiliSyncRunning = false;
+async function runMeiliSync() {
+  if (meiliSyncRunning) return;
+  meiliSyncRunning = true;
+  try {
+    const { syncMeili } = require('../src/tasks/meili-sync');
+    await syncMeili();
+  } catch (e) {
+    logger.error({ err: e.message }, 'meili sync');
+  } finally {
+    meiliSyncRunning = false;
+    setTimeout(runMeiliSync, 60 * 1000);
+  }
+}
+
 async function runDemandCrawl() {
   if (!demandRunning) {
     demandRunning = true;
@@ -137,5 +160,6 @@ setTimeout(runDescBackfill, 5 * 60 * 1000);
 setTimeout(runClassify, 2 * 60 * 1000);
 setTimeout(runStaleCleanup, 5 * 60 * 1000);
 setTimeout(runDeadPrune, 8 * 60 * 1000);
+setTimeout(runMeiliSync, 90 * 1000);
 // demand-crawl: ensure its columns exist, then start the loop a bit after boot.
 ensureDemandColumns().catch((e) => logger.warn({ err: e.message }, 'demand ensureColumns')).finally(() => setTimeout(runDemandCrawl, 6 * 60 * 1000));
