@@ -27,13 +27,21 @@ const LIMIT = parseInt(process.env.LIMIT, 10) || 500;
 const CONCURRENCY = parseInt(process.env.CONCURRENCY, 10) || 10;
 const TAIL_DAYS = parseInt(process.env.TAIL_DAYS, 10) || 30;
 const RECHECK_DAYS = parseInt(process.env.RECHECK_DAYS, 10) || 14;
+// Which half to claim. Defaults to the odd ids this script has always owned, but Render only
+// manages ~400/hr against a 60s query ceiling, so a second local runner on PARTITION_REMAINDER=0
+// is how the even half actually gets worked. Never point two runners at the same remainder.
+const PARTITION_MOD = parseInt(process.env.PARTITION_MOD, 10) || 2;
+// Not `|| 1` — remainder 0 is a legitimate value and would be swallowed by a falsy default.
+const PARTITION_REMAINDER = process.env.PARTITION_REMAINDER === undefined
+  ? 1
+  : parseInt(process.env.PARTITION_REMAINDER, 10);
 
 async function runOnce() {
   const { checked, dead, uncertain } = await pruneDeadJobs({
     limit: LIMIT, concurrency: CONCURRENCY, tailDays: TAIL_DAYS, recheckDays: RECHECK_DAYS,
-    partitionMod: 2, partitionRemainder: 1,
+    partitionMod: PARTITION_MOD, partitionRemainder: PARTITION_REMAINDER,
   });
-  console.log(`[${new Date().toISOString()}] checked=${checked} dead=${dead} uncertain=${uncertain}`);
+  console.log(`[${new Date().toISOString()}] p=${PARTITION_REMAINDER}/${PARTITION_MOD} checked=${checked} dead=${dead} uncertain=${uncertain}`);
 }
 
 async function main() {
