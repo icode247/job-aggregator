@@ -122,17 +122,19 @@ async function runDeadPrune() {
   //
   // Batches cannot overlap: the next timer is scheduled after the await, so a slow batch simply
   // delays the following one.
-  // Back to 400, the only batch size measured to complete here. 1000 and 3000 both blew past
-  // the worker's 60s pool timeout and pruned nothing at all — worse than a slow trickle.
+  // 5000 is now affordable: dropping the ORDER BY from the candidate query (see
+  // dead-job-check.js) took it from a full scan-and-sort of the eligible population to a scan
+  // that stops at LIMIT — 20,000 rows in 33s where 1,000 previously blew past 60s. At ~8s for
+  // this batch there is ample headroom under the worker's ceiling.
   //
-  // This box is the wrong place to push throughput: 512MB shared with the crawler child, and a
-  // 60s ceiling on the candidate scan. The Mac has memory, bandwidth and no such ceiling, so
-  // the bulk of the backlog is worked by scripts/prune-dead-jobs-local.js instead.
+  // 5000 every 20 minutes is ~15,000/hr, versus the 400/hr that could not keep up with a 2.7M
+  // backlog. Concurrency stays at 10: checkUrl buffers each body twice and this shares 512MB
+  // with the 224MB-capped crawler child.
   //
-  // partitionMod/Remainder now set explicitly. This ran unpartitioned, which was harmless only
-  // because the local runner was down — it claims the ODD ids, so an unpartitioned Render would
+  // partitionMod/Remainder set explicitly. This ran unpartitioned, harmless only because the
+  // local runner was down — that runner claims the ODD ids, so an unpartitioned Render would
   // re-verify everything it checks, doubling outbound traffic to third-party career pages.
-  try { const r = await pruneDeadJobs({ limit: 400, concurrency: 10, tailDays: 30, recheckDays: 14, partitionMod: 2, partitionRemainder: 0 }); if (r.checked) logger.info(r, 'dead-job pruning'); }
+  try { const r = await pruneDeadJobs({ limit: 5000, concurrency: 10, tailDays: 30, recheckDays: 14, partitionMod: 2, partitionRemainder: 0 }); if (r.checked) logger.info(r, 'dead-job pruning'); }
   catch (e) { logger.error({ err: e.message }, 'dead-job pruning error'); }
   setTimeout(runDeadPrune, 20 * 60 * 1000);
 }

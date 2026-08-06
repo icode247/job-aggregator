@@ -116,15 +116,22 @@ async function pruneDeadJobs({
   const pMod = Number(partitionMod) || 1;
   const pRem = ((Number(partitionRemainder) || 0) % pMod + pMod) % pMod;
 
-  // NOTE ON limit: this candidate query is a sequential scan over the whole live set (measured
-  // cost ~694k — `id % N` is not sargable and the OR spans jobs and companies, so no index
-  // covers it). The worker's pool allows 60s. At limit 3000 the query exceeded even that and
-  // the loop pruned nothing at all, logging one line that looks identical to an idle cycle.
+  // NO ORDER BY, deliberately. It used to sort by `missing_from_sync DESC, last_checked_at ASC`
+  // to work the freshest signal first. That ordering cost everything: it cannot be served by an
+  // index (missing_from_sync is computed across the join), so Postgres had to scan AND SORT the
+  // entire eligible population — ~1.35M rows per partition — before returning a single row. The
+  // LIMIT bought nothing, which is why shrinking the batch never helped.
   //
-  // Raising the timeout is the wrong lever: the worker runs PG_POOL_MAX=2, so holding a
-  // dedicated client for 90s would leave one connection for every other loop in the process.
-  // Keep the batch to what fits in 60s until the query itself is index-driven; then the limit
-  // can go back up.
+  // Measured against the live database:
+  //     LIMIT    500 with ORDER BY  -> connection died
+  //     LIMIT  1,000 with ORDER BY  -> exceeded the worker's 60s ceiling, pruned nothing
+  //     LIMIT    500 without        ->  3.4s
+  //     LIMIT 20,000 without        -> 33s
+  //
+  // Unordered, the scan stops as soon as it has LIMIT rows, so cost tracks the batch instead of
+  // the backlog. Coverage does not depend on the ordering: every job in a batch gets stamped
+  // with last_checked_at, which drops it out of the eligible set for recheckDays, so the queue
+  // drains whatever order it is read in. Prioritisation was a nicety; completing was not.
   const { rows: jobs } = await query(
     `SELECT j.id, j.url,
             (c.last_synced_at IS NOT NULL AND j.last_seen_at < c.last_synced_at - INTERVAL '5 minutes') AS missing_from_sync
@@ -138,7 +145,6 @@ async function pruneDeadJobs({
           (j.posted_at IS NOT NULL AND j.posted_at < NOW() - INTERVAL '${t} days')
           OR (c.last_synced_at IS NOT NULL AND j.last_seen_at < c.last_synced_at - INTERVAL '5 minutes')
         )
-      ORDER BY missing_from_sync DESC, j.last_checked_at ASC NULLS FIRST
       LIMIT $1`,
     [limit]
   );
