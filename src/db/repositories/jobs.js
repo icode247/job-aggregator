@@ -417,7 +417,7 @@ const jobsRepo = {
       const CHUNK = 200;
       for (let i = 0; i < deduped.length; i += CHUNK) {
         const slice = deduped.slice(i, i + CHUNK);
-        const rowSql = `(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`;
+        const rowSql = `(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`;
         const params = [];
         for (const job of slice) {
           params.push(
@@ -434,7 +434,10 @@ const jobsRepo = {
             job.visa_sponsorship || '',
             job.experience_level || '',
             job.is_remote || false,
-            job.remote_worldwide || false
+            job.remote_worldwide || false,
+            // Derived once here rather than by a ~25-branch CASE over every live job at query
+            // time — that made /api/roles a 40s scan the router killed at 30s.
+            classifyRoleCategory(job.title)
           );
         }
 
@@ -445,6 +448,7 @@ const jobsRepo = {
             salary_min, salary_max, salary_currency, salary_interval,
             description, url, posted_at, raw_data,
             visa_sponsorship, experience_level, is_remote, remote_worldwide,
+            role_category,
             first_seen_at, last_seen_at
           )
           VALUES ${slice.map(() => rowSql).join(', ')}
@@ -454,6 +458,9 @@ const jobsRepo = {
             location = EXCLUDED.location,
             workplace_type = EXCLUDED.workplace_type,
             employment_type = EXCLUDED.employment_type,
+            -- Derived from title, so it must follow the title on re-sync; a repost with a
+            -- changed title would otherwise keep the old category forever.
+            role_category = EXCLUDED.role_category,
             -- COALESCE, not a plain overwrite. Several ATS (paylocity, workable, ...) carry
             -- no salary in the list response, so the adapter passes NULL every sync — an
             -- unconditional assignment therefore ERASED anything the description/salary
