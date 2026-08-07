@@ -15,7 +15,13 @@ const { countriesFromLocation, locationTokens } = require('./location-countries'
 const HOST = process.env.MEILI_HOST || '';
 const KEY = process.env.MEILI_MASTER_KEY || '';
 const INDEX = process.env.MEILI_INDEX || 'jobs';
-const TIMEOUT_MS = parseInt(process.env.MEILI_TIMEOUT_MS || '5000', 10);
+// 15s, not 5s. A city filter still uses `location CONTAINS`, an unindexed substring scan
+// measured at 8.6s, until location_tokens is populated by a re-index. At 5s the client aborted,
+// search() caught it, returned null, and the request fell back to Postgres — where countActive
+// then blew its own timeout and returned a 500 to the user. Waiting 8.6s for the index beats a
+// 500 from the fallback, and once location_tokens lands these are ~47ms and this ceiling is
+// never reached. It bounds a genuinely slow query; it does not make anything slower.
+const TIMEOUT_MS = parseInt(process.env.MEILI_TIMEOUT_MS || '15000', 10);
 
 const enabled = !!HOST;
 
