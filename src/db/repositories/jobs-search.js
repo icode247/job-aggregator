@@ -124,6 +124,15 @@ function buildQuery(filters) {
 async function search(filters = {}) {
   if (!meili.enabled) return null;
 
+  // Descriptions are deliberately not in the index — meili.js leaves them out because they are
+  // an order of magnitude larger than the title/company/location metadata and would change the
+  // plan we need. So a request that asks for them is one this path cannot serve faithfully: it
+  // would return every job with description: null and look like a successful response.
+  //
+  // Caught by fetching /api/jobs?include=description from both engines — Postgres returned
+  // ~2,900 characters per job, the index returned null for every one.
+  if (filters.includeDescription) return null;
+
   const built = buildFilter(filters);
   if (!built) return null;
 
