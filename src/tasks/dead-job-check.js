@@ -32,6 +32,16 @@ const DEAD_INDICATORS = [
   'this job listing has expired',
 ];
 
+// Last meaningful path segment of a job URL — the posting's own identifier. Query strings and
+// trailing slashes are ignored. Used to tell a redirect that keeps the posting from one that
+// drops it (see checkUrl).
+function lastPathSegment(u) {
+  try {
+    const parts = new URL(u).pathname.split('/').filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : null;
+  } catch { return null; }
+}
+
 // Returns { alive: true|false|null, reason }. null = uncertain (do NOT prune).
 async function checkUrl(url) {
   try {
@@ -46,6 +56,23 @@ async function checkUrl(url) {
 
     if (res.status === 404 || res.status === 410) return { alive: false, reason: `HTTP ${res.status}` };
     if (!res.ok) return { alive: null, reason: `HTTP ${res.status}` };
+
+    // Redirected off the posting entirely — the board root, or a listing index. Several ATS
+    // platforms retire a job this way instead of 404ing: Breezy sends /p/{id}-{slug} to / with a
+    // 200 and no dead-page phrase, so every check here said "alive" for a posting that is gone.
+    // Found via a job a user reported by hand (church-of-the-highlands, id 229085207); the tell
+    // is that the final URL no longer contains the posting's own identifier.
+    //
+    // Only fires when the original URL HAS an identifiable last segment and the destination has
+    // dropped it. A canonicalising redirect that keeps the id is untouched, and a redirect to a
+    // deeper path still containing the id stays alive.
+    const finalUrl = res.url || url;
+    if (finalUrl !== url) {
+      const idSeg = lastPathSegment(url);
+      if (idSeg && idSeg.length >= 6 && !finalUrl.toLowerCase().includes(idSeg.toLowerCase())) {
+        return { alive: false, reason: `redirected off posting -> ${finalUrl.slice(0, 80)}` };
+      }
+    }
 
     const html = (await res.text()).toLowerCase();
     for (const indicator of DEAD_INDICATORS) {
