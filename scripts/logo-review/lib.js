@@ -75,7 +75,9 @@ const VENDOR_PATTERNS = [
   // repeated-URL threshold because only a handful of boards per batch are login-walled.
   /aadcdn\.msftauth\.net/i,
   /login\.microsoftonline\.com/i,
-  /\.okta(cdn)?\.com/i,
+  // Okta only, not Okta-hosted customer art: tenants upload their own mark for the login
+  // page under /fs/bco/, and blanket-matching oktacdn flagged a real company logo as vendor.
+  /okta(cdn)?\.com\/(?!fs\/bco\/)/i,
   /onelogin\.com\/.*logo/i,
   /auth0\.com\/.*logo/i,
 ];
