@@ -14,6 +14,7 @@
 const meili = require('../../utils/meili');
 const { isShortAlias } = require('../../utils/location-aliases');
 const { resolveCountry } = require('../../utils/location-countries');
+const { parsePostedWindow } = require('../../utils/posted-window');
 const { normalizeEmploymentType } = require('../../utils/extract');
 
 const COUNT_CAP = parseInt(process.env.SEARCH_COUNT_CAP, 10) || 10000;
@@ -100,12 +101,12 @@ function buildFilter(filters = {}) {
   }
 
   if (filters.posted) {
-    const m = String(filters.posted).trim().match(/^(\d+)\s*([hdwm])$/i);
-    if (!m) return null; // unparseable window — let Postgres decide
-    const n = parseInt(m[1], 10);
-    const secs = { h: 3600, d: 86400, w: 604800, m: 2592000 }[m[2].toLowerCase()];
-    if (!n || !secs) return null;
-    parts.push(`posted_ts >= ${Math.floor(Date.now() / 1000) - n * secs}`);
+    // Same shared parser as the SQL path. This used to carry its own copy of the regex, so a
+    // window it could not parse returned null and pushed the request onto Postgres — which then
+    // could not parse it either, dropped the filter, and ran unfiltered until it timed out.
+    const parsed = parsePostedWindow(filters.posted);
+    if (!parsed) return null;
+    parts.push(`posted_ts >= ${Math.floor(Date.now() / 1000) - parsed.seconds}`);
   }
 
   return { filter: parts.length ? parts.join(' AND ') : undefined };

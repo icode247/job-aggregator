@@ -2,6 +2,7 @@ const { query, transaction, isPostgres } = require('../connection');
 const logger = require('../../logger');
 const { aliasGroup, isShortAlias } = require('../../utils/location-aliases');
 const { normalizeEmploymentType, normalizeWorkplaceType } = require('../../utils/extract');
+const { parsePostedWindow } = require('../../utils/posted-window');
 
 // Upper bound on result counts — see countActive. Env-tunable.
 const COUNT_CAP = parseInt(process.env.SEARCH_COUNT_CAP, 10) || 10000;
@@ -179,11 +180,14 @@ function buildFilters(filters = {}) {
   // (Old code only knew 24h/7d/30d/90d and silently ignored anything else — so "2h" and
   // the documented "3m" did nothing at all.)
   if (filters.posted) {
-    const m = String(filters.posted).trim().match(/^(\d+)\s*([hdwm])$/i);
-    if (m) {
-      const n = parseInt(m[1], 10); // integer — safe to interpolate
-      const unit = { h: 'hours', d: 'days', w: 'weeks', m: 'months' }[m[2].toLowerCase()];
-      if (n > 0 && unit) {
+    // Shared parser (utils/posted-window.js) so this and the index path cannot disagree about
+    // what "7days" means. The regex that used to live here accepted "7d" but not "7days", and
+    // an unparsed value added NO clause at all — the filter silently did nothing and the query
+    // degraded to the expensive unfiltered one.
+    const parsed = parsePostedWindow(filters.posted);
+    if (parsed) {
+      const { n, unit } = parsed; // n is an integer — safe to interpolate
+      {
         // Filter on the date the UI shows as "Posted": posted_at when the source provides it,
         // else first_seen_at (which equals created_at — the UI's own fallback). Filtering on
         // first_seen_at alone surfaced freshly-crawled but long-posted listings (a newly
