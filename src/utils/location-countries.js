@@ -148,3 +148,30 @@ function countriesFromLocation(text) {
 }
 
 module.exports = { resolveCountry, countriesFromLocation, NAME };
+
+/**
+ * Split a stored location into filterable tokens, so the query side can use an exact filter
+ * instead of a substring scan.
+ *
+ * "London, England, GB, GB" -> ["london", "england", "gb"]
+ * "San Francisco, CA, US"   -> ["san francisco", "san", "francisco", "ca", "us"]
+ *
+ * Both the whole comma-separated segment AND its individual words are emitted: a user searching
+ * "San Francisco" must match, and so must "Francisco". Multi-word segments are capped at four
+ * words so a free-text location blob cannot explode the token list.
+ */
+function locationTokens(text) {
+  const s = norm(text);
+  if (!s) return [];
+  const out = new Set();
+  for (const seg of s.split(/[,/|]|\s+-\s+/).map((x) => x.trim()).filter(Boolean)) {
+    const clean = seg.replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!clean) continue;
+    const words = clean.split(' ');
+    if (words.length <= 4) out.add(clean);
+    for (const w of words) if (w.length > 1) out.add(w);
+  }
+  return [...out];
+}
+
+module.exports.locationTokens = locationTokens;
