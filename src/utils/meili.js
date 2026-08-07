@@ -15,7 +15,12 @@ const { countriesFromLocation, locationTokens } = require('./location-countries'
 const HOST = process.env.MEILI_HOST || '';
 const KEY = process.env.MEILI_MASTER_KEY || '';
 const INDEX = process.env.MEILI_INDEX || 'jobs';
-const TIMEOUT_MS = parseInt(process.env.MEILI_TIMEOUT_MS || '5000', 10);
+// 25s ceiling. A city filter still uses `location CONTAINS`, an unindexed substring scan
+// measured at 12.7s on the live service, until location_tokens is populated by the re-index.
+// Below that ceiling the client aborts, search() catches it and returns null, and the request
+// falls to Postgres — where countActive blows its own timeout and returns 500 to the user.
+// Once location_tokens lands these queries are ~47ms and this ceiling is never approached.
+const TIMEOUT_MS = parseInt(process.env.MEILI_TIMEOUT_MS || '25000', 10);
 
 const enabled = !!HOST;
 
