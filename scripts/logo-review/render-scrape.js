@@ -126,7 +126,10 @@ async function main() {
   const rows = new Array(items.length);
   let next = 0, done = 0, hits = 0;
 
-  await Promise.all(Array.from({ length: Math.min(CONC, items.length) }, async () => {
+  const pass = async (idxs, conc, label) => {
+    next = 0; done = 0;
+    const queue = idxs;
+    await Promise.all(Array.from({ length: Math.min(conc, queue.length) }, async () => {
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 900 });
     await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36');
@@ -138,8 +141,8 @@ async function main() {
       else req.continue().catch(() => {});
     });
 
-    while (next < items.length) {
-      const i = next++;
+    while (next < queue.length) {
+      const i = queue[next++];
       const it = items[i];
       const res = await scrapeOne(page, it);
       // Echo the batch's own join key, not the URL we navigated to. In SHARED mode the
@@ -148,10 +151,26 @@ async function main() {
       rows[i] = [it.scrape_target || it.career_url, res.logo_url, res.logo_type, res.status];
       done++;
       if (res.logo_url) hits++;
-      if (done % 25 === 0) console.log(`  ${done}/${items.length} rendered, ${hits} logos`);
+      if (done % 25 === 0) console.log(`  ${label}${done}/${queue.length} rendered, ${hits} logos`);
     }
-    await page.close().catch(() => {});
-  }));
+      await page.close().catch(() => {});
+    }));
+  };
+
+  await pass(items.map((_, i) => i), CONC, '');
+
+  // Navigation timeouts are usually this machine being busy — the local crawler fleet runs
+  // six instances — not a dead careers page. One batch lost 275 companies to timeouts at
+  // concurrency 8 and 253 of them scraped fine at 3; without this they would have been
+  // marked reviewed by save-logos.js having never been fetched. Retry them slowly.
+  const failed = rows.map((r, i) => [r, i]).filter(([r]) => /^error:/.test(r[3])).map(([, i]) => i);
+  if (failed.length) {
+    const retryConc = Math.max(1, Math.floor(CONC / 3));
+    console.log(`retrying ${failed.length} failures at concurrency ${retryConc}`);
+    const before = hits;
+    await pass(failed, retryConc, 'retry ');
+    console.log(`  retry recovered ${hits - before} logos`);
+  }
 
   await browser.close();
   fs.writeFileSync(outFile,
