@@ -23,9 +23,14 @@ function formatJob(row, includeDescription = false) {
     url: row.url,
     posted_at: row.posted_at,
     ats: row.ats,
+    // Stringified so both engines agree. salary_min/max are TEXT in Postgres, but toDocument
+    // coerces them to numbers on the way into the index (a numeric filter needs real numbers),
+    // so the same job came back as "75000" from SQL and 75000 from the index. The cutover
+    // promises an identical row shape and no client changes; a silent type flip on a field the
+    // UI renders breaks that. Postgres output is unchanged — this only normalises the index.
     salary: {
-      min: row.salary_min,
-      max: row.salary_max,
+      min: row.salary_min == null ? null : String(row.salary_min),
+      max: row.salary_max == null ? null : String(row.salary_max),
       currency: row.salary_currency,
       interval: row.salary_interval,
     },
