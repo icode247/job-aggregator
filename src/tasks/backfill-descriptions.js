@@ -978,7 +978,21 @@ async function runWithConcurrency(items, concurrency, fn) {
 // worker; a restart simply begins the rotation again from the start.
 const descCursor = new Map();
 
+// Per-ATS cool-off after a timeout. The candidate query has no index to serve it: only ~1.5% of
+// live jobs lack a description (measured 2026-08-07: 854 of 55,791 sampled), so the keyset walk
+// traverses ~98.5% of the table looking for them and exceeds the statement timeout on the larger
+// platforms. The caller loops all ~15 platforms every 5 minutes, so a permanently-failing one
+// burned twelve full scans an hour and filled nothing.
+//
+// Backing off keeps the platforms that DO complete working while the hopeless ones stop costing
+// I/O. The real fix is the partial index in scripts/add-desc-backfill-index.sql — once that
+// exists the query is an index range scan and nothing times out.
+const descCooloff = new Map();
+const COOLOFF_MS = 60 * 60 * 1000;
+
 async function backfillForAts(ats, batchSize, concurrency) {
+  const until = descCooloff.get(ats) || 0;
+  if (Date.now() < until) return { filled: 0, failed: 0, skipped: true };
   // Keyset walk on the primary key, NOT `ORDER BY random()`.
   //
   // random() was chosen for a real reason: failed jobs stay description=NULL, so a fixed
@@ -994,17 +1008,29 @@ async function backfillForAts(ats, batchSize, concurrency) {
   // batch is passed over rather than re-selected, and it wraps at the end to re-sample the ones
   // that failed. Same property random() was bought for, at index cost.
   const from = descCursor.get(ats) || 0;
-  const { rows: jobs } = await query(
-    `SELECT j.id, j.ats, j.external_id, j.url, j.raw_data, c.ats_slug
-     FROM jobs j JOIN companies c ON j.company_id = c.id
-     WHERE j.removed_at IS NULL
-     AND j.description IS NULL
-     AND j.ats = ?
-     AND j.id > ?
-     ORDER BY j.id
-     LIMIT ?`,
-    [ats, from, batchSize]
-  );
+  let jobs;
+  try {
+    ({ rows: jobs } = await query(
+      `SELECT j.id, j.ats, j.external_id, j.url, j.raw_data, c.ats_slug
+       FROM jobs j JOIN companies c ON j.company_id = c.id
+       WHERE j.removed_at IS NULL
+       AND j.description IS NULL
+       AND j.ats = ?
+       AND j.id > ?
+       ORDER BY j.id
+       LIMIT ?`,
+      [ats, from, batchSize]
+    ));
+  } catch (err) {
+    // Only a timeout earns a cool-off; a real error should still surface to the caller.
+    if (/timeout/i.test(err.message)) {
+      descCooloff.set(ats, Date.now() + COOLOFF_MS);
+      logger.warn({ ats, cooloffMins: COOLOFF_MS / 60000 },
+        'desc backfill: candidate scan timed out, backing off (needs the partial index)');
+      return { filled: 0, failed: 0, timedOut: true };
+    }
+    throw err;
+  }
   // Short read means the end of the table — wrap so the next cycle re-samples from the start,
   // picking up rows that failed earlier and anything new below the cursor.
   descCursor.set(ats, jobs.length < batchSize ? 0 : jobs[jobs.length - 1].id);
