@@ -51,6 +51,12 @@ uy:Uruguay|uz:Uzbekistan|vu:Vanuatu|va:Vatican City|ve:Venezuela|vn:Vietnam|
 vg:British Virgin Islands|vi:US Virgin Islands|eh:Western Sahara|ye:Yemen|zm:Zambia|zw:Zimbabwe
 `;
 
+// US state/territory abbreviations. Only used to veto a lone trailing two-letter code from being
+// read as a country — see countriesFromLocation.
+const US_STATES = new Set(['al','ak','az','ar','ca','co','ct','de','fl','ga','hi','id','il','in',
+  'ia','ks','ky','la','me','md','ma','mi','mn','ms','mo','mt','ne','nv','nh','nj','nm','ny','nc',
+  'nd','oh','ok','or','pa','ri','sc','sd','tn','tx','ut','vt','va','wa','wv','wi','wy','dc','pr','vi','gu']);
+
 /** code -> primary name */
 const NAME = new Map();
 /** normalised name or alias -> code */
@@ -140,9 +146,29 @@ function countriesFromLocation(text) {
   }
 
   // Trailing two-letter code: "London, England, GB, GB" -> gb. Only here, never mid-string.
+  //
+  // AND never when it is a US state abbreviation that is not repeated. More than 20 US state
+  // codes collide with ISO country codes, so "Wilmington, DE" was being tagged Germany,
+  // "Richmond, VA" Vatican City and "Halethorpe, MD" Moldova — every US location written as
+  // "City, ST" got a wrong country. Reading only the final segment (the earlier guard) does not
+  // help here, because in "City, ST" the state IS the final segment.
+  //
+  // The tell is repetition: ATS platforms that emit a real country code double it —
+  // "London, England, GB, GB", "Navi Mumbai, Maharashtra, IN, IN". A lone trailing state code
+  // does not repeat. Where it is ambiguous and unrepeated ("Berlin, DE" could be Delaware or
+  // Germany) emit nothing rather than guess: an unknown country is recoverable, a wrong one is
+  // silently wrong in search results.
   const segments = s.split(/[,/]|\s+-\s+/).map((x) => x.trim()).filter(Boolean);
   const last = segments[segments.length - 1];
-  if (last && /^[a-z]{2}$/.test(last) && NAME.has(last)) found.add(last);
+  const prev = segments[segments.length - 2];
+  if (last && /^[a-z]{2}$/.test(last) && NAME.has(last)) {
+    // The veto applies only to the bare "City, ST" shape, which is how US locations are written
+    // and where the trailing code is certainly a state. With three or more segments the trailing
+    // code is a country in practice ("Toronto, ON, CA", "London, England, GB, GB") — there the
+    // state, if any, sits in the middle and the earlier mid-string guard already ignores it.
+    const bareCityState = segments.length <= 2 && US_STATES.has(last);
+    if (!bareCityState || last === prev) found.add(last);
+  }
 
   return [...found];
 }
