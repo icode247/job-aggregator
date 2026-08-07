@@ -214,9 +214,18 @@ async function main() {
   // The scraper echoes back the URL it actually fetched (scheme added, trailing slash),
   // so match on a normalized host rather than the raw string.
   const norm = s => String(s || '').replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
-  // Keyed on scrape_target: the own domain in normal mode, the ATS careers URL
-  // in SHARED mode. Older batch files only carry `domain`.
-  const byDomain = new Map(companies.map(c => [norm(c.scrape_target || c.domain), c]));
+  // Index every identifier a scraped row might echo back. The scraper navigates to
+  // career_url and writes that into the CSV, but scrape_target is the bare domain in
+  // own-domain mode — keying on scrape_target alone dropped ~80% of those batches on
+  // the floor. Keys are added first-wins so a career_url shared by two companies can't
+  // steal the row that its own domain already claimed.
+  const byDomain = new Map();
+  for (const c of companies) {
+    for (const key of [c.scrape_target, c.domain, c.career_url]) {
+      const k = norm(key);
+      if (k && !byDomain.has(k)) byDomain.set(k, c);
+    }
+  }
   const scraped = parseCsv(fs.readFileSync(SCRAPED_CSV, 'utf8'));
 
   const candidates = [];

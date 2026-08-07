@@ -142,7 +142,10 @@ async function main() {
       const i = next++;
       const it = items[i];
       const res = await scrapeOne(page, it);
-      rows[i] = [it.career_url, res.logo_url, res.logo_type, res.status];
+      // Echo the batch's own join key, not the URL we navigated to. In SHARED mode the
+      // two are the same career_url; in own-domain mode scrape_target is the bare domain
+      // and writing career_url here made the row unjoinable in build-preview.
+      rows[i] = [it.scrape_target || it.career_url, res.logo_url, res.logo_type, res.status];
       done++;
       if (res.logo_url) hits++;
       if (done % 25 === 0) console.log(`  ${done}/${items.length} rendered, ${hits} logos`);
