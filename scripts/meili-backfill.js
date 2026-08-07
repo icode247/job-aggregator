@@ -29,13 +29,23 @@ const CHECKPOINT = process.env.CHECKPOINT || '/tmp/meili-backfill.pos';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function apiBusy() {
-  // Yield whenever a user-facing query has been running a while. Reads are cheap but not free,
+  // Yield whenever a USER-FACING query has been running a while. Reads are cheap but not free,
   // and the site takes priority over finishing quickly.
+  //
+  // Autovacuum is excluded, and that exclusion is load-bearing. It is background maintenance,
+  // not a user request, and on this table it runs for HOURS — a TOAST vacuum was 46 minutes old
+  // when this was written. Counting it meant apiBusy() was permanently true, so every batch
+  // burned the full 60s wait ceiling before proceeding: measured 1,449 docs/min against 26,000
+  // when the guard is quiet, an 18x slowdown that would have turned a 90-minute rebuild into 32
+  // hours. Waiting on vacuum also achieves nothing — vacuum does not finish sooner because a
+  // reader paused.
   const { rows } = await query(
     `SELECT COUNT(*) n FROM pg_stat_activity
       WHERE datname = current_database() AND state = 'active'
         AND query NOT ILIKE '%pg_stat_activity%'
         AND query NOT ILIKE 'SELECT j.id,j.title%'
+        AND query NOT ILIKE 'autovacuum:%'
+        AND backend_type = 'client backend'
         AND query_start < NOW() - INTERVAL '5 seconds'`
   );
   return parseInt(rows[0].n, 10) > 0;
