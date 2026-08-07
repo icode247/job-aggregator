@@ -93,16 +93,14 @@ function buildFilter(filters = {}) {
       const country = resolveCountry(l);
       if (country) {
         or.push(`location_countries = ${q(country.code)}`);
-        continue; // the country code covers every spelling; no substring scan needed
+        continue; // indexed, ~47ms — no substring scan needed
       }
-      // location_tokens is the tokenised location, written at index time. An exact filter on it
-      // is ~180x faster than CONTAINS (measured: 47ms vs 8,589ms), and CONTAINS exceeded the
-      // client's 5s timeout, which silently dropped these searches onto a 6.5s Postgres query.
-      const term = String(l).trim().toLowerCase();
-      or.push(`location_tokens = ${q(term)}`);
-      // A phrase the tokeniser may not hold as one unit (>4 words, or punctuation we stripped)
-      // still needs the substring scan. Rare, and only for terms tokens cannot express.
-      if (term.split(/\s+/).length > 4) or.push(`location CONTAINS ${q(term)}`);
+      // STILL CONTAINS for cities, deliberately, until a re-index populates location_tokens.
+      // Filtering on an attribute the live index does not carry makes Meilisearch reject the
+      // whole search, which sends every city filter to Postgres and produced 500s for users.
+      // The tokeniser is already written in meili.js/toDocument; flip the line below to
+      // `location_tokens = ${q(term)}` only AFTER the re-index, and verify with a real query.
+      or.push(`location CONTAINS ${q(String(l).trim().toLowerCase())}`);
     }
     parts.push(`(${[...new Set(or)].join(' OR ')})`);
   }
