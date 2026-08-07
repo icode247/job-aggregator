@@ -21,7 +21,7 @@ const INDEX = process.env.MEILI_INDEX || 'jobs';
 // then blew its own timeout and returned a 500 to the user. Waiting 8.6s for the index beats a
 // 500 from the fallback, and once location_tokens lands these are ~47ms and this ceiling is
 // never reached. It bounds a genuinely slow query; it does not make anything slower.
-const TIMEOUT_MS = parseInt(process.env.MEILI_TIMEOUT_MS || '15000', 10);
+const TIMEOUT_MS = parseInt(process.env.MEILI_TIMEOUT_MS || '25000', 10);
 
 const enabled = !!HOST;
 
