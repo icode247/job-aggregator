@@ -162,18 +162,31 @@ async function pruneDeadJobs({
   // 3000-row UPDATE is a real write on a 28GB table with 26 indexes — the shape that has
   // starved the API before. 500 at a time keeps each statement well inside the pool timeout
   // and leaves gaps for user queries.
+  // SORTED, and each chunk locks in id order. Splitting one UPDATE into several introduced
+  // `deadlock detected`: eleven crawlers upsert into this table continuously, and two
+  // transactions touching the same rows in opposite orders deadlock by definition. Postgres
+  // takes row locks in the order rows are visited, so every writer ascending by id can only
+  // ever wait — never form a cycle. `ORDER BY id` inside the subquery is what enforces that;
+  // `id = ANY(array)` alone does not guarantee visit order.
   const writeInChunks = async (sql, ids) => {
-    for (let i = 0; i < ids.length; i += 500) {
-      await query(sql, [ids.slice(i, i + 500)]);
-      if (i + 500 < ids.length) await new Promise((r) => setTimeout(r, 250));
+    const sorted = [...ids].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    for (let i = 0; i < sorted.length; i += 500) {
+      await query(sql, [sorted.slice(i, i + 500)]);
+      if (i + 500 < sorted.length) await new Promise((r) => setTimeout(r, 250));
     }
   };
 
   if (deadIds.length) {
-    await writeInChunks('UPDATE jobs SET removed_at = NOW() WHERE id = ANY($1::bigint[])', deadIds);
+    await writeInChunks(
+      `UPDATE jobs SET removed_at = NOW() WHERE id IN (
+         SELECT id FROM jobs WHERE id = ANY($1::bigint[]) ORDER BY id FOR UPDATE
+       )`, deadIds);
   }
   // Stamp every checked job so the rotation advances (including the ones we pruned).
-  await writeInChunks('UPDATE jobs SET last_checked_at = NOW() WHERE id = ANY($1::bigint[])', jobs.map((j) => j.id));
+  await writeInChunks(
+    `UPDATE jobs SET last_checked_at = NOW() WHERE id IN (
+       SELECT id FROM jobs WHERE id = ANY($1::bigint[]) ORDER BY id FOR UPDATE
+     )`, jobs.map((j) => j.id));
 
   return { checked: jobs.length, dead: deadIds.length, uncertain };
 }
