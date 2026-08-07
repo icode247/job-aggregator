@@ -69,6 +69,7 @@ const VENDOR_PATTERNS = [
   /recruitee\.com\/assets/i,
   /icims\.com\/.*favicon/i,
   /teamtailor-cdn\.com\/.*default/i,
+  /static\.zohocdn\.com/i,
 ];
 
 function isVendor(url) {

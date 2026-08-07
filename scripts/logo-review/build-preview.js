@@ -239,7 +239,26 @@ async function main() {
     });
   }
 
-  const withImages = (await mapLimit(candidates, CONC, async it => {
+  // A logo that several companies share can't be any one company's own mark — it's the
+  // ATS's. VENDOR_PATTERNS only catches hosts someone thought to add (Zoho Recruit handed
+  // the same lockup to 213 of 445 cards in one batch before this existed), so key off the
+  // structure instead: drop URL groups outright rather than making the reviewer scroll
+  // past hundreds of identical thumbnails. Done before download, so the bytes are saved too.
+  const DUP_LIMIT = 4;
+  const urlCounts = new Map();
+  for (const c of candidates) urlCounts.set(c.logo_url, (urlCounts.get(c.logo_url) || 0) + 1);
+  const repeated = [...urlCounts.entries()].filter(([, n]) => n >= DUP_LIMIT);
+  const repeatedUrls = new Set(repeated.map(([u]) => u));
+  const unique = candidates.filter(c => !repeatedUrls.has(c.logo_url));
+  if (repeated.length) {
+    const dropped = candidates.length - unique.length;
+    console.log(`shared-art: dropped ${dropped} cards across ${repeated.length} repeated URL(s)`);
+    for (const [u, n] of repeated.sort((a, b) => b[1] - a[1]).slice(0, 5)) {
+      console.log(`  ${n}x ${u.slice(0, 90)}`);
+    }
+  }
+
+  const withImages = (await mapLimit(unique, CONC, async it => {
     const data_uri = await toDataUri(it.logo_url);
     return data_uri ? { ...it, data_uri } : null;
   })).filter(Boolean);
