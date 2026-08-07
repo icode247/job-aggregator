@@ -124,14 +124,6 @@ function buildQuery(filters) {
 async function search(filters = {}) {
   if (!meili.enabled) return null;
 
-  // Descriptions are deliberately not in the index — meili.js leaves them out because they are
-  // an order of magnitude larger than the title/company/location metadata and would change the
-  // plan we need. So a request that asks for them is one this path cannot serve faithfully: it
-  // would return every job with description: null and look like a successful response.
-  //
-  // Caught by fetching /api/jobs?include=description from both engines — Postgres returned
-  // ~2,900 characters per job, the index returned null for every one.
-  if (filters.includeDescription) return null;
 
   const built = buildFilter(filters);
   if (!built) return null;
@@ -177,6 +169,27 @@ async function search(filters = {}) {
       ats_slug: h.company_ats_slug,
       logo_url: h.company_logo_url,
     }));
+
+    // Descriptions live in Postgres, not the index. meili.js leaves them out on purpose: they
+    // are an order of magnitude larger than the title/company/location metadata, and indexing
+    // 23GB of them would need a bigger disk and far more memory than the search itself does.
+    //
+    // So hydrate instead of falling back. This is the standard search-index shape — the index
+    // answers "which jobs, in what order" and the database supplies the heavy column for just
+    // the page being returned. It is a primary-key lookup on at most `limit` ids, nothing like
+    // the full-table scans that made the SQL search path slow in the first place.
+    //
+    // Without this, /api/jobs?include=description came back with description: null on every row
+    // while reporting servedBy: meili — a successful-looking response with the content missing.
+    if (filters.includeDescription && rows.length) {
+      const { query } = require('../connection');
+      const { rows: descs } = await query(
+        'SELECT id, description FROM jobs WHERE id = ANY($1::bigint[])',
+        [rows.map((r) => r.id)]
+      );
+      const byId = new Map(descs.map((d) => [String(d.id), d.description]));
+      for (const r of rows) r.description = byId.get(String(r.id)) ?? null;
+    }
 
     // estimatedTotalHits is bounded by the index's maxTotalHits (10000), matching the cap the
     // SQL path applies — so pagination behaves identically either way.
