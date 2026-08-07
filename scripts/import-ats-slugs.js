@@ -34,6 +34,10 @@ const MAP = {
   workable:        { ats: 'workable',        slug: (e) => e.slug, url: (e) => e.url },
   jazzhr:          { ats: 'jazzhr',          slug: (e) => e.slug, url: (e) => e.url },
   teamtailor:      { ats: 'teamtailor',      slug: (e) => e.slug, url: (e) => e.url },
+  // zoho takes a bare tenant slug, matching how existing rows are stored (prognova, celworld).
+  // The adapter probes zohorecruit .com/.in/.eu/.com.au in turn, so the URL below is only a
+  // human-facing default — resolution happens at crawl time, not here.
+  zoho:            { ats: 'zoho',            slug: (e) => e.slug, url: (e, s) => `https://${s}.zohorecruit.com` },
   // transformed to the adapter-expected format:
   icims:           { ats: 'icims',           slug: (e) => host(e.url).replace(/\.icims\.com$/, ''), url: (e, s) => `https://${s}.icims.com` },
   workday:         { ats: 'workday',         slug: (e) => String(e.slug).split('/')[0], url: (e, s) => `https://${s}.myworkdayjobs.com` },
