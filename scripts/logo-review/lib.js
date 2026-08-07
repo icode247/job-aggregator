@@ -70,6 +70,14 @@ const VENDOR_PATTERNS = [
   /icims\.com\/.*favicon/i,
   /teamtailor-cdn\.com\/.*default/i,
   /static\.zohocdn\.com/i,
+  // A careers page behind SSO paints the identity provider's logo, not the company's.
+  // Two of these reached a review page looking like ordinary marks; they sit below the
+  // repeated-URL threshold because only a handful of boards per batch are login-walled.
+  /aadcdn\.msftauth\.net/i,
+  /login\.microsoftonline\.com/i,
+  /\.okta(cdn)?\.com/i,
+  /onelogin\.com\/.*logo/i,
+  /auth0\.com\/.*logo/i,
 ];
 
 function isVendor(url) {
