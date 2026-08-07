@@ -245,6 +245,18 @@ async function main() {
     });
   }
 
+  // The scraper only writes its CSV when it finishes, so a killed run leaves the PREVIOUS
+  // batch's file in place. Joining against it yields no cards, but save-logos.js would
+  // still mark all 500 companies of the new batch processed — burning them without a
+  // single one having been looked at. A batch that matched nothing is a stale file, not
+  // an unlucky scrape.
+  const matched = new Set(candidates.map(c => c.id)).size;
+  if (!matched) {
+    console.error(`FATAL: none of the ${companies.length} batch companies appear in ${SCRAPED_CSV}.`);
+    console.error('That file is almost certainly left over from a previous batch — re-run render-scrape.js.');
+    process.exit(1);
+  }
+
   // A logo that several companies share can't be any one company's own mark — it's the
   // ATS's. VENDOR_PATTERNS only catches hosts someone thought to add (Zoho Recruit handed
   // the same lockup to 213 of 445 cards in one batch before this existed), so key off the
