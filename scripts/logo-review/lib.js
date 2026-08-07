@@ -78,7 +78,8 @@ const VENDOR_PATTERNS = [
   // Okta only, not Okta-hosted customer art: tenants upload their own mark for the login
   // page under /fs/bco/, and blanket-matching oktacdn flagged a real company logo as vendor.
   /okta(cdn)?\.com\/(?!fs\/bco\/)/i,
-  /onelogin\.com\/.*logo/i,
+  // Same tenant-upload carve-out as Okta: /images/brands/ holds the customer's own mark.
+  /onelogin\.com\/(?!images\/brands\/).*logo/i,
   /auth0\.com\/.*logo/i,
 ];
 
