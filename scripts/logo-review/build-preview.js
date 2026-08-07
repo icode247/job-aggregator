@@ -214,18 +214,24 @@ async function main() {
   // The scraper echoes back the URL it actually fetched (scheme added, trailing slash),
   // so match on a normalized host rather than the raw string.
   const norm = s => String(s || '').replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
-  // Index every identifier a scraped row might echo back. The scraper navigates to
+  // Index every identifier a scraped row might echo back: the scraper navigates to
   // career_url and writes that into the CSV, but scrape_target is the bare domain in
-  // own-domain mode — keying on scrape_target alone dropped ~80% of those batches on
-  // the floor. Keys are added first-wins so a career_url shared by two companies can't
-  // steal the row that its own domain already claimed.
-  const byDomain = new Map();
+  // own-domain mode, and keying on scrape_target alone dropped ~80% of those batches.
+  //
+  // A key is only usable if exactly one company claims it. Under SHARED=1 `domain` is the
+  // ATS host (jobs.ashbyhq.com, shared by hundreds), so picking a winner for it silently
+  // attributes one company's scrape to another. Ambiguous keys are dropped, not resolved.
+  const claims = new Map();
   for (const c of companies) {
     for (const key of [c.scrape_target, c.domain, c.career_url]) {
       const k = norm(key);
-      if (k && !byDomain.has(k)) byDomain.set(k, c);
+      if (!k) continue;
+      if (!claims.has(k)) claims.set(k, new Set());
+      claims.get(k).add(c);
     }
   }
+  const byDomain = new Map();
+  for (const [k, owners] of claims) if (owners.size === 1) byDomain.set(k, [...owners][0]);
   const scraped = parseCsv(fs.readFileSync(SCRAPED_CSV, 'utf8'));
 
   const candidates = [];
