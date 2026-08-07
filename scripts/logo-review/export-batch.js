@@ -21,8 +21,13 @@ const SHARED_ATS = ['paylocity', 'rippling', 'smartrecruiters', 'ashby', 'bamboo
 
 const SIZE = parseInt(process.argv[2] || '500', 10);
 // Pull a wide window so the already-reviewed ids can be filtered out in JS and we
-// still land a full batch.
+// still land a full batch. The window is ordered by job count, so once enough of the
+// high-job companies have been reviewed it fills up entirely with processed ids and
+// returns a near-empty batch while thousands of unreviewed ones sit further down the
+// tail — indistinguishable from a genuinely empty queue. Widen until the batch fills
+// or the query stops returning a full window (which means we have seen everything).
 const WINDOW = Math.max(8000, SIZE * 16);
+const MAX_WINDOW = 200000;
 
 async function main() {
   const pool = makePool();
@@ -32,7 +37,7 @@ async function main() {
     // apply.workable.com, boards.greenhouse.io, ...). Scraping those returns the ATS's
     // own branding, so every company behind one host gets handed the same wrong image.
     // ~23.6k of the logo-less pool sits here and needs real-website discovery instead.
-    const { rows } = SHARED
+    const fetchWindow = async (limit) => SHARED
       ? await q(pool, `
           SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, COUNT(j.id)::int AS jobs
             FROM companies c
@@ -44,7 +49,7 @@ async function main() {
            GROUP BY c.id
            ORDER BY jobs DESC
            LIMIT $1
-        `, [WINDOW, SHARED_ATS])
+        `, [limit, SHARED_ATS])
       : await q(pool, `
           SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, COUNT(j.id)::int AS jobs
             FROM companies c
@@ -55,13 +60,22 @@ async function main() {
            GROUP BY c.id
            ORDER BY jobs DESC
            LIMIT $1
-        `, [WINDOW]);
+        `, [limit]);
 
-    const batch = rows.filter(r => !processed.has(String(r.id))).slice(0, SIZE);
+    let window = WINDOW, rows = [], batch = [];
+    for (;;) {
+      ({ rows } = await fetchWindow(window));
+      batch = rows.filter(r => !processed.has(String(r.id))).slice(0, SIZE);
+      // A short batch is only meaningful if the window wasn't full — otherwise the
+      // remainder is simply below the cut.
+      if (batch.length >= SIZE || rows.length < window || window >= MAX_WINDOW) break;
+      window = Math.min(window * 4, MAX_WINDOW);
+      console.log(`  window saturated with reviewed ids, widening to ${window}`);
+    }
     // What the scraper is pointed at, and what build-preview joins the results back on.
     for (const r of batch) r.scrape_target = SHARED ? r.career_url : r.domain;
     if (!batch.length) {
-      console.log('EXPORTED 0 — nothing left in the window');
+      console.log(`EXPORTED 0 — queue is genuinely empty (scanned ${rows.length} rows, all reviewed)`);
       return;
     }
 
