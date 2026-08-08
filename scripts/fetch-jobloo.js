@@ -108,6 +108,24 @@ const KEEP_DESCRIPTIONS = !hasFlag('noDescriptions');
 const MAX_AGE_MS = MAX_AGE_MONTHS * 30.44 * 864e5;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Completed pages, so a crash costs one page rather than the whole run. A full walk is ~4
+// hours against a shared database; losing that to one dropped connection (as happened
+// 2026-08-08, 76 minutes and 415,667 rows in) is not acceptable. Re-running a page is
+// harmless — everything is an upsert — this just avoids re-paying for it.
+const fsMod = require('fs');
+const CHECKPOINT = getArg('checkpoint', '/tmp/jobloo-progress.done');
+const donePages = new Set();
+function loadCheckpoint() {
+  if (DRY_RUN || !fsMod.existsSync(CHECKPOINT)) return;
+  for (const l of fsMod.readFileSync(CHECKPOINT, 'utf8').split('\n')) if (l.trim()) donePages.add(l.trim());
+  if (donePages.size) console.log(`checkpoint: skipping ${donePages.size} pages already completed (${CHECKPOINT})`);
+}
+function markDone(cat, offset) {
+  if (DRY_RUN) return;
+  donePages.add(`${cat}@${offset}`);
+  try { fsMod.appendFileSync(CHECKPOINT, `${cat}@${offset}\n`); } catch { /* progress tracking must never kill the run */ }
+}
+
 // ---------------------------------------------------------------- fetching
 
 async function fetchPage(category, offset, attempt = 1) {
@@ -325,7 +343,7 @@ async function resolveCompany(c, companyName) {
 }
 
 async function insertCompany(c, companyName, key) {
-  const { rows } = await query(
+  const { rows } = await withRetry('company', () => query(
     `INSERT INTO companies (career_url, domain, ats, ats_slug, company_name, status, origin, created_at, updated_at)
      VALUES ($1, $2, $3, $4, $5, 'active', 'jobloo', NOW(), NOW())
      ON CONFLICT (career_url) DO UPDATE SET
@@ -333,7 +351,7 @@ async function insertCompany(c, companyName, key) {
        updated_at = NOW()
      RETURNING id`,
     [c.careerUrl, c.domain, c.ats, c.slug, companyName || null]
-  );
+  ));
   const id = rows[0].id;
   companyByKey.set(key, id);
   companyByUrl.set(c.careerUrl, id);
@@ -349,6 +367,24 @@ const COLS = ['external_id', 'company_id', 'ats', 'title', 'department', 'locati
 
 // Mirrors the ON CONFLICT clause in src/db/repositories/jobs.js — COALESCE on description and
 // salary so a jobloo re-run never erases what the backfill pipelines recovered.
+// Postgres connections drop mid-run — a 4-hour job against a shared standard-0 instance will
+// see it. Measured 2026-08-08: "Connection terminated unexpectedly" killed a run 76 minutes and
+// 415,667 rows in, because only the fetch path had retries. Every statement here is an upsert,
+// so replaying a batch that may have partly landed is harmless.
+const TRANSIENT = /Connection terminated|ECONNRESET|EPIPE|ETIMEDOUT|socket hang up|terminating connection|server closed the connection|Client has encountered a connection error/i;
+
+async function withRetry(label, fn, attempts = 5) {
+  for (let a = 1; ; a++) {
+    try { return await fn(); } catch (err) {
+      if (a >= attempts || !TRANSIENT.test(err.message || '')) throw err;
+      const wait = 2000 * a;
+      console.log(`  [${label}] ${err.message.slice(0, 60)} — retry ${a}/${attempts - 1} in ${wait / 1000}s`);
+      stats.dbRetries++;
+      await sleep(wait);
+    }
+  }
+}
+
 async function writeJobs(rows) {
   if (!rows.length) return { written: 0 };
   const params = [];
@@ -357,7 +393,7 @@ async function writeJobs(rows) {
     COLS.forEach((c) => params.push(r[c]));
     return `(${COLS.map((_, i) => `$${base + i + 1}`).join(', ')}, NOW(), NOW())`;
   });
-  const { rowCount } = await query(
+  const { rowCount } = await withRetry('write', () => query(
     `INSERT INTO jobs (${COLS.join(', ')}, first_seen_at, last_seen_at)
      VALUES ${tuples.join(', ')}
      ON CONFLICT (external_id, company_id) DO UPDATE SET
@@ -391,7 +427,7 @@ async function writeJobs(rows) {
     // the live board wholesale. Even inside the 6-month window ~12% of its 3-6mo postings are
     // dead. An authoritative liveness check outranks an aggregator's memory of a listing.
     params
-  );
+  ));
   return { written: rowCount };
 }
 
@@ -401,6 +437,7 @@ const stats = {
   fetched: 0, stale: 0, noBoard: 0, noDate: 0, dupInRun: 0, mapped: 0, written: 0,
   newCompanies: 0, pagesOk: 0, pagesFailed: 0, badRows: 0, withDescription: 0, withLevel: 0,
   bySource: {}, byAge: {}, unknownHosts: {}, failedShards: [],
+  dbRetries: 0, pagesSkipped: 0,
 };
 const seen = new Set();
 const sampleRows = []; // dry-run: a few fully-mapped rows to eyeball
@@ -472,7 +509,9 @@ function report(final = false) {
   const pct = (n) => (stats.fetched ? ((n / stats.fetched) * 100).toFixed(1) : '0.0') + '%';
   console.log(
     `\n${final ? '=== DONE ===' : '--- progress ---'}\n` +
-    `pages ok ${stats.pagesOk}, failed ${stats.pagesFailed}\n` +
+    `pages ok ${stats.pagesOk}, failed ${stats.pagesFailed}` +
+    (stats.pagesSkipped ? `, resumed-skipped ${stats.pagesSkipped}` : '') +
+    (stats.dbRetries ? `, db retries ${stats.dbRetries}` : '') + '\n' +
     `fetched      ${stats.fetched}\n` +
     `  stale (>${MAX_AGE_MONTHS}mo) ${stats.stale} (${pct(stats.stale)})\n` +
     `  unknown board ${stats.noBoard} (${pct(stats.noBoard)})\n` +
@@ -533,7 +572,14 @@ async function main() {
   let cursor = 0, done = 0;
 
   async function runTask(t, id, total) {
+    if (donePages.has(`${t.cat}@${t.offset}`)) {
+      stats.pagesSkipped++;
+      // A resumed page was full when it ran, otherwise the shard had ended there. Report it
+      // as full so the tail extension still reasons correctly about where each shard stopped.
+      return PAGE_SIZE;
+    }
     const n = await processPage(t.cat, t.offset);
+    if (n > 0) markDone(t.cat, t.offset);
     done++;
     if (n === PAGE_SIZE) {
       lastFullOffset.set(t.cat, Math.max(lastFullOffset.get(t.cat) ?? -1, t.offset));
