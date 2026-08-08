@@ -98,7 +98,7 @@ function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
-function renderHtml(items) {
+function renderHtml(items, tag) {
   const cards = items.map(it => `
     <label class="card${it.suggest ? ' on' : ''}" data-id="${it.id}">
       <input type="checkbox" ${it.suggest ? 'checked' : ''}>
@@ -110,7 +110,10 @@ function renderHtml(items) {
       </div>
     </label>`).join('');
 
-  return `<title>Company logo review</title>
+  // The batch identity goes in the title, the sticky header and the save-list itself.
+  // Numbered filenames stopped the file being overwritten but not a tab staying open, and
+  // three save-lists were pasted back from a previous batch's tab, which look identical.
+  return `<title>Logo review ${esc(tag.label)} — ${items.length} cards</title>
 <style>
   :root { --bg:#fff; --fg:#111; --muted:#666; --line:#e3e3e3; --on:#0a7; --card:#fafafa; }
   @media (prefers-color-scheme: dark) { :root { --bg:#111; --fg:#eee; --muted:#999; --line:#333; --card:#1a1a1a; } }
@@ -134,6 +137,8 @@ function renderHtml(items) {
   #out { width:100%; margin-top:12px; font:12px/1.4 ui-monospace,monospace; }
 </style>
 <header>
+  <strong style="font-size:15px">${esc(tag.label)}</strong>
+  <span style="color:var(--muted)">ids ${tag.minId}–${tag.maxId} &middot; first #${tag.firstId}</span>
   <button id="copy">Copy save-list</button>
   <button id="none">Deselect all</button>
   <button id="all">Select all</button>
@@ -307,13 +312,11 @@ async function main() {
   for (const it of withImages) it.suggest = !it.vendor && HIGH_CONFIDENCE.has(it.logo_type);
 
   fs.writeFileSync(REVIEW_JSON, JSON.stringify(withImages.map(({ data_uri, ...rest }) => rest), null, 2));
-  const html = renderHtml(withImages);
-  fs.writeFileSync(PREVIEW_HTML, html);
 
-  // Also write a numbered copy. The fixed filename means a browser tab left open from the
+  // Write a numbered copy. The fixed filename means a browser tab left open from the
   // previous batch looks identical to the current one — a reviewer copied a stale
-  // save-list twice in a row from a tab they had no reason to distrust. A fresh path per
-  // batch makes the old tab visibly the old tab.
+  // save-list three times from tabs they had no reason to distrust. A fresh path per batch
+  // makes the old tab a different URL, and the label below makes it visibly different too.
   const dir = path.dirname(PREVIEW_HTML);
   const stem = path.basename(PREVIEW_HTML, '.html');
   const seen = fs.readdirSync(dir)
@@ -322,6 +325,13 @@ async function main() {
     .map(m => parseInt(m[1], 10));
   const n = (seen.length ? Math.max(...seen) : 0) + 1;
   const numbered = path.join(dir, `${stem}-${String(n).padStart(3, '0')}.html`);
+
+  const ids = withImages.map(i => i.id).sort((a, b) => a - b);
+  const html = renderHtml(withImages, {
+    label: `preview-${String(n).padStart(3, '0')}`,
+    minId: ids[0], maxId: ids[ids.length - 1], firstId: withImages[0].id,
+  });
+  fs.writeFileSync(PREVIEW_HTML, html);
   fs.writeFileSync(numbered, html);
 
   const suggested = withImages.filter(i => i.suggest).length;
