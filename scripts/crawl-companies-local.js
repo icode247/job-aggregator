@@ -26,6 +26,7 @@ const { extractSalary, extractWorkplaceType, extractEmploymentType } = require('
 const { stripHtml } = require('../src/utils/html');
 const { classifyJob } = require('../src/utils/classify');
 const proxy = require('../src/utils/proxy'); // rotating residential proxy (only active when IPROYAL_* env set — i.e. instance E)
+const brightdata = require('../src/utils/brightdata-proxy'); // Web Unlocker (only active when BRIGHTDATA_PROXY=1 — i.e. workable)
 
 // Mirror the Heroku worker's findDueForSync allowlist (the actively-synced ATS).
 const DEFAULT_ATS = ['greenhouse', 'ashby', 'breezy', 'smartrecruiters', 'bamboohr', 'lever', 'workday', 'icims', 'oracle'];
@@ -33,6 +34,7 @@ const ATS = (process.env.ATS ? process.env.ATS.split(',') : DEFAULT_ATS).map(s =
 const CONCURRENCY = parseInt(process.env.CONCURRENCY || '8');
 const BATCH = parseInt(process.env.BATCH || '40');
 const STALE_MIN = parseInt(process.env.STALE_MIN || '60');
+const SKIP_SLUG_LIKE = process.env.SKIP_SLUG_LIKE || ''; // SQL LIKE pattern of slugs to never claim
 const FETCH_TIMEOUT = parseInt(process.env.FETCH_TIMEOUT || '60000');
 const DELAY_MS = parseInt(process.env.DELAY_MS || '0'); // per-company delay to stay under ATS rate limits
 const ONCE = process.env.ONCE === '1';
@@ -49,11 +51,17 @@ const withTimeout = (p, ms, label) => Promise.race([p, new Promise((_, r) => set
 // Heroku worker nor another local batch re-grabs them).
 async function claimBatch() {
   const inList = ATS.map(a => `'${a}'`).join(',');
+  // SKIP_SLUG_LIKE excludes slugs that cannot possibly resolve, so a metered transport is
+  // never spent discovering that. workable is the live case: 5,655 of its 12,848 rows carry
+  // `wjb_<uuid>` pseudo-slugs from marketplace keyword discovery, which are not real account
+  // names and return 404 forever. They need slug resolution, not crawling.
+  const skipClause = SKIP_SLUG_LIKE ? `AND ats_slug NOT LIKE '${SKIP_SLUG_LIKE.replace(/'/g, "''")}'` : '';
   const { rows } = await query(
     `UPDATE companies SET last_synced_at = NOW()
        WHERE id IN (
          SELECT id FROM companies
           WHERE status = 'active' AND ats IS NOT NULL AND ats IN (${inList}) AND ats_slug IS NOT NULL
+            ${skipClause}
             AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '${STALE_MIN} minutes')
           ORDER BY last_synced_at ASC NULLS FIRST
           LIMIT ${BATCH}
@@ -89,7 +97,11 @@ async function crawlCompany(co) {
   // Route outbound fetch through rotating residential IPs (only when IPROYAL_* env
   // is set — instance E). Fresh IP per request defeats workable's per-IP block.
   const proxied = proxy.install();
-  console.log(`Local companion crawler | ATS: ${ATS.join(',')} | concurrency ${CONCURRENCY} | batch ${BATCH} | ${ONCE ? 'drain-once' : 'continuous'}${proxied ? ' | PROXIED (rotating residential)' : ''}`);
+  // Bright Data Web Unlocker, for hosts that block outright rather than rate-limit — workable
+  // 429s every request from a plain residential IP, so rotating one is not enough. Opt-in via
+  // BRIGHTDATA_PROXY=1 and scoped to BD_ROUTE_HOSTS, because it bills per request.
+  const unlocked = brightdata.install();
+  console.log(`Local companion crawler | ATS: ${ATS.join(',')} | concurrency ${CONCURRENCY} | batch ${BATCH} | ${ONCE ? 'drain-once' : 'continuous'}${proxied ? ' | PROXIED (rotating residential)' : ''}${unlocked ? ` | UNLOCKER (${brightdata.ROUTE_HOSTS.join(',')})` : ''}`);
   let totalCo = 0, totalAdded = 0, totalRemoved = 0, errors = 0, retired = 0, emptyRounds = 0;
   const t0 = Date.now();
 
@@ -117,7 +129,12 @@ async function crawlCompany(co) {
           try {
             // When proxied, a 404/400 is unreliable (IP/geo-dependent), NOT proof the
             // company is dead — so never retire; just re-due and retry with a new IP.
-            if (isPermanentError(e.message) && !proxy.enabled) {
+            //
+            // This must test EVERY proxy transport, not just IPRoyal. On 2026-08-08 the Bright
+            // Data unlocker was wired in with PROXY_DISABLED=1, which made proxy.enabled false
+            // and silently re-armed retirement behind a transport this guard exists to distrust
+            // — 178 companies were retired in six minutes before it was caught.
+            if (isPermanentError(e.message) && !proxy.enabled && !brightdata.enabled) {
               // dead board / bad slug — retire it so it stops clogging the queue
               await query("UPDATE companies SET status = 'failed', error_message = ?, updated_at = NOW() WHERE id = ?", [String(e.message).slice(0, 200), co.id]);
               retired++;
