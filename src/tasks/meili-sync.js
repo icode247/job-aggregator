@@ -18,8 +18,26 @@ const { query } = require('../db/connection');
 const meili = require('../utils/meili');
 const logger = require('../logger');
 
-const BATCH = parseInt(process.env.MEILI_SYNC_BATCH || '1000', 10);
-const MAX_BATCHES = parseInt(process.env.MEILI_SYNC_MAX_BATCHES || '20', 10);
+// Ceiling on how fast this loop can push documents at Meilisearch.
+//
+// These were 1000 x 20 = 20,000 documents per tick (the tick re-arms 60s after the previous one
+// finishes). On 2026-08-08 a 615k-row bulk import dirtied the outbox, this loop ran flat out to
+// drain it, and the Meilisearch service — 2GB on Render — was OOM-killed three times in half an
+// hour. Each kill takes the index offline; jobs-search.js then returns null and /api/jobs falls
+// back to Postgres, where the same query cannot beat the statement timeout on 5M rows. So an
+// indexing burst surfaces to users as a failing search endpoint.
+//
+// 500 x 4 = 2,000/tick is a 10x cut. Steady-state crawl writes are far below that, and a bulk
+// import still drains overnight rather than taking the index down with it.
+const BATCH = parseInt(process.env.MEILI_SYNC_BATCH || '500', 10);
+const MAX_BATCHES = parseInt(process.env.MEILI_SYNC_MAX_BATCHES || '4', 10);
+
+// Pause between batches inside one tick. Meilisearch coalesces tasks that arrive together into a
+// single indexing operation, so firing batches back-to-back rebuilds the exact burst the limits
+// above exist to prevent — a smaller BATCH alone would not have stopped the OOM. Spacing them
+// lets one commit before the next lands.
+const BATCH_PAUSE_MS = parseInt(process.env.MEILI_SYNC_BATCH_PAUSE_MS || '2000', 10);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function syncMeili() {
   if (!meili.enabled) return { skipped: 'MEILI_HOST unset' };
@@ -78,6 +96,7 @@ async function syncMeili() {
     indexed += live.length;
     removed += dead.length;
     if (rows.length < BATCH) break;
+    if (BATCH_PAUSE_MS) await sleep(BATCH_PAUSE_MS);
   }
 
   // Companies whose indexed fields changed (logo, name, domain, slug) invalidate every one of
