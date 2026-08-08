@@ -98,7 +98,11 @@ const FROM = parseInt(getArg('from', '0'), 10);
 const ONLY_CATEGORIES = getArg('categories', null)?.split(',').map((s) => s.trim()).filter(Boolean) || null;
 // Corpus ends between offset 2.0M (returns rows) and 2.5M (empty), measured 2026-08-08.
 const TO = parseInt(getArg('to', '2500000'), 10);
-const WRITE_BATCH = parseInt(getArg('writeBatch', '500'), 10);
+// 150, not 500. Rows carry full description text (~12KB each), so a 500-row batch pushes ~6MB
+// in one statement and blew past the pool's 15s statement_timeout against standard-0's 1GB
+// shared_buffers. Smaller batches also keep each write short enough that the live API's
+// connections are never stuck behind ours.
+const WRITE_BATCH = parseInt(getArg('writeBatch', '150'), 10);
 const KEEP_DESCRIPTIONS = !hasFlag('noDescriptions');
 
 const MAX_AGE_MS = MAX_AGE_MONTHS * 30.44 * 864e5;
@@ -300,6 +304,11 @@ async function loadCompanies() {
 }
 
 const pendingNewCompanies = new Set(); // dry-run bookkeeping
+// Companies currently being INSERTed, keyed the same way as the cache. Concurrent workers
+// routinely hit the same unseen board in the same instant; without this each one issues its
+// own INSERT and they queue against a deliberately small pool until the 10s connection
+// timeout fires. Sharing the in-flight promise collapses that to a single round trip.
+const inFlightCompanies = new Map();
 
 async function resolveCompany(c, companyName) {
   const key = `${c.ats}|${c.slug.toLowerCase()}`;
@@ -308,6 +317,14 @@ async function resolveCompany(c, companyName) {
 
   if (DRY_RUN) { pendingNewCompanies.add(key); return null; }
 
+  const inFlight = inFlightCompanies.get(key);
+  if (inFlight) return inFlight;
+  const p = insertCompany(c, companyName, key).finally(() => inFlightCompanies.delete(key));
+  inFlightCompanies.set(key, p);
+  return p;
+}
+
+async function insertCompany(c, companyName, key) {
   const { rows } = await query(
     `INSERT INTO companies (career_url, domain, ats, ats_slug, company_name, status, origin, created_at, updated_at)
      VALUES ($1, $2, $3, $4, $5, 'active', 'jobloo', NOW(), NOW())
