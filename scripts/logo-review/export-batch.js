@@ -22,7 +22,12 @@ const SHARED = process.env.SHARED === '1';
 // jazzhr 18/18 and pinpoint 7/7 with a unique logo each and no vendor art — 626 companies
 // that had never been offered for review. Excluded by the same probe: oraclecloud (0/9 found)
 // and lever (3 of 6 served lever-logo-refresh.svg).
-const SHARED_ATS = ['paylocity', 'rippling', 'smartrecruiters', 'ashby', 'bamboohr', 'greenhouse', 'grnhse', 'successfactors', 'jazzhr', 'pinpoint'];
+// workable added 2026-08-08: the "vendor art only" exclusion predates the headless renderer,
+// and a re-probe found 6 of 9 companies serving a distinct per-company logo with no vendor
+// art at all. Small sample, so expect the review page to be the real check. Still excluded by
+// the same probe: comeet (0 of 36 rendered a logo) and workday — 92 of 102 pages loaded fine
+// but expose no logo element, so the documented DNS rationale was never the real blocker.
+const SHARED_ATS = ['paylocity', 'rippling', 'smartrecruiters', 'ashby', 'bamboohr', 'greenhouse', 'grnhse', 'successfactors', 'jazzhr', 'pinpoint', 'workable'];
 
 const SIZE = parseInt(process.argv[2] || '500', 10);
 // Pull a wide window so the already-reviewed ids can be filtered out in JS and we
