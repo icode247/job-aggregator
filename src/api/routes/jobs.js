@@ -4,6 +4,8 @@ const jobsSearch = require('../../db/repositories/jobs-search');
 const { query, queryWithTimeout } = require('../../db/connection');
 const { stripHtml } = require('../../utils/html');
 const { recordSearchDemand, getTopDemand } = require('../searchDemand');
+const { parsePostedWindow } = require('../../utils/posted-window');
+const logger = require('../../logger');
 
 const router = Router();
 
@@ -88,8 +90,18 @@ router.get('/api/jobs', async (req, res) => {
   // Canonical param is `posted`; accept `posted_after` and `datePosted` as aliases because
   // different deployed frontends send different names (Browse-and-apply v2 on `main` sends
   // `datePosted`, an older build sent `posted_after`). All take the same Nh/Nd/Nw/Nm value.
-  if (req.query.posted || req.query.posted_after || req.query.datePosted)
+  if (req.query.posted || req.query.posted_after || req.query.datePosted) {
     filters.posted = req.query.posted || req.query.posted_after || req.query.datePosted;
+    // A value neither path can parse is dangerous precisely because nothing fails: the index
+    // path returns null (falling back to Postgres) and the SQL path adds no clause at all, so
+    // the request quietly becomes the broadest possible query and then dies on the statement
+    // timeout. That looks like a database problem and is actually a bad parameter. Log it so the
+    // offending value is identifiable instead of being inferred from a stack trace.
+    if (!parsePostedWindow(filters.posted)) {
+      logger.warn({ posted: String(filters.posted).slice(0, 40), path: req.path },
+        'unparseable posted window — filter dropped, query will run unfiltered');
+    }
+  }
   if (req.query.remote) filters.remote = req.query.remote;
   if (req.query.remote_worldwide) filters.remoteWorldwide = req.query.remote_worldwide;
   if (req.query.visa) filters.visa = req.query.visa;
@@ -325,6 +337,14 @@ router.get('/api/facets', async (req, res) => {
 });
 
 router.get('/api/jobs/:id', async (req, res) => {
+  // Reject a non-numeric id here rather than letting Postgres do it. `id` is an integer column,
+  // so `/api/jobs/null` reached the driver as `invalid input syntax for type integer: "null"` —
+  // an unhandled 500, logged as a server fault, for what is a malformed request. Observed live
+  // on 2026-08-08 for both `null` and a domain name, so the frontend does emit these.
+  if (!/^\d+$/.test(String(req.params.id))) {
+    return res.status(400).json({ error: 'Job id must be numeric' });
+  }
+
   const job = await jobsRepo.findById(req.params.id);
   if (!job) return res.status(404).json({ error: 'Job not found' });
 
