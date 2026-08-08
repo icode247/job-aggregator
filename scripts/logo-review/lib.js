@@ -78,8 +78,10 @@ const VENDOR_PATTERNS = [
   // Okta only, not Okta-hosted customer art: tenants upload their own mark for the login
   // page under /fs/bco/, and blanket-matching oktacdn flagged a real company logo as vendor.
   /okta(cdn)?\.com\/(?!fs\/bco\/)/i,
-  // Same tenant-upload carve-out as Okta: /images/brands/ holds the customer's own mark.
-  /onelogin\.com\/(?!images\/brands\/).*logo/i,
+  // Same tenant-upload carve-out as Okta. OneLogin serves customer marks from two paths —
+  // /images/brands/ and /images/account_branding/ — both under an opaque hashed filename.
+  // Missing the second one flagged a real company logo (Global Prairie) as vendor art.
+  /onelogin\.com\/(?!images\/(brands|account_branding)\/).*logo/i,
   /auth0\.com\/.*logo/i,
 ];
 
