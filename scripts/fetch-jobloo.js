@@ -45,6 +45,41 @@ const { classifyRemote, classifyRemoteWorldwide, classifyVisa, classifyRoleCateg
 const API = 'https://api.jobloo.co/api/jobs/search';
 const USER_ID = process.env.JOBLOO_USER_ID || '0fc2e7a1-f50b-4cab-99e4-9bdcecda4eb9';
 
+// THE SCRAPE IS SHARDED BY CATEGORY, NOT WALKED LINEARLY.
+//
+// jobloo's OFFSET scans from row zero, so an unfiltered walk degrades brutally with depth —
+// measured 2026-08-08: 0.9 min/page for the first 15 pages, 7.7 min/page by page 19, still
+// worsening. Extrapolated to 30+ hours for the full corpus.
+//
+// Filtering by category keeps every offset shallow and the cost flat:
+//
+//     Noise @0       10k jobs in 27s      unfiltered @200000  ->  462s
+//     Noise @350000  10k jobs in 13s
+//     Noise @700000  10k jobs in 19s
+//
+// The 15 categories below are the complete set: their measured depths sum to ~2.15M against a
+// linear corpus independently measured at 2.0-2.5M (offset 2.0M returns rows, 2.5M is empty).
+// `depth` is a binary-searched estimate used only to plan the work; it is NOT trusted as a
+// stopping condition — see the tail extension in run(), which keeps paging any category whose
+// last page came back full, so an underestimate can never silently truncate a shard.
+const CATEGORIES = [
+  { name: 'Noise', depth: 733750 },
+  { name: 'Sales', depth: 302500 },
+  { name: 'Software Engineering', depth: 227500 },
+  { name: 'Operations & Strategy', depth: 205000 },
+  { name: 'Misc. Engineering', depth: 145000 },
+  { name: 'Finance', depth: 111250 },
+  { name: 'Marketing', depth: 81250 },
+  { name: 'Data', depth: 73750 },
+  { name: 'Human Resources', depth: 66250 },
+  { name: 'General', depth: 43750 },
+  { name: 'Consulting', depth: 40000 },
+  { name: 'Design', depth: 32500 },
+  { name: 'Security', depth: 32500 },
+  { name: 'Product', depth: 32500 },
+  { name: 'Legal', depth: 25000 },
+];
+
 function getArg(name, fallback) {
   const m = process.argv.find((a) => a.startsWith(`--${name}=`));
   return m ? m.split('=').slice(1).join('=') : fallback;
@@ -58,6 +93,9 @@ const PAGE_SIZE = parseInt(getArg('pageSize', '10000'), 10);
 const CONCURRENCY = parseInt(getArg('concurrency', '4'), 10);
 const MAX_AGE_MONTHS = parseFloat(getArg('maxAgeMonths', '6'));
 const FROM = parseInt(getArg('from', '0'), 10);
+// Restrict to specific category shards, e.g. --categories="Legal,Design". Handy for resuming
+// a shard that failed without re-walking the whole corpus.
+const ONLY_CATEGORIES = getArg('categories', null)?.split(',').map((s) => s.trim()).filter(Boolean) || null;
 // Corpus ends between offset 2.0M (returns rows) and 2.5M (empty), measured 2026-08-08.
 const TO = parseInt(getArg('to', '2500000'), 10);
 const WRITE_BATCH = parseInt(getArg('writeBatch', '500'), 10);
@@ -68,7 +106,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---------------------------------------------------------------- fetching
 
-async function fetchPage(offset, attempt = 1) {
+async function fetchPage(category, offset, attempt = 1) {
   try {
     const res = await fetch(API, {
       method: 'POST',
@@ -79,7 +117,7 @@ async function fetchPage(offset, attempt = 1) {
         'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
       },
       body: JSON.stringify({
-        userId: USER_ID, categories: [], subcategories: [], locations: [],
+        userId: USER_ID, categories: [category], subcategories: [], locations: [],
         experience_levels: [], job_types: [], languages: [],
         limit: PAGE_SIZE, offset,
       }),
@@ -87,17 +125,21 @@ async function fetchPage(offset, attempt = 1) {
     });
     if (res.status === 429) {
       const wait = parseInt(res.headers.get('retry-after'), 10) * 1000 || 60000;
-      console.log(`  [${offset}] rate-limited, sleeping ${Math.round(wait / 1000)}s`);
+      console.log(`  [${category} @${offset}] rate-limited, sleeping ${Math.round(wait / 1000)}s`);
       await sleep(wait);
-      return fetchPage(offset, attempt); // rate-limit waits don't burn the retry budget
+      return fetchPage(category, offset, attempt); // rate-limit waits don't burn the retry budget
     }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const body = await res.json();
     return body.jobs || [];
   } catch (err) {
-    if (attempt >= 4) { console.log(`  [${offset}] FAILED after ${attempt}: ${err.message}`); return null; }
+    if (attempt >= 4) {
+      console.log(`  [${category} @${offset}] FAILED after ${attempt}: ${err.message}`);
+      stats.failedShards.push(`${category}@${offset}`);
+      return null;
+    }
     await sleep(5000 * attempt);
-    return fetchPage(offset, attempt + 1);
+    return fetchPage(category, offset, attempt + 1);
   }
 }
 
@@ -224,13 +266,27 @@ function mapJob(job, companyId, ats) {
 const companyByKey = new Map(); // "ats|slug" -> id
 const companyByUrl = new Map(); // career_url  -> id
 
+// Keyset-paginated, not one big SELECT. `companies` is 100k+ rows and the pool's default
+// statement_timeout is 15s — a single unbounded scan hits it (measured 2026-08-08). Walking
+// the primary key in chunks keeps every query short and never holds a long transaction
+// against a DB that also serves live traffic.
 async function loadCompanies() {
-  const { rows } = await query('SELECT id, ats, ats_slug, career_url FROM companies');
-  for (const r of rows) {
-    if (r.ats && r.ats_slug) companyByKey.set(`${r.ats}|${r.ats_slug.toLowerCase()}`, r.id);
-    if (r.career_url) companyByUrl.set(r.career_url, r.id);
+  let after = 0, total = 0;
+  for (;;) {
+    const { rows } = await query(
+      `SELECT id, ats, ats_slug, career_url FROM companies
+        WHERE id > $1 ORDER BY id LIMIT 10000`,
+      [after]
+    );
+    if (!rows.length) break;
+    for (const r of rows) {
+      if (r.ats && r.ats_slug) companyByKey.set(`${r.ats}|${r.ats_slug.toLowerCase()}`, r.id);
+      if (r.career_url) companyByUrl.set(r.career_url, r.id);
+    }
+    total += rows.length;
+    after = rows[rows.length - 1].id;
   }
-  console.log(`Loaded ${rows.length} existing companies into the resolution map`);
+  console.log(`Loaded ${total} existing companies into the resolution map (${companyByKey.size} ats/slug keys)`);
 }
 
 const pendingNewCompanies = new Set(); // dry-run bookkeeping
@@ -308,13 +364,13 @@ async function writeJobs(rows) {
 const stats = {
   fetched: 0, stale: 0, noBoard: 0, noDate: 0, dupInRun: 0, mapped: 0, written: 0,
   newCompanies: 0, pagesOk: 0, pagesFailed: 0, badRows: 0, withDescription: 0, withLevel: 0,
-  bySource: {}, byAge: {}, unknownHosts: {},
+  bySource: {}, byAge: {}, unknownHosts: {}, failedShards: [],
 };
 const seen = new Set();
 const sampleRows = []; // dry-run: a few fully-mapped rows to eyeball
 
-async function processPage(offset) {
-  const jobs = await fetchPage(offset);
+async function processPage(category, offset) {
+  const jobs = await fetchPage(category, offset);
   if (jobs === null) { stats.pagesFailed++; return 0; }
   stats.pagesOk++;
   stats.fetched += jobs.length;
@@ -396,7 +452,13 @@ function report(final = false) {
     `by source: ${JSON.stringify(stats.bySource)}\n` +
     `dropped boards (top 10): ${JSON.stringify(
       Object.fromEntries(Object.entries(stats.unknownHosts).sort((a, b) => b[1] - a[1]).slice(0, 10))
-    )}`
+    )}` +
+    // Never let a partial run read as a complete one.
+    (stats.failedShards.length
+      ? `\n!! ${stats.failedShards.length} PAGES LOST after retries — rerun with ` +
+        `--categories="${[...new Set(stats.failedShards.map((s) => s.split('@')[0]))].join(',')}"\n` +
+        `   ${stats.failedShards.slice(0, 20).join(', ')}${stats.failedShards.length > 20 ? ', …' : ''}`
+      : '')
   );
 }
 
@@ -414,29 +476,71 @@ async function main() {
   const before = companyByKey.size;
   const start = Date.now();
 
-  const offsets = [];
-  for (let o = FROM; o < TO; o += PAGE_SIZE) offsets.push(o);
-  console.log(`${offsets.length} pages to walk\n`);
+  const selected = ONLY_CATEGORIES
+    ? CATEGORIES.filter((c) => ONLY_CATEGORIES.includes(c.name))
+    : CATEGORIES;
 
-  let cursor = 0, done = 0, exhausted = false;
+  // Plan from the measured depths, with headroom. Overshooting is cheap (an off-the-end page
+  // returns empty in a few seconds); undershooting is handled by the tail extension below.
+  const tasks = [];
+  for (const cat of selected) {
+    const planned = Math.ceil((cat.depth * 1.15) / PAGE_SIZE) * PAGE_SIZE;
+    for (let o = FROM; o < Math.min(planned, TO); o += PAGE_SIZE) tasks.push({ cat: cat.name, offset: o });
+  }
+  // Interleave categories so concurrent workers hit different shards rather than hammering
+  // one, and so a stall in a single category can't hold up everything behind it.
+  tasks.sort((a, b) => a.offset - b.offset || a.cat.localeCompare(b.cat));
+  console.log(`${tasks.length} pages planned across ${selected.length} categories\n`);
+
+  // Highest offset that came back FULL per category — the tail extension resumes from here.
+  const lastFullOffset = new Map();
+  let cursor = 0, done = 0;
+
+  async function runTask(t, id, total) {
+    const n = await processPage(t.cat, t.offset);
+    done++;
+    if (n === PAGE_SIZE) {
+      lastFullOffset.set(t.cat, Math.max(lastFullOffset.get(t.cat) ?? -1, t.offset));
+    }
+    const mins = ((Date.now() - start) / 60000).toFixed(1);
+    console.log(
+      `[w${id}] ${t.cat} @${t.offset} → ${n} | ${done}/${total} pages | ` +
+      `kept ${stats.mapped} | ${DRY_RUN ? 'dry' : `written ${stats.written}`} | ${mins}min`
+    );
+    if (done % 15 === 0) report();
+    return n;
+  }
+
   async function worker(id) {
-    while (!exhausted) {
+    for (;;) {
       const i = cursor++;
-      if (i >= offsets.length) return;
-      const offset = offsets[i];
-      const n = await processPage(offset);
-      done++;
-      // The corpus ends before TO; a full empty page means we've walked off the end.
-      if (n === 0 && stats.pagesOk > 0) exhausted = true;
-      const mins = ((Date.now() - start) / 60000).toFixed(1);
-      console.log(
-        `[w${id}] offset ${offset} → ${n} jobs | ${done}/${offsets.length} pages | ` +
-        `kept ${stats.mapped} | ${DRY_RUN ? 'dry' : `written ${stats.written}`} | ${mins}min`
-      );
-      if (done % 10 === 0) report();
+      if (i >= tasks.length) return;
+      await runTask(tasks[i], id, tasks.length);
     }
   }
   await Promise.all(Array.from({ length: CONCURRENCY }, (_, i) => worker(i + 1)));
+
+  // TAIL EXTENSION — the guarantee that a low depth estimate never silently truncates a shard.
+  // Any category whose deepest page came back full has more rows beyond what we planned, so
+  // keep paging it until a short (or empty) page proves we reached the end.
+  const tails = [...lastFullOffset.entries()]
+    .filter(([cat, off]) => {
+      const planned = Math.ceil(((selected.find((c) => c.name === cat)?.depth ?? 0) * 1.15) / PAGE_SIZE) * PAGE_SIZE;
+      return off + PAGE_SIZE >= Math.min(planned, TO); // the last planned page was still full
+    })
+    .map(([cat, off]) => ({ cat, offset: off + PAGE_SIZE }));
+
+  if (tails.length) {
+    console.log(`\ntail extension: ${tails.map((t) => `${t.cat}@${t.offset}`).join(', ')}`);
+    await Promise.all(tails.map(async (t, i) => {
+      let offset = t.offset;
+      for (;;) {
+        const n = await runTask({ cat: t.cat, offset }, `tail${i + 1}`, tasks.length);
+        if (n < PAGE_SIZE) break; // short page = end of shard
+        offset += PAGE_SIZE;
+      }
+    }));
+  }
 
   stats.newCompanies = DRY_RUN ? pendingNewCompanies.size : companyByKey.size - before;
   report(true);
