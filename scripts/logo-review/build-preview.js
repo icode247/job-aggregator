@@ -106,6 +106,7 @@ function renderHtml(items, tag) {
       <div class="meta">
         <div class="name">${esc(it.company_name || it.domain)}</div>
         <div class="sub">#${it.id} &middot; ${esc(it.domain)} &middot; ${it.jobs} jobs</div>
+        ${it.scraped_from && norm(it.scraped_from) !== norm(it.domain) ? `<div class="sub">from ${esc(it.scraped_from)}</div>` : ''}
         <div class="tags">${it.vendor ? '<span class="tag bad">vendor</span>' : ''}${!HIGH_CONFIDENCE.has(it.logo_type) ? `<span class="tag warn">${esc(it.logo_type)}</span>` : ''}</div>
       </div>
     </label>`).join('');
@@ -215,11 +216,12 @@ async function downscale(items) {
   }
 }
 
+// The scraper echoes back the URL it actually fetched (scheme added, trailing slash),
+// so match on a normalized host rather than the raw string.
+const norm = s => String(s || '').replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
+
 async function main() {
   const companies = JSON.parse(fs.readFileSync(BATCH_JSON, 'utf8'));
-  // The scraper echoes back the URL it actually fetched (scheme added, trailing slash),
-  // so match on a normalized host rather than the raw string.
-  const norm = s => String(s || '').replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
   // Index every identifier a scraped row might echo back: the scraper navigates to
   // career_url and writes that into the CSV, but scrape_target is the bare domain in
   // own-domain mode, and keying on scrape_target alone dropped ~80% of those batches.
@@ -246,6 +248,10 @@ async function main() {
     if (!c || !row.logo_url || !/^https?:\/\//i.test(row.logo_url)) continue;
     candidates.push({
       id: c.id, company_name: c.company_name, domain: c.domain, jobs: c.jobs,
+      // In WORKDAY mode the scraped site is a guess derived from the tenant slug, so the
+      // reviewer needs to see WHICH site the logo came from to judge whether it belongs to
+      // this company. `domain` alone is the shared ATS host and says nothing.
+      scraped_from: c.scrape_target,
       logo_url: row.logo_url, logo_type: row.logo_type || 'unknown',
       vendor: isVendor(row.logo_url),
     });

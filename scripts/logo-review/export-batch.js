@@ -29,6 +29,56 @@ const SHARED = process.env.SHARED === '1';
 // but expose no logo element, so the documented DNS rationale was never the real blocker.
 const SHARED_ATS = ['paylocity', 'rippling', 'smartrecruiters', 'ashby', 'bamboohr', 'greenhouse', 'grnhse', 'successfactors', 'jazzhr', 'pinpoint', 'workable'];
 
+// WORKDAY=1 is a third mode, for the largest logo-less bucket left: 3,271 companies /
+// 413k live jobs. Scraping the Workday page itself is a dead end — a probe found 92 of
+// 102 pages load fine but expose no logo element at all, which is why every earlier pass
+// returned "no candidate". The way in is the tenant slug: career_url is
+// https://<tenant>.myworkdayjobs.com, and the tenant is almost always the company's real
+// identity (cvshealth, dollartree, pwc, micron). So derive <tenant>.com and scrape the
+// company's OWN website, where the logo actually lives.
+const WORKDAY = process.env.WORKDAY === '1';
+// Tenants that are an HR-department name rather than a company name. <slug>.com for these
+// belongs to somebody else entirely (globalhr.com is not Collins Aerospace), and a
+// plausible-looking wrong logo is exactly what the eyeball step is worst at catching.
+const GENERIC_TENANTS = new Set([
+  'globalhr', 'hr', 'hcm', 'careers', 'career', 'jobs', 'myjobs', 'job', 'corp', 'corporate',
+  'external', 'recruiting', 'recruitment', 'talent', 'people', 'workday', 'wd1', 'wd3', 'wd5',
+  'employment', 'hiring', 'apply', 'candidate', 'staffing', 'inc', 'group', 'holdings',
+]);
+
+// A derived host is a guess. Only ship the ones that answer, because save-logos.js marks
+// the whole batch processed: a company skipped merely for being .org instead of .com would
+// be burned permanently, having never been looked at. Non-responders are simply left in
+// the queue for a better derivation later.
+async function hostIsAlive(url) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 12000);
+  try {
+    // Any HTTP answer counts, including 403 — the big retail sites bot-block a bare HEAD
+    // but render fine in the headless browser that does the actual scraping.
+    await fetch(url, { method: 'HEAD', redirect: 'follow', signal: ctl.signal });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function filterAlive(rows, size, conc = 20) {
+  const kept = [];
+  let next = 0, checked = 0;
+  const worker = async () => {
+    while (next < rows.length && kept.length < size) {
+      const r = rows[next++];
+      if (await hostIsAlive(r.scrape_target)) kept.push(r);
+      if (++checked % 50 === 0) console.log(`  probed ${checked}, alive ${kept.length}`);
+    }
+  };
+  await Promise.all(Array.from({ length: conc }, worker));
+  return kept.slice(0, size);
+}
+
 const SIZE = parseInt(process.argv[2] || '500', 10);
 // Pull a wide window so the already-reviewed ids can be filtered out in JS and we
 // still land a full batch. The window is ordered by job count, so once enough of the
@@ -39,6 +89,44 @@ const SIZE = parseInt(process.argv[2] || '500', 10);
 const WINDOW = Math.max(8000, SIZE * 16);
 const MAX_WINDOW = 200000;
 
+// Turn Workday rows into a batch pointed at each company's own website. Two companies can
+// share a tenant (subsidiaries under one parent, e.g. Caremark under cvshealth), and
+// build-preview only trusts a join key exactly one company claims — so keep the highest
+// job-count company per tenant and leave the siblings for a later pass rather than
+// exporting rows the preview would silently drop.
+// Workday publishes tenants under three URL shapes and the tenant sits in a different
+// place in each. Missing the last two would have left ~1,500 of the largest companies
+// (campingworld, hpe, genpact, verisure) unreachable.
+function workdayTenant(careerUrl) {
+  const u = String(careerUrl || '').replace(/^https?:\/\//i, '').toLowerCase();
+  // <tenant>.myworkdayjobs.com and <tenant>.wdN.myworkdayjobs.com
+  const host = u.split('/')[0];
+  const jobs = host.match(/^([a-z0-9-]+)\.(?:wd\d+\.)?myworkdayjobs\.com$/);
+  if (jobs) return jobs[1];
+  // wdN.myworkdaysite.com/recruiting/<tenant> — the host is just a datacentre number, so
+  // the tenant has to come from the path. Some rows stop at /recruiting with no tenant.
+  const site = u.match(/^wd\d+\.myworkdaysite\.com\/recruiting\/([a-z0-9-]+)/);
+  if (site) return site[1];
+  return null;
+}
+
+async function buildWorkdayBatch(rows) {
+  const seen = new Set();
+  const candidates = [];
+  let generic = 0, dup = 0;
+  for (const r of rows) {
+    const slug = workdayTenant(r.career_url);
+    if (!slug || GENERIC_TENANTS.has(slug)) { generic++; continue; }
+    if (seen.has(slug)) { dup++; continue; }
+    seen.add(slug);
+    r.tenant = slug;
+    r.scrape_target = r.career_url = `https://${slug}.com`;
+    candidates.push(r);
+  }
+  console.log(`  ${candidates.length} tenants (skipped ${generic} generic, ${dup} sharing a tenant), probing which resolve`);
+  return await filterAlive(candidates, SIZE);
+}
+
 async function main() {
   const pool = makePool();
   try {
@@ -47,7 +135,19 @@ async function main() {
     // apply.workable.com, boards.greenhouse.io, ...). Scraping those returns the ATS's
     // own branding, so every company behind one host gets handed the same wrong image.
     // ~23.6k of the logo-less pool sits here and needs real-website discovery instead.
-    const fetchWindow = async (limit) => SHARED
+    const fetchWindow = async (limit) => WORKDAY
+      ? await q(pool, `
+          SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, COUNT(j.id)::int AS jobs
+            FROM companies c
+            JOIN jobs j ON j.company_id = c.id AND j.removed_at IS NULL
+           WHERE c.logo_url IS NULL
+             AND c.ats = 'workday'
+             AND c.career_url ~* '^https?://([a-z0-9-]+\\.(wd[0-9]+\\.)?myworkdayjobs\\.com|wd[0-9]+\\.myworkdaysite\\.com/recruiting/[a-z0-9-]+)'
+           GROUP BY c.id
+           ORDER BY jobs DESC
+           LIMIT $1
+        `, [limit])
+      : SHARED
       ? await q(pool, `
           SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, COUNT(j.id)::int AS jobs
             FROM companies c
@@ -75,7 +175,8 @@ async function main() {
     let window = WINDOW, rows = [], batch = [];
     for (;;) {
       ({ rows } = await fetchWindow(window));
-      batch = rows.filter(r => !processed.has(String(r.id))).slice(0, SIZE);
+      const fresh = rows.filter(r => !processed.has(String(r.id)));
+      batch = WORKDAY ? await buildWorkdayBatch(fresh) : fresh.slice(0, SIZE);
       // A short batch is only meaningful if the window wasn't full — otherwise the
       // remainder is simply below the cut.
       if (batch.length >= SIZE || rows.length < window || window >= MAX_WINDOW) break;
@@ -83,7 +184,8 @@ async function main() {
       console.log(`  window saturated with reviewed ids, widening to ${window}`);
     }
     // What the scraper is pointed at, and what build-preview joins the results back on.
-    for (const r of batch) r.scrape_target = SHARED ? r.career_url : r.domain;
+    // WORKDAY already set both (to the derived company site, not the Workday page).
+    if (!WORKDAY) for (const r of batch) r.scrape_target = SHARED ? r.career_url : r.domain;
     if (!batch.length) {
       console.log(`EXPORTED 0 — queue is genuinely empty (scanned ${rows.length} rows, all reviewed)`);
       return;
