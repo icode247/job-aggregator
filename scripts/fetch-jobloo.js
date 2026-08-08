@@ -547,6 +547,7 @@ async function main() {
     `offsets ${FROM}..${TO} | pageSize ${PAGE_SIZE} | concurrency ${CONCURRENCY} | ` +
     `maxAge ${MAX_AGE_MONTHS}mo | descriptions ${KEEP_DESCRIPTIONS ? 'on' : 'off'}\n`
   );
+  loadCheckpoint();
   await loadCompanies();
   const before = companyByKey.size;
   const start = Date.now();
