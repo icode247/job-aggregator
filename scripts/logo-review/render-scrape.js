@@ -168,11 +168,21 @@ async function main() {
     const retryConc = Math.max(1, Math.floor(CONC / 3));
     console.log(`retrying ${failed.length} failures at concurrency ${retryConc}`);
     const before = hits;
-    await pass(failed, retryConc, 'retry ');
-    console.log(`  retry recovered ${hits - before} logos`);
+    // The retry is a bonus pass, never a gate on the results already in hand. A browser
+    // too degraded to open another page throws Target.createTarget, and letting that
+    // propagate killed the script before it wrote the CSV — losing 96 good logos to
+    // salvage 85 uncertain ones. Keep what the main pass found.
+    try {
+      await pass(failed, retryConc, 'retry ');
+      console.log(`  retry recovered ${hits - before} logos`);
+    } catch (err) {
+      console.log(`  retry aborted (${err.message.slice(0, 60)}) — keeping main-pass results`);
+    }
   }
 
-  await browser.close();
+  // Same reasoning as the retry: nothing after the scrape may cost us the scrape.
+  await browser.close().catch(err =>
+    console.log(`  browser close failed (${err.message.slice(0, 50)}) — writing results anyway`));
   fs.writeFileSync(outFile,
     'website,logo_url,logo_type,status\n' + rows.map(r => r.map(csvCell).join(',')).join('\n') + '\n');
   console.log(`RENDERED ${items.length} | logos found: ${hits} (${(100 * hits / items.length).toFixed(1)}%) -> ${outFile}`);
