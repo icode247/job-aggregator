@@ -263,17 +263,35 @@ async function main() {
   // the same lockup to 213 of 445 cards in one batch before this existed), so key off the
   // structure instead: drop URL groups outright rather than making the reviewer scroll
   // past hundreds of identical thumbnails. Done before download, so the bytes are saved too.
+  //
+  // Groups of 2 and 3 sit under that limit deliberately, because they are ambiguous: the
+  // same company is often duplicated in `companies` (Impruvon, Aligned, sewts all appeared
+  // twice in one night) and there both rows legitimately share the real logo. What settles
+  // it is the name — same company duplicated, or unrelated companies handed platform art.
+  // That judgement was being made by hand on every batch, so make it here.
   const DUP_LIMIT = 4;
-  const urlCounts = new Map();
-  for (const c of candidates) urlCounts.set(c.logo_url, (urlCounts.get(c.logo_url) || 0) + 1);
-  const repeated = [...urlCounts.entries()].filter(([, n]) => n >= DUP_LIMIT);
+  const normName = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const sameCompany = group => {
+    const names = group.map(c => normName(c.company_name)).filter(Boolean);
+    if (names.length < group.length) return false; // a missing name proves nothing
+    return names.every(n => n.startsWith(names[0]) || names[0].startsWith(n));
+  };
+
+  const byUrl = new Map();
+  for (const c of candidates) {
+    if (!byUrl.has(c.logo_url)) byUrl.set(c.logo_url, []);
+    byUrl.get(c.logo_url).push(c);
+  }
+  const repeated = [...byUrl.entries()]
+    .filter(([, g]) => g.length >= DUP_LIMIT || (g.length > 1 && !sameCompany(g)));
   const repeatedUrls = new Set(repeated.map(([u]) => u));
   const unique = candidates.filter(c => !repeatedUrls.has(c.logo_url));
   if (repeated.length) {
     const dropped = candidates.length - unique.length;
     console.log(`shared-art: dropped ${dropped} cards across ${repeated.length} repeated URL(s)`);
-    for (const [u, n] of repeated.sort((a, b) => b[1] - a[1]).slice(0, 5)) {
-      console.log(`  ${n}x ${u.slice(0, 90)}`);
+    for (const [u, g] of repeated.sort((a, b) => b[1].length - a[1].length).slice(0, 6)) {
+      const who = g.length <= 3 ? ` (${g.map(c => c.company_name).join(' / ')})` : '';
+      console.log(`  ${g.length}x ${u.slice(0, 80)}${who}`);
     }
   }
 
