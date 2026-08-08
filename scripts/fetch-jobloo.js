@@ -1,0 +1,454 @@
+#!/usr/bin/env node
+/**
+ * Streams jobs from jobloo.co's public search API straight into Postgres.
+ *
+ * Nothing is staged on disk. jobloo is the bottleneck by a wide margin — the API costs
+ * ~110s per request regardless of page size (see PAGE_SIZE below), so it serves at best
+ * ~90 jobs/s while Postgres absorbs that without noticing. Each page is mapped, written,
+ * and dropped, so peak memory is one page.
+ *
+ * Meilisearch needs no work here: the index_dirty_at trigger fires on every insert and
+ * src/tasks/meili-sync.js ships the rows within 60s. Writing to Postgres IS writing to Meili.
+ *
+ * WHY THE AGE FILTER (--maxAgeMonths, default 6)
+ * jobloo's corpus is ~2.25M postings but roughly half of it is stale. Measured 2026-08-08 by
+ * fetching real apply URLs in each age bucket:
+ *
+ *     <1mo    4% dead        3-6mo   12% dead
+ *     1-3mo   8% dead        6-12mo  80% dead   <-- 48.7% of the corpus
+ *
+ * Importing unfiltered would put ~500k dead postings on the board and leave the dead-job
+ * pruner to rediscover that by HTTP, one request at a time. We still have to page through
+ * everything (the API has no server-side date filter), we just drop the stale rows before
+ * they reach the DB.
+ *
+ * DEDUP
+ * jobloo's `id` is already our external_id convention — it emits `greenhouse_1038706` and
+ * src/adapters/greenhouse.js emits `greenhouse_${job.id}`. That prefixed form is the dominant
+ * one in prod (510k of 649k greenhouse rows), so UNIQUE(external_id, company_id) dedups
+ * natively. The one thing that must be right is company resolution: a job has to land on the
+ * EXISTING company row for its board, or the unique constraint is scoped to a fresh duplicate
+ * company and every job re-inserts. Companies are therefore resolved from an in-memory map of
+ * every existing (ats, ats_slug) and career_url, not by per-job lookup — `companies` has no
+ * index on (ats, ats_slug) and 100k+ rows.
+ *
+ * Usage:
+ *   node scripts/fetch-jobloo.js --dry-run              # map everything, write nothing
+ *   node scripts/fetch-jobloo.js                        # live
+ *   node scripts/fetch-jobloo.js --maxAgeMonths=3
+ *   node scripts/fetch-jobloo.js --from=0 --to=500000   # resume a range
+ *   node scripts/fetch-jobloo.js --concurrency=4 --pageSize=10000
+ */
+const { query } = require('../src/db/connection');
+const { classifyRemote, classifyRemoteWorldwide, classifyVisa, classifyRoleCategory, classifyExperienceLevel } = require('../src/utils/classify');
+
+const API = 'https://api.jobloo.co/api/jobs/search';
+const USER_ID = process.env.JOBLOO_USER_ID || '0fc2e7a1-f50b-4cab-99e4-9bdcecda4eb9';
+
+function getArg(name, fallback) {
+  const m = process.argv.find((a) => a.startsWith(`--${name}=`));
+  return m ? m.split('=').slice(1).join('=') : fallback;
+}
+const hasFlag = (n) => process.argv.includes(`--${n}`);
+
+const DRY_RUN = hasFlag('dry-run');
+// 10000, not larger. Cost is per-request, not per-row: limit=1 and limit=10000 both take
+// ~110s, limit=20000 takes ~305s (worse throughput), limit=50000 returns HTTP 502.
+const PAGE_SIZE = parseInt(getArg('pageSize', '10000'), 10);
+const CONCURRENCY = parseInt(getArg('concurrency', '4'), 10);
+const MAX_AGE_MONTHS = parseFloat(getArg('maxAgeMonths', '6'));
+const FROM = parseInt(getArg('from', '0'), 10);
+// Corpus ends between offset 2.0M (returns rows) and 2.5M (empty), measured 2026-08-08.
+const TO = parseInt(getArg('to', '2500000'), 10);
+const WRITE_BATCH = parseInt(getArg('writeBatch', '500'), 10);
+const KEEP_DESCRIPTIONS = !hasFlag('noDescriptions');
+
+const MAX_AGE_MS = MAX_AGE_MONTHS * 30.44 * 864e5;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// ---------------------------------------------------------------- fetching
+
+async function fetchPage(offset, attempt = 1) {
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin: 'https://jobloo.co',
+        referer: 'https://jobloo.co/',
+        'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
+      },
+      body: JSON.stringify({
+        userId: USER_ID, categories: [], subcategories: [], locations: [],
+        experience_levels: [], job_types: [], languages: [],
+        limit: PAGE_SIZE, offset,
+      }),
+      signal: AbortSignal.timeout(600000),
+    });
+    if (res.status === 429) {
+      const wait = parseInt(res.headers.get('retry-after'), 10) * 1000 || 60000;
+      console.log(`  [${offset}] rate-limited, sleeping ${Math.round(wait / 1000)}s`);
+      await sleep(wait);
+      return fetchPage(offset, attempt); // rate-limit waits don't burn the retry budget
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const body = await res.json();
+    return body.jobs || [];
+  } catch (err) {
+    if (attempt >= 4) { console.log(`  [${offset}] FAILED after ${attempt}: ${err.message}`); return null; }
+    await sleep(5000 * attempt);
+    return fetchPage(offset, attempt + 1);
+  }
+}
+
+// ---------------------------------------------------------------- mapping
+
+// Derive the ATS identity of a posting from its apply URL. Mirrors the career_url shapes the
+// adapters use so a jobloo row resolves onto the company the crawler already created.
+function deriveCompany(job) {
+  const url = job.applyUrl || job.hostedUrl || '';
+  let host = '', parts = [];
+  try { const u = new URL(url); host = u.hostname.replace(/^www\./, ''); parts = u.pathname.split('/').filter(Boolean); } catch { return null; }
+  const sub = host.split('.')[0];
+
+  if (host.includes('greenhouse.io')) {
+    const slug = parts[0];
+    return slug && { ats: 'greenhouse', slug, careerUrl: `https://boards.greenhouse.io/${slug}`, domain: 'greenhouse.io' };
+  }
+  if (host.includes('smartrecruiters.com')) {
+    const slug = parts[0];
+    return slug && { ats: 'smartrecruiters', slug, careerUrl: `https://jobs.smartrecruiters.com/${slug}`, domain: 'smartrecruiters.com' };
+  }
+  if (host.includes('ashbyhq.com')) {
+    const slug = parts[0];
+    return slug && { ats: 'ashby', slug, careerUrl: `https://jobs.ashbyhq.com/${slug}`, domain: 'ashbyhq.com' };
+  }
+  if (host.includes('myworkdayjobs.com')) {
+    const m = url.match(/\/\/([^.]+)\.(wd\d+)\.myworkdayjobs\.com/i);
+    return m && { ats: 'workday', slug: m[1], careerUrl: `https://${m[1]}.${m[2]}.myworkdayjobs.com`, domain: host };
+  }
+  if (host.includes('lever.co')) {
+    const slug = parts[0];
+    return slug && { ats: 'lever', slug, careerUrl: `https://jobs.lever.co/${slug}`, domain: 'lever.co' };
+  }
+  if (host.includes('workable.com')) {
+    const slug = parts[0];
+    return slug && { ats: 'workable', slug, careerUrl: `https://apply.workable.com/${slug}`, domain: 'workable.com' };
+  }
+  if (host.includes('recruitee.com')) {
+    return sub !== 'recruitee' && { ats: 'recruitee', slug: sub, careerUrl: `https://${sub}.recruitee.com`, domain: host };
+  }
+  if (host.includes('bamboohr.com')) {
+    return sub !== 'bamboohr' && { ats: 'bamboohr', slug: sub, careerUrl: `https://${sub}.bamboohr.com/careers`, domain: host };
+  }
+  return null; // unknown board — skipped rather than guessed onto a wrong company
+}
+
+function mapWorkplace(job) {
+  const w = (job.workplaceType || '').toLowerCase();
+  if (w === 'remote') return 'remote';
+  if (w === 'hybrid') return 'hybrid';
+  if (w === 'onsite' || w === 'on-site' || w === 'in-person') return 'onsite';
+  return null;
+}
+
+// jobloo's `description` is just an HTML-escaped duplicate of descriptionPlain — carrying
+// both would double the payload for zero information.
+function pickDescription(job) {
+  if (!KEEP_DESCRIPTIONS) return null;
+  return job.descriptionPlain || job.descriptionBodyPlain || null;
+}
+
+// jobloo ships mixed-case levels from a coarser taxonomy than ours ("mid"/"Mid", "Exec",
+// "Associate") and has no lead/internship at all. Prod's vocabulary is exactly
+// lead|entry|senior|mid|internship|executive, so normalise into it — anything unmapped is
+// dropped rather than allowed to fragment the Meilisearch facet.
+const LEVEL_ALIASES = {
+  entry: 'entry', junior: 'entry', associate: 'entry', intern: 'internship',
+  internship: 'internship', mid: 'mid', midlevel: 'mid', senior: 'senior', sr: 'senior',
+  lead: 'lead', staff: 'lead', principal: 'lead', exec: 'executive', executive: 'executive',
+};
+function normalizeLevel(raw) {
+  if (!raw) return null;
+  return LEVEL_ALIASES[String(raw).toLowerCase().replace(/[^a-z]/g, '')] || null;
+}
+
+function mapJob(job, companyId, ats) {
+  const description = pickDescription(job);
+  const location = job.location || [job.city, job.region, job.country].filter(Boolean).join(', ') || null;
+  const workplaceType = mapWorkplace(job);
+  const isRemote = workplaceType === 'remote' || classifyRemote(job.title, location, workplaceType, description);
+  const salary = job.salaryRange || {};
+
+  return {
+    external_id: String(job.id),
+    company_id: companyId,
+    // The ats derived from the apply URL, not job.source — it's what decides which company
+    // row this dedups onto, so the two must never disagree.
+    ats,
+    title: job.title || 'Unknown',
+    // NOT job.category. `department` holds the employer's own ATS department ("Engineering",
+    // "Behavior Technician"); jobloo's category is a separate role taxonomy whose largest
+    // bucket is the literal junk value "Noise" (30% of sampled rows). It is kept in raw_data,
+    // and the role signal we actually use comes from classifyRoleCategory below.
+    department: null,
+    location,
+    workplace_type: workplaceType,
+    employment_type: job.commitmentType || null,
+    salary_min: Number.isFinite(salary.min) ? String(salary.min) : null,
+    salary_max: Number.isFinite(salary.max) ? String(salary.max) : null,
+    salary_currency: salary.currency || null,
+    salary_interval: salary.interval || null,
+    description,
+    url: job.applyUrl || job.hostedUrl || null,
+    posted_at: job.createdAt ? new Date(Number(job.createdAt)).toISOString() : null,
+    raw_data: JSON.stringify({
+      source: 'jobloo', jobloo_id: job.id, esco_code: job.escoCode, esco_title: job.escoTitle,
+      esco_confidence: job.escoConfidence, category: job.category, subcategory: job.subcategory,
+      detected_language: job.detectedLanguage, experience_level: job.experienceLevel,
+      country_code: job.country_code, all_locations: job.allLocations,
+    }),
+    visa_sponsorship: (description && classifyVisa(description)) || '',
+    // Our classifier first: it carries the full six-value vocabulary (jobloo has no
+    // lead/internship) and already handles the "Account Executive"/"Executive Assistant"
+    // false friends. jobloo's own label is the fallback.
+    experience_level: classifyExperienceLevel(job.title, description) || normalizeLevel(job.experienceLevel) || '',
+    is_remote: !!isRemote,
+    remote_worldwide: !!classifyRemoteWorldwide(job.title, location, description, !!isRemote),
+    role_category: classifyRoleCategory(job.title),
+  };
+}
+
+// ---------------------------------------------------------------- company cache
+
+const companyByKey = new Map(); // "ats|slug" -> id
+const companyByUrl = new Map(); // career_url  -> id
+
+async function loadCompanies() {
+  const { rows } = await query('SELECT id, ats, ats_slug, career_url FROM companies');
+  for (const r of rows) {
+    if (r.ats && r.ats_slug) companyByKey.set(`${r.ats}|${r.ats_slug.toLowerCase()}`, r.id);
+    if (r.career_url) companyByUrl.set(r.career_url, r.id);
+  }
+  console.log(`Loaded ${rows.length} existing companies into the resolution map`);
+}
+
+const pendingNewCompanies = new Set(); // dry-run bookkeeping
+
+async function resolveCompany(c, companyName) {
+  const key = `${c.ats}|${c.slug.toLowerCase()}`;
+  const hit = companyByKey.get(key) ?? companyByUrl.get(c.careerUrl);
+  if (hit) return hit;
+
+  if (DRY_RUN) { pendingNewCompanies.add(key); return null; }
+
+  const { rows } = await query(
+    `INSERT INTO companies (career_url, domain, ats, ats_slug, company_name, status, origin, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, 'active', 'jobloo', NOW(), NOW())
+     ON CONFLICT (career_url) DO UPDATE SET
+       company_name = COALESCE(companies.company_name, EXCLUDED.company_name),
+       updated_at = NOW()
+     RETURNING id`,
+    [c.careerUrl, c.domain, c.ats, c.slug, companyName || null]
+  );
+  const id = rows[0].id;
+  companyByKey.set(key, id);
+  companyByUrl.set(c.careerUrl, id);
+  return id;
+}
+
+// ---------------------------------------------------------------- writing
+
+const COLS = ['external_id', 'company_id', 'ats', 'title', 'department', 'location', 'workplace_type',
+  'employment_type', 'salary_min', 'salary_max', 'salary_currency', 'salary_interval', 'description',
+  'url', 'posted_at', 'raw_data', 'visa_sponsorship', 'experience_level', 'is_remote',
+  'remote_worldwide', 'role_category'];
+
+// Mirrors the ON CONFLICT clause in src/db/repositories/jobs.js — COALESCE on description and
+// salary so a jobloo re-run never erases what the backfill pipelines recovered.
+async function writeJobs(rows) {
+  if (!rows.length) return { written: 0 };
+  const params = [];
+  const tuples = rows.map((r) => {
+    const base = params.length;
+    COLS.forEach((c) => params.push(r[c]));
+    return `(${COLS.map((_, i) => `$${base + i + 1}`).join(', ')}, NOW(), NOW())`;
+  });
+  const { rowCount } = await query(
+    `INSERT INTO jobs (${COLS.join(', ')}, first_seen_at, last_seen_at)
+     VALUES ${tuples.join(', ')}
+     ON CONFLICT (external_id, company_id) DO UPDATE SET
+       title = EXCLUDED.title,
+       department = EXCLUDED.department,
+       location = EXCLUDED.location,
+       workplace_type = EXCLUDED.workplace_type,
+       employment_type = EXCLUDED.employment_type,
+       role_category = EXCLUDED.role_category,
+       salary_min = COALESCE(EXCLUDED.salary_min, jobs.salary_min),
+       salary_max = COALESCE(EXCLUDED.salary_max, jobs.salary_max),
+       salary_currency = COALESCE(EXCLUDED.salary_currency, jobs.salary_currency),
+       salary_interval = COALESCE(EXCLUDED.salary_interval, jobs.salary_interval),
+       description = COALESCE(EXCLUDED.description, jobs.description),
+       url = EXCLUDED.url,
+       posted_at = EXCLUDED.posted_at,
+       raw_data = EXCLUDED.raw_data,
+       visa_sponsorship = CASE WHEN EXCLUDED.visa_sponsorship != '' THEN EXCLUDED.visa_sponsorship ELSE jobs.visa_sponsorship END,
+       experience_level = CASE WHEN EXCLUDED.experience_level != '' THEN EXCLUDED.experience_level ELSE jobs.experience_level END,
+       is_remote = EXCLUDED.is_remote,
+       remote_worldwide = EXCLUDED.remote_worldwide,
+       last_seen_at = NOW(),
+       removed_at = NULL`,
+    params
+  );
+  return { written: rowCount };
+}
+
+// ---------------------------------------------------------------- main
+
+const stats = {
+  fetched: 0, stale: 0, noBoard: 0, noDate: 0, dupInRun: 0, mapped: 0, written: 0,
+  newCompanies: 0, pagesOk: 0, pagesFailed: 0, badRows: 0, withDescription: 0, withLevel: 0,
+  bySource: {}, byAge: {}, unknownHosts: {},
+};
+const seen = new Set();
+const sampleRows = []; // dry-run: a few fully-mapped rows to eyeball
+
+async function processPage(offset) {
+  const jobs = await fetchPage(offset);
+  if (jobs === null) { stats.pagesFailed++; return 0; }
+  stats.pagesOk++;
+  stats.fetched += jobs.length;
+  if (!jobs.length) return 0;
+
+  const now = Date.now();
+  const batch = [];
+  for (const job of jobs) {
+    if (!job.id || seen.has(job.id)) { stats.dupInRun++; continue; }
+    seen.add(job.id);
+
+    if (!job.createdAt) { stats.noDate++; continue; }
+    const age = now - Number(job.createdAt);
+    if (age > MAX_AGE_MS) { stats.stale++; continue; }
+
+    const c = deriveCompany(job);
+    if (!c) {
+      stats.noBoard++;
+      try {
+        const h = new URL(job.applyUrl || job.hostedUrl || '').hostname.replace(/^www\./, '');
+        stats.unknownHosts[h] = (stats.unknownHosts[h] || 0) + 1;
+      } catch { stats.unknownHosts['(unparseable)'] = (stats.unknownHosts['(unparseable)'] || 0) + 1; }
+      continue;
+    }
+
+    const companyId = await resolveCompany(c, job.company);
+    if (companyId === null && !DRY_RUN) continue;
+
+    const months = Math.floor(age / (30.44 * 864e5));
+    const bucket = months < 1 ? '<1mo' : months < 3 ? '1-3mo' : '3-6mo';
+    stats.byAge[bucket] = (stats.byAge[bucket] || 0) + 1;
+    stats.bySource[job.source] = (stats.bySource[job.source] || 0) + 1;
+    stats.mapped++;
+
+    // Always map, even in a dry run — mapping is exactly what the dry run exists to
+    // validate. Only the write below is skipped. Company id is a placeholder when the
+    // company doesn't exist yet and we're not creating it.
+    const mapped = mapJob(job, companyId ?? -1, c.ats);
+    if (DRY_RUN) {
+      sampleRows.length < 3 && sampleRows.push(mapped);
+      for (const f of ['title', 'url', 'external_id']) if (!mapped[f]) stats.badRows++;
+      if (mapped.description) stats.withDescription++;
+      if (mapped.experience_level) stats.withLevel++;
+    } else {
+      batch.push(mapped);
+    }
+  }
+
+  if (!DRY_RUN) {
+    for (let i = 0; i < batch.length; i += WRITE_BATCH) {
+      const { written } = await writeJobs(batch.slice(i, i + WRITE_BATCH));
+      stats.written += written;
+      // Standard-0 has 1GB shared_buffers against a 32GB table; bulk writes starve the live
+      // API. jobloo's latency already throttles us, this just keeps the burst gentle.
+      await sleep(120);
+    }
+  }
+  return jobs.length;
+}
+
+function report(final = false) {
+  const kept = stats.mapped;
+  const pct = (n) => (stats.fetched ? ((n / stats.fetched) * 100).toFixed(1) : '0.0') + '%';
+  console.log(
+    `\n${final ? '=== DONE ===' : '--- progress ---'}\n` +
+    `pages ok ${stats.pagesOk}, failed ${stats.pagesFailed}\n` +
+    `fetched      ${stats.fetched}\n` +
+    `  stale (>${MAX_AGE_MONTHS}mo) ${stats.stale} (${pct(stats.stale)})\n` +
+    `  unknown board ${stats.noBoard} (${pct(stats.noBoard)})\n` +
+    `  no date      ${stats.noDate}\n` +
+    `  dup in run   ${stats.dupInRun}\n` +
+    `KEPT         ${kept} (${pct(kept)})\n` +
+    (DRY_RUN
+      ? `would create ${pendingNewCompanies.size} new companies\n` +
+        `  rows missing a required field: ${stats.badRows}\n` +
+        `  with description: ${stats.withDescription} | with experience_level: ${stats.withLevel}\n`
+      : `written      ${stats.written}\n`) +
+    `by age: ${JSON.stringify(stats.byAge)}\n` +
+    `by source: ${JSON.stringify(stats.bySource)}\n` +
+    `dropped boards (top 10): ${JSON.stringify(
+      Object.fromEntries(Object.entries(stats.unknownHosts).sort((a, b) => b[1] - a[1]).slice(0, 10))
+    )}`
+  );
+}
+
+async function main() {
+  if (!process.env.DATABASE_URL) {
+    console.error('DATABASE_URL is not set — refusing to run against the local SQLite file.');
+    process.exit(1);
+  }
+  console.log(
+    `jobloo → ${DRY_RUN ? 'DRY RUN (no writes)' : 'POSTGRES (live)'}\n` +
+    `offsets ${FROM}..${TO} | pageSize ${PAGE_SIZE} | concurrency ${CONCURRENCY} | ` +
+    `maxAge ${MAX_AGE_MONTHS}mo | descriptions ${KEEP_DESCRIPTIONS ? 'on' : 'off'}\n`
+  );
+  await loadCompanies();
+  const before = companyByKey.size;
+  const start = Date.now();
+
+  const offsets = [];
+  for (let o = FROM; o < TO; o += PAGE_SIZE) offsets.push(o);
+  console.log(`${offsets.length} pages to walk\n`);
+
+  let cursor = 0, done = 0, exhausted = false;
+  async function worker(id) {
+    while (!exhausted) {
+      const i = cursor++;
+      if (i >= offsets.length) return;
+      const offset = offsets[i];
+      const n = await processPage(offset);
+      done++;
+      // The corpus ends before TO; a full empty page means we've walked off the end.
+      if (n === 0 && stats.pagesOk > 0) exhausted = true;
+      const mins = ((Date.now() - start) / 60000).toFixed(1);
+      console.log(
+        `[w${id}] offset ${offset} → ${n} jobs | ${done}/${offsets.length} pages | ` +
+        `kept ${stats.mapped} | ${DRY_RUN ? 'dry' : `written ${stats.written}`} | ${mins}min`
+      );
+      if (done % 10 === 0) report();
+    }
+  }
+  await Promise.all(Array.from({ length: CONCURRENCY }, (_, i) => worker(i + 1)));
+
+  stats.newCompanies = DRY_RUN ? pendingNewCompanies.size : companyByKey.size - before;
+  report(true);
+  console.log(`new companies: ${stats.newCompanies}`);
+  if (DRY_RUN && sampleRows.length) {
+    console.log('\nsample mapped rows (description truncated):');
+    for (const r of sampleRows) {
+      console.log(JSON.stringify({ ...r, description: r.description ? `${r.description.slice(0, 80)}…` : null, raw_data: '…' }, null, 1));
+    }
+  }
+  console.log(`elapsed: ${((Date.now() - start) / 60000).toFixed(1)} min`);
+  if (!DRY_RUN) console.log('\nMeilisearch will pick these up via index_dirty_at within ~60s (20k rows/run).');
+}
+
+main().then(() => process.exit(0)).catch((err) => { console.error(err); process.exit(1); });
