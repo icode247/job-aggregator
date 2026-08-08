@@ -12,6 +12,7 @@
  * and get rejected for the wrong reason.
  */
 const fs = require('fs');
+const path = require('path');
 const { BATCH_JSON, SCRAPED_CSV, REVIEW_JSON, PREVIEW_HTML, isVendor, HIGH_CONFIDENCE } = require('./lib');
 
 const CONC = 24;
@@ -288,13 +289,29 @@ async function main() {
   for (const it of withImages) it.suggest = !it.vendor && HIGH_CONFIDENCE.has(it.logo_type);
 
   fs.writeFileSync(REVIEW_JSON, JSON.stringify(withImages.map(({ data_uri, ...rest }) => rest), null, 2));
-  fs.writeFileSync(PREVIEW_HTML, renderHtml(withImages));
+  const html = renderHtml(withImages);
+  fs.writeFileSync(PREVIEW_HTML, html);
+
+  // Also write a numbered copy. The fixed filename means a browser tab left open from the
+  // previous batch looks identical to the current one — a reviewer copied a stale
+  // save-list twice in a row from a tab they had no reason to distrust. A fresh path per
+  // batch makes the old tab visibly the old tab.
+  const dir = path.dirname(PREVIEW_HTML);
+  const stem = path.basename(PREVIEW_HTML, '.html');
+  const seen = fs.readdirSync(dir)
+    .map(f => new RegExp(`^${stem}-(\\d+)\\.html$`).exec(f))
+    .filter(Boolean)
+    .map(m => parseInt(m[1], 10));
+  const n = (seen.length ? Math.max(...seen) : 0) + 1;
+  const numbered = path.join(dir, `${stem}-${String(n).padStart(3, '0')}.html`);
+  fs.writeFileSync(numbered, html);
 
   const suggested = withImages.filter(i => i.suggest).length;
   const vendor = withImages.filter(i => i.vendor).length;
   const lowConf = withImages.filter(i => !HIGH_CONFIDENCE.has(i.logo_type)).length;
   console.log(`items: ${withImages.length} | suggested save: ${suggested} | vendor-flagged: ${vendor} | low-conf: ${lowConf}`);
   console.log(`html: ${Math.round(fs.statSync(PREVIEW_HTML).size / 1024)} KB`);
+  console.log(`open this one (fresh path, no stale tab): ${numbered}`);
 }
 
 main().catch(err => { console.error('FATAL:', err.message); process.exit(1); });

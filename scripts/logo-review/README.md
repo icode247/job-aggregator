@@ -38,6 +38,12 @@ subdomain, so DNS fails) and Workable/Comeet boards only ever show vendor art.
 node scripts/logo-review/render-scrape.js data/logo/batch-companies.json data/logo/batch-logos.csv 8
 ```
 
+Failed rows are retried at a third of the concurrency before the CSV is written. Navigation
+timeouts are usually this machine being busy — the local crawler fleet runs six instances —
+rather than a dead board: one batch lost 275 of 500 companies to timeouts at concurrency 8
+and 253 of them scraped fine at 3. Without the retry they would have been marked reviewed by
+step 5 having never been fetched. Drop the concurrency argument if the machine is loaded.
+
 Renders each careers page in a headless browser and pulls the logo out of the **painted DOM** —
 a static fetch sees only the ATS's own assets, because the company's uploaded logo exists only
 after the page runs. One renderer covers every ATS, which beats reverse-engineering ten separate
@@ -55,6 +61,16 @@ node scripts/logo-review/build-preview.js
 Reads `batch-companies.json` + `batch-logos.csv`. Writes:
 - `data/logo/batch-review.json` — the `id -> logo_url` map step 5 needs
 - `data/logo/logo-preview.html` — the clickable page you review
+- `data/logo/logo-preview-NNN.html` — the same page under a fresh, numbered path
+
+**Open the numbered one.** The fixed filename is overwritten every batch, so a tab left
+open from the previous round looks identical to the current one and its "Copy save-list"
+button still yields the *old* ids — that happened twice in a row before the numbered copy
+existed. The script prints the path to open.
+
+It refuses outright if no company in the batch appears in the CSV. `render-scrape.js` only
+writes on completion, so a killed run leaves the previous batch's file behind; building
+from it yields no cards while step 5 still marks all 500 companies processed.
 
 Images are **inlined as data URIs**. If the page is published as an Artifact it runs under a CSP
 that blocks every external host, so a remote `<img src>` renders blank and gets rejected for the
