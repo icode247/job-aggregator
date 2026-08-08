@@ -17,7 +17,12 @@ const { makePool, q, readProcessed, BATCH_JSON, BATCH_CSV } = require('./lib');
 // per-company logo: Workday career_urls in the DB are malformed (missing the wdN
 // subdomain, so DNS fails) and Workable/Comeet boards only ever show vendor art.
 const SHARED = process.env.SHARED === '1';
-const SHARED_ATS = ['paylocity', 'rippling', 'smartrecruiters', 'ashby', 'bamboohr', 'greenhouse', 'grnhse', 'successfactors'];
+// jazzhr and pinpoint were absent with no rationale recorded, unlike workday (malformed
+// career_urls) and workable/comeet (vendor art only). A 40-company probe on 2026-08-08 found
+// jazzhr 18/18 and pinpoint 7/7 with a unique logo each and no vendor art — 626 companies
+// that had never been offered for review. Excluded by the same probe: oraclecloud (0/9 found)
+// and lever (3 of 6 served lever-logo-refresh.svg).
+const SHARED_ATS = ['paylocity', 'rippling', 'smartrecruiters', 'ashby', 'bamboohr', 'greenhouse', 'grnhse', 'successfactors', 'jazzhr', 'pinpoint'];
 
 const SIZE = parseInt(process.argv[2] || '500', 10);
 // Pull a wide window so the already-reviewed ids can be filtered out in JS and we
