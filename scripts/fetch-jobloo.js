@@ -169,6 +169,16 @@ function deriveCompany(job) {
     const m = url.match(/\/\/([^.]+)\.(wd\d+)\.myworkdayjobs\.com/i);
     return m && { ats: 'workday', slug: m[1], careerUrl: `https://${m[1]}.${m[2]}.myworkdayjobs.com`, domain: host };
   }
+  // Workday's second domain: https://wd1.myworkdaysite.com/recruiting/{tenant}/{site}/job/...
+  // The tenant is in the PATH here, not the subdomain. Prod has 4 legacy rows that missed this
+  // and fell back to slug 'recruiting', collapsing every tenant on a host into one company
+  // (parexel, ssctech and snapchat all sit under company 550091) — hence parsing it properly.
+  // Resolving on the (workday, tenant) key also merges these onto the tenant's existing
+  // myworkdayjobs company where one already exists.
+  if (host.includes('myworkdaysite.com')) {
+    const tenant = parts[0] === 'recruiting' ? parts[1] : null;
+    return tenant && { ats: 'workday', slug: tenant, careerUrl: `https://${sub}.myworkdaysite.com/recruiting/${tenant}`, domain: host };
+  }
   if (host.includes('lever.co')) {
     const slug = parts[0];
     return slug && { ats: 'lever', slug, careerUrl: `https://jobs.lever.co/${slug}`, domain: 'lever.co' };
@@ -334,26 +344,35 @@ async function writeJobs(rows) {
     `INSERT INTO jobs (${COLS.join(', ')}, first_seen_at, last_seen_at)
      VALUES ${tuples.join(', ')}
      ON CONFLICT (external_id, company_id) DO UPDATE SET
-       title = EXCLUDED.title,
-       department = EXCLUDED.department,
-       location = EXCLUDED.location,
-       workplace_type = EXCLUDED.workplace_type,
-       employment_type = EXCLUDED.employment_type,
-       role_category = EXCLUDED.role_category,
-       salary_min = COALESCE(EXCLUDED.salary_min, jobs.salary_min),
-       salary_max = COALESCE(EXCLUDED.salary_max, jobs.salary_max),
-       salary_currency = COALESCE(EXCLUDED.salary_currency, jobs.salary_currency),
-       salary_interval = COALESCE(EXCLUDED.salary_interval, jobs.salary_interval),
-       description = COALESCE(EXCLUDED.description, jobs.description),
-       url = EXCLUDED.url,
-       posted_at = EXCLUDED.posted_at,
-       raw_data = EXCLUDED.raw_data,
-       visa_sponsorship = CASE WHEN EXCLUDED.visa_sponsorship != '' THEN EXCLUDED.visa_sponsorship ELSE jobs.visa_sponsorship END,
-       experience_level = CASE WHEN EXCLUDED.experience_level != '' THEN EXCLUDED.experience_level ELSE jobs.experience_level END,
-       is_remote = EXCLUDED.is_remote,
-       remote_worldwide = EXCLUDED.remote_worldwide,
-       last_seen_at = NOW(),
-       removed_at = NULL`,
+       -- GAP-FILL ONLY — the COALESCE order is reversed from src/db/repositories/jobs.js and
+       -- that reversal is the point. There, EXCLUDED comes from the employer's own board and
+       -- is the freshest truth. Here it comes from an aggregator whose median posting is
+       -- months old, while our ATS crawlers re-sync continuously. Preferring EXCLUDED would
+       -- overwrite a job we synced from greenhouse this morning with jobloo's stale copy of
+       -- the same row. So existing values always win and jobloo only fills holes.
+       --
+       -- The holes are worth filling: of 2,735,195 live rows, 53,123 have no description,
+       -- 1,403,778 no experience level and 2,119,058 no salary (measured 2026-08-08).
+       --
+       -- Deliberately NOT updated: title, location, workplace_type, employment_type,
+       -- role_category, url, posted_at, raw_data, is_remote, remote_worldwide. Ours are
+       -- derived from the authoritative source and must not regress to an older snapshot.
+       description = COALESCE(jobs.description, EXCLUDED.description),
+       salary_min = COALESCE(jobs.salary_min, EXCLUDED.salary_min),
+       salary_max = COALESCE(jobs.salary_max, EXCLUDED.salary_max),
+       salary_currency = COALESCE(jobs.salary_currency, EXCLUDED.salary_currency),
+       salary_interval = COALESCE(jobs.salary_interval, EXCLUDED.salary_interval),
+       visa_sponsorship = CASE WHEN COALESCE(jobs.visa_sponsorship, '') = '' THEN EXCLUDED.visa_sponsorship ELSE jobs.visa_sponsorship END,
+       experience_level = CASE WHEN COALESCE(jobs.experience_level, '') = '' THEN EXCLUDED.experience_level ELSE jobs.experience_level END,
+       last_seen_at = NOW()`,
+    // NOTE: deliberately NO `removed_at = NULL` here, unlike src/db/repositories/jobs.js.
+    //
+    // That clause is right for a real ATS sync — if the employer's own board still lists a
+    // job, it is alive. jobloo is not that: it is a stale aggregator, and prod holds 1,695,327
+    // rows already marked removed by pruneDeadJobs, which established death by actually
+    // fetching the posting. Clearing removed_at on jobloo's say-so would resurrect those onto
+    // the live board wholesale. Even inside the 6-month window ~12% of its 3-6mo postings are
+    // dead. An authoritative liveness check outranks an aggregator's memory of a listing.
     params
   );
   return { written: rowCount };
