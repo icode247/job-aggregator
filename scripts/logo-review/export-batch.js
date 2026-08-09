@@ -58,10 +58,26 @@ const GENERIC_TENANTS = new Set([
 // extra guard is nameLooksRelated(): a card whose slug does not resemble the company name
 // still gets shown, but is NOT pre-checked, so the reviewer has to opt in rather than
 // opt out.
+
+// REDO=1 re-reviews companies that already have a logo_url which isn't a logo. 6,680
+// companies (5,677 with live jobs) carry a Google favicon-proxy URL — a 128px site icon,
+// not company art — set by some earlier process. export-batch only ever looks at
+// logo_url IS NULL, so they could never come back for review on their own.
+//
+// The favicon URL embeds the site it was generated from (...&url=https://mattelinc.com),
+// which is a better scrape target than anything we could derive: all 5,677 carry one. Run
+// this pass with its own decided-set so it stays out of the main queue:
+//   PROCESSED_FILE=data/logo/processed-redo.txt REDO=1 node .../export-batch.js 130
+const REDO = process.env.REDO === '1';
+// Some of those favicons were generated from the ATS host rather than the company site.
+// Scraping those hands back the vendor art this pass exists to remove.
+const ATS_HOSTS = /(paylocity|oraclecloud|myworkdayjobs|myworkdaysite|greenhouse|ashbyhq|lever\.co|icims|zohorecruit|workable|smartrecruiters|bamboohr|jazzhr|comeet|successfactors|taleo|jobvite|breezy|personio|recruitee|teamtailor|pinpointhq)\./i;
+
 const SLUG_ATS = { lever: 'lever', zoho: 'zoho' };
 const SLUG = SLUG_ATS[String(process.env.SLUG || '').toLowerCase()] || null;
-// Both modes derive <slug>.com and scrape the company's own site instead of the ATS page.
-const DERIVED = WORKDAY || !!SLUG;
+// The modes that scrape the company's own site rather than the ATS page, and so need the
+// liveness probe and the after-the-fact job counts.
+const DERIVED = WORKDAY || !!SLUG || REDO;
 
 function slugFor(ats, careerUrl) {
   const u = String(careerUrl || '').replace(/^https?:\/\//i, '').toLowerCase();
@@ -142,7 +158,11 @@ const SIZE = parseInt(process.argv[2] || '500', 10);
 // returns a near-empty batch while thousands of unreviewed ones sit further down the
 // tail — indistinguishable from a genuinely empty queue. Widen until the batch fills
 // or the query stops returning a full window (which means we have seen everything).
-const WINDOW = Math.max(8000, SIZE * 16);
+// REDO pulls from a 5,677-company pool where every row is equally in need of review, so
+// there is nothing to prioritise and no reason to pull a wide window. A wide one is
+// actively harmful here: attachJobCounts then aggregates over ~7,000 ids and the export
+// never finishes.
+const WINDOW = REDO ? SIZE * 6 : Math.max(8000, SIZE * 16);
 const MAX_WINDOW = 200000;
 
 // Workday publishes tenants under three URL shapes and the tenant sits in a different
@@ -166,6 +186,25 @@ function workdayTenant(careerUrl) {
 // build-preview only trusts a join key exactly one company claims — so keep the highest
 // job-count company per tenant and leave the siblings for a later pass rather than
 // exporting rows the preview would silently drop.
+// Point the scraper at the site the favicon was generated from. No slug guessing here, so
+// no name check is needed — the URL names the site directly.
+function buildRedoBatch(rows) {
+  const seen = new Set();
+  const candidates = [];
+  let atsHost = 0, dup = 0;
+  for (const r of rows) {
+    const site = String(r.favicon_site || '').replace(/\/+$/, '');
+    if (!site || ATS_HOSTS.test(site)) { atsHost++; continue; }
+    // build-preview only trusts a join key exactly one company claims.
+    if (seen.has(site)) { dup++; continue; }
+    seen.add(site);
+    r.scrape_target = r.career_url = site;
+    candidates.push(r);
+  }
+  console.log(`  ${candidates.length} favicon sites (skipped ${atsHost} pointing back at an ATS host, ${dup} duplicate sites)`);
+  return candidates;
+}
+
 function buildSlugBatch(rows) {
   const seen = new Set();
   const candidates = [];
@@ -223,7 +262,18 @@ async function main() {
       lever: '^https?://jobs\\.lever\\.co/[a-z0-9]',
       zoho: '^https?://[a-z0-9-]+\\.zohorecruit\\.com',
     };
-    const fetchWindow = async (limit) => WORKDAY
+    const fetchWindow = async (limit) => REDO
+      ? await q(pool, `
+          SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, 0 AS jobs,
+                 substring(c.logo_url from 'url=(https?://[^&]+)') AS favicon_site
+            FROM companies c
+           WHERE c.logo_url ILIKE '%gstatic.com/faviconV2%'
+             AND c.logo_url ~ 'url=https?://[^&]+'
+             AND NOT (c.id = ANY($2::bigint[]))
+             AND EXISTS (SELECT 1 FROM jobs j WHERE j.company_id = c.id AND j.removed_at IS NULL)
+           LIMIT $1
+        `, [limit, processedIds])
+      : WORKDAY
       ? await q(pool, `
           SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, 0 AS jobs
             FROM companies c
@@ -277,7 +327,7 @@ async function main() {
       // Derivation only — no network here. Liveness probing happens after the pool is
       // closed, because probing hundreds of mostly-dead domains takes minutes and Heroku
       // drops the idle connection out from under the next widening query.
-      batch = DERIVED ? buildSlugBatch(fresh) : fresh.slice(0, SIZE);
+      batch = REDO ? buildRedoBatch(fresh) : DERIVED ? buildSlugBatch(fresh) : fresh.slice(0, SIZE);
       // A short batch is only meaningful if the window wasn't full — otherwise the
       // remainder is simply below the cut.
       if (batch.length >= SIZE || rows.length < window || window >= MAX_WINDOW) break;

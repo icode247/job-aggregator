@@ -14,7 +14,12 @@ const ROOT = path.resolve(__dirname, '../..');
 const STATE_DIR = path.join(ROOT, 'data', 'logo');
 fs.mkdirSync(STATE_DIR, { recursive: true });
 
-const PROCESSED = path.join(STATE_DIR, 'processed.txt');
+// Overridable so a re-review pass (REDO=1, which revisits companies that already have a
+// junk logo rather than none) keeps its own decided-set and can't retire ids from the
+// main queue — or be blocked by them.
+const PROCESSED = process.env.PROCESSED_FILE
+  ? path.resolve(ROOT, process.env.PROCESSED_FILE)
+  : path.join(STATE_DIR, 'processed.txt');
 const BATCH_JSON = path.join(STATE_DIR, 'batch-companies.json');
 const BATCH_CSV = path.join(STATE_DIR, 'batch-websites.csv');
 const SCRAPED_CSV = path.join(STATE_DIR, 'batch-logos.csv');
