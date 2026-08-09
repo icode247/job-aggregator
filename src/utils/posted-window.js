@@ -28,9 +28,23 @@ const UNITS = {
 const PG_UNIT = { 3600: 'hours', 86400: 'days', 604800: 'weeks', 2592000: 'months' };
 
 function parsePostedWindow(value) {
-  const m = String(value == null ? '' : value).trim().toLowerCase().match(/^(\d+)\s*([a-z]+)$/);
+  let s = String(value == null ? '' : value).trim().toLowerCase();
+  if (!s) return null;
+
+  // The board sends `last_24h`, `last_week` and `last_month` — confirmed from production logs on
+  // 2026-08-09, where they were the ONLY values reaching this function that it rejected. Both
+  // read paths then degraded in the way described above: the request lost its date filter and
+  // became an all-time query, which on a narrow ATS filter took 9s for a single page and blew the
+  // statement timeout. The board surfaced that as "failed to fetch".
+  //
+  // Strip the prefix and normalise separators, so `last_24h`, `past-week` and `7 days` all reach
+  // the same matcher rather than each needing its own vocabulary entry.
+  s = s.replace(/^(?:last|past)[\s_-]+/, '').replace(/[\s_-]+/g, ' ').trim();
+
+  const m = s.match(/^(\d+)?\s*([a-z]+)$/);
   if (!m) return null;
-  const n = parseInt(m[1], 10);
+  // The count is optional: `last_week` names a unit and means one of it. `7d` still means seven.
+  const n = m[1] ? parseInt(m[1], 10) : 1;
   const secs = UNITS[m[2]];
   if (!n || n <= 0 || !secs) return null;
   return { seconds: n * secs, n, unit: PG_UNIT[secs] };
