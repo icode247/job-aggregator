@@ -52,7 +52,10 @@ const GENERIC_TENANTS = new Set([
 // the queue for a better derivation later.
 async function hostIsAlive(url) {
   const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), 12000);
+  // Deep into the tail most derived domains are dead, and a dead one costs the full
+  // timeout. A live site answers a HEAD well inside 6s; anything slower is not worth
+  // holding the whole export for.
+  const timer = setTimeout(() => ctl.abort(), 6000);
   try {
     // Any HTTP answer counts, including 403 — the big retail sites bot-block a bare HEAD
     // but render fine in the headless browser that does the actual scraping.
@@ -65,7 +68,7 @@ async function hostIsAlive(url) {
   }
 }
 
-async function filterAlive(rows, size, conc = 20) {
+async function filterAlive(rows, size, conc = 40) {
   const kept = [];
   let next = 0, checked = 0;
   const worker = async () => {
@@ -89,11 +92,6 @@ const SIZE = parseInt(process.argv[2] || '500', 10);
 const WINDOW = Math.max(8000, SIZE * 16);
 const MAX_WINDOW = 200000;
 
-// Turn Workday rows into a batch pointed at each company's own website. Two companies can
-// share a tenant (subsidiaries under one parent, e.g. Caremark under cvshealth), and
-// build-preview only trusts a join key exactly one company claims — so keep the highest
-// job-count company per tenant and leave the siblings for a later pass rather than
-// exporting rows the preview would silently drop.
 // Workday publishes tenants under three URL shapes and the tenant sits in a different
 // place in each. Missing the last two would have left ~1,500 of the largest companies
 // (campingworld, hpe, genpact, verisure) unreachable.
@@ -110,6 +108,11 @@ function workdayTenant(careerUrl) {
   return null;
 }
 
+// Turn Workday rows into a batch pointed at each company's own website. Two companies can
+// share a tenant (subsidiaries under one parent, e.g. Caremark under cvshealth), and
+// build-preview only trusts a join key exactly one company claims — so keep the highest
+// job-count company per tenant and leave the siblings for a later pass rather than
+// exporting rows the preview would silently drop.
 function buildWorkdayBatch(rows) {
   const seen = new Set();
   const candidates = [];
@@ -127,6 +130,21 @@ function buildWorkdayBatch(rows) {
   return candidates;
 }
 
+// The cheap window can't sort by job count, so fill the counts in for the derived
+// candidates and sort here instead. Counting jobs for a known id list is trivial next to
+// aggregating the whole logo-less Workday pool, and probing in impact order matters: an
+// unordered window handed back companies with 1-15 jobs, whose tenant slugs almost never
+// resolve to a real .com, so 1,000 probes yielded 8 live domains.
+async function attachJobCounts(pool, batch) {
+  const { rows } = await q(pool, `
+    SELECT company_id, COUNT(*)::int AS jobs
+      FROM jobs WHERE removed_at IS NULL AND company_id = ANY($1::bigint[])
+     GROUP BY company_id`, [batch.map(r => Number(r.id))]);
+  const counts = new Map(rows.map(r => [String(r.company_id), r.jobs]));
+  for (const r of batch) r.jobs = counts.get(String(r.id)) || 0;
+  batch.sort((a, b) => b.jobs - a.jobs);
+}
+
 async function main() {
   const pool = makePool();
   let batch = [], scanned = 0;
@@ -136,18 +154,23 @@ async function main() {
     // apply.workable.com, boards.greenhouse.io, ...). Scraping those returns the ATS's
     // own branding, so every company behind one host gets handed the same wrong image.
     // ~23.6k of the logo-less pool sits here and needs real-website discovery instead.
+    // The Workday window deliberately avoids JOIN + GROUP BY + ORDER BY COUNT(*), which
+    // measured 119s against 4.5s for the EXISTS form on the same predicate — and the
+    // widening loop runs it up to four times, which is what pushed the export past every
+    // timeout it was run under. Reviewed ids are excluded in SQL rather than in JS, so the
+    // window can't saturate with them and no widening is needed. Job counts are attached
+    // afterwards, for the ~SIZE survivors only.
     const fetchWindow = async (limit) => WORKDAY
       ? await q(pool, `
-          SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, COUNT(j.id)::int AS jobs
+          SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, 0 AS jobs
             FROM companies c
-            JOIN jobs j ON j.company_id = c.id AND j.removed_at IS NULL
            WHERE c.logo_url IS NULL
              AND c.ats = 'workday'
              AND c.career_url ~* '^https?://([a-z0-9-]+\\.(wd[0-9]+\\.)?myworkdayjobs\\.com|wd[0-9]+\\.myworkdaysite\\.com/recruiting/[a-z0-9-]+)'
-           GROUP BY c.id
-           ORDER BY jobs DESC
+             AND NOT (c.id = ANY($2::bigint[]))
+             AND EXISTS (SELECT 1 FROM jobs j WHERE j.company_id = c.id AND j.removed_at IS NULL)
            LIMIT $1
-        `, [limit])
+        `, [limit, [...processed].map(Number).filter(Number.isFinite)])
       : SHARED
       ? await q(pool, `
           SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, COUNT(j.id)::int AS jobs
@@ -190,6 +213,9 @@ async function main() {
     // What the scraper is pointed at, and what build-preview joins the results back on.
     // WORKDAY already set both (to the derived company site, not the Workday page).
     if (!WORKDAY) for (const r of batch) r.scrape_target = SHARED ? r.career_url : r.domain;
+    // Order the candidates by impact while the connection is still open — probing happens
+    // after the pool closes and must not be the thing holding it.
+    if (WORKDAY && batch.length) await attachJobCounts(pool, batch);
     scanned = rows.length;
   } finally {
     await pool.end();
@@ -197,7 +223,7 @@ async function main() {
 
   // Everything below runs with no DB connection open.
   if (WORKDAY && batch.length) {
-    console.log(`  probing which of ${batch.length} derived domains resolve`);
+    console.log(`  probing which of ${batch.length} derived domains resolve (biggest first)`);
     batch = await filterAlive(batch, SIZE);
   }
   if (!batch.length) {
