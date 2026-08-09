@@ -46,29 +46,82 @@ const GENERIC_TENANTS = new Set([
   'employment', 'hiring', 'apply', 'candidate', 'staffing', 'inc', 'group', 'holdings',
 ]);
 
+// SLUG=lever|zoho applies the same derive-the-company's-own-site trick to the two other
+// ATS whose URL carries a real company slug: jobs.lever.co/<slug> and
+// <slug>.zohorecruit.com. Comeet (comeet.co/jobs/51.00F) and OracleCloud
+// (elyb.fa.us2.oraclecloud.com) carry opaque ids instead and cannot be reached this way at
+// any effort, so they are not offered here.
+//
+// The signal is weaker than Workday's. Lever and Zoho slugs are short and generic
+// (citcon, apexaba, supportspeedy) where Workday tenants were corporate (cvshealth,
+// thermofisher), so <slug>.com collides with an unrelated business far more often. The
+// extra guard is nameLooksRelated(): a card whose slug does not resemble the company name
+// still gets shown, but is NOT pre-checked, so the reviewer has to opt in rather than
+// opt out.
+const SLUG_ATS = { lever: 'lever', zoho: 'zoho' };
+const SLUG = SLUG_ATS[String(process.env.SLUG || '').toLowerCase()] || null;
+// Both modes derive <slug>.com and scrape the company's own site instead of the ATS page.
+const DERIVED = WORKDAY || !!SLUG;
+
+function slugFor(ats, careerUrl) {
+  const u = String(careerUrl || '').replace(/^https?:\/\//i, '').toLowerCase();
+  if (ats === 'lever') {
+    const m = u.match(/^jobs\.lever\.co\/([a-z0-9][a-z0-9._-]*)/);
+    return m ? m[1].replace(/[._-]+$/, '') : null;
+  }
+  if (ats === 'zoho') {
+    const m = u.match(/^([a-z0-9-]+)\.zohorecruit\.com/);
+    return m ? m[1] : null;
+  }
+  return null;
+}
+
+// Does the slug plausibly belong to this company? Compares letters-only forms both ways,
+// so "citcon" matches "Citcon" and "apexaba" matches "Apex ABA Therapy", while a slug that
+// shares nothing with the name is treated as unverified.
+function nameLooksRelated(slug, companyName) {
+  const a = String(slug || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const b = String(companyName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (!a || !b) return false;
+  if (b.startsWith(a) || a.startsWith(b) || b.includes(a)) return true;
+  // Or the slug is the company's initials/first words run together.
+  const words = String(companyName || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  return words.length > 1 && a === words.map(w => w[0]).join('');
+}
+
 // A derived host is a guess. Only ship the ones that answer, because save-logos.js marks
 // the whole batch processed: a company skipped merely for being .org instead of .com would
 // be burned permanently, having never been looked at. Non-responders are simply left in
 // the queue for a better derivation later.
-async function hostIsAlive(url) {
+// A timeout is not evidence a domain is dead — it is usually evidence we asked too hard.
+// Probing at concurrency 40 with a 6s deadline (while six crawler instances shared the
+// link) timed out nearly every live host: the alive rate fell from 30-50% to 2%, and
+// citcon.com / topdesk.com / poki.com were all reported dead while answering fine to a
+// plain curl. Since a host judged dead means a company withheld from review, be patient
+// and retry an aborted probe once before believing it.
+async function probeOnce(url, ms) {
   const ctl = new AbortController();
-  // Deep into the tail most derived domains are dead, and a dead one costs the full
-  // timeout. A live site answers a HEAD well inside 6s; anything slower is not worth
-  // holding the whole export for.
-  const timer = setTimeout(() => ctl.abort(), 6000);
+  const timer = setTimeout(() => ctl.abort(), ms);
   try {
     // Any HTTP answer counts, including 403 — the big retail sites bot-block a bare HEAD
     // but render fine in the headless browser that does the actual scraping.
     await fetch(url, { method: 'HEAD', redirect: 'follow', signal: ctl.signal });
-    return true;
-  } catch {
-    return false;
+    return 'alive';
+  } catch (err) {
+    // A DNS/TLS/connection-refused failure is a real answer; an abort is only impatience.
+    return err.name === 'AbortError' ? 'timeout' : 'dead';
   } finally {
     clearTimeout(timer);
   }
 }
 
-async function filterAlive(rows, size, conc = 40) {
+async function hostIsAlive(url) {
+  const first = await probeOnce(url, 15000);
+  if (first !== 'timeout') return first === 'alive';
+  return (await probeOnce(url, 20000)) === 'alive';
+}
+
+async function filterAlive(rows, size, conc = 15) {
   const kept = [];
   let next = 0, checked = 0;
   const worker = async () => {
@@ -113,20 +166,25 @@ function workdayTenant(careerUrl) {
 // build-preview only trusts a join key exactly one company claims — so keep the highest
 // job-count company per tenant and leave the siblings for a later pass rather than
 // exporting rows the preview would silently drop.
-function buildWorkdayBatch(rows) {
+function buildSlugBatch(rows) {
   const seen = new Set();
   const candidates = [];
-  let generic = 0, dup = 0;
+  let generic = 0, dup = 0, unverified = 0;
   for (const r of rows) {
-    const slug = workdayTenant(r.career_url);
-    if (!slug || GENERIC_TENANTS.has(slug)) { generic++; continue; }
+    const slug = WORKDAY ? workdayTenant(r.career_url) : slugFor(SLUG, r.career_url);
+    if (!slug || GENERIC_TENANTS.has(slug) || slug.length < 3) { generic++; continue; }
     if (seen.has(slug)) { dup++; continue; }
     seen.add(slug);
     r.tenant = slug;
     r.scrape_target = r.career_url = `https://${slug}.com`;
+    // Workday tenants are corporate and reliable; the Lever/Zoho slugs are the ones that
+    // need the name check, so only they can come back unverified.
+    r.slug_match = WORKDAY ? true : nameLooksRelated(slug, r.company_name);
+    if (!r.slug_match) unverified++;
     candidates.push(r);
   }
-  console.log(`  ${candidates.length} tenants (skipped ${generic} generic, ${dup} sharing a tenant)`);
+  const tail = WORKDAY ? '' : `, ${unverified} name-unverified (shown but not pre-checked)`;
+  console.log(`  ${candidates.length} slugs (skipped ${generic} generic, ${dup} sharing a slug${tail})`);
   return candidates;
 }
 
@@ -160,6 +218,11 @@ async function main() {
     // timeout it was run under. Reviewed ids are excluded in SQL rather than in JS, so the
     // window can't saturate with them and no widening is needed. Job counts are attached
     // afterwards, for the ~SIZE survivors only.
+    const processedIds = [...processed].map(Number).filter(Number.isFinite);
+    const SLUG_URL_RE = {
+      lever: '^https?://jobs\\.lever\\.co/[a-z0-9]',
+      zoho: '^https?://[a-z0-9-]+\\.zohorecruit\\.com',
+    };
     const fetchWindow = async (limit) => WORKDAY
       ? await q(pool, `
           SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, 0 AS jobs
@@ -170,7 +233,18 @@ async function main() {
              AND NOT (c.id = ANY($2::bigint[]))
              AND EXISTS (SELECT 1 FROM jobs j WHERE j.company_id = c.id AND j.removed_at IS NULL)
            LIMIT $1
-        `, [limit, [...processed].map(Number).filter(Number.isFinite)])
+        `, [limit, processedIds])
+      : SLUG
+      ? await q(pool, `
+          SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, 0 AS jobs
+            FROM companies c
+           WHERE c.logo_url IS NULL
+             AND c.ats = $3
+             AND c.career_url ~* $4
+             AND NOT (c.id = ANY($2::bigint[]))
+             AND EXISTS (SELECT 1 FROM jobs j WHERE j.company_id = c.id AND j.removed_at IS NULL)
+           LIMIT $1
+        `, [limit, processedIds, SLUG, SLUG_URL_RE[SLUG]])
       : SHARED
       ? await q(pool, `
           SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, COUNT(j.id)::int AS jobs
@@ -203,7 +277,7 @@ async function main() {
       // Derivation only — no network here. Liveness probing happens after the pool is
       // closed, because probing hundreds of mostly-dead domains takes minutes and Heroku
       // drops the idle connection out from under the next widening query.
-      batch = WORKDAY ? buildWorkdayBatch(fresh) : fresh.slice(0, SIZE);
+      batch = DERIVED ? buildSlugBatch(fresh) : fresh.slice(0, SIZE);
       // A short batch is only meaningful if the window wasn't full — otherwise the
       // remainder is simply below the cut.
       if (batch.length >= SIZE || rows.length < window || window >= MAX_WINDOW) break;
@@ -212,17 +286,17 @@ async function main() {
     }
     // What the scraper is pointed at, and what build-preview joins the results back on.
     // WORKDAY already set both (to the derived company site, not the Workday page).
-    if (!WORKDAY) for (const r of batch) r.scrape_target = SHARED ? r.career_url : r.domain;
+    if (!DERIVED) for (const r of batch) r.scrape_target = SHARED ? r.career_url : r.domain;
     // Order the candidates by impact while the connection is still open — probing happens
     // after the pool closes and must not be the thing holding it.
-    if (WORKDAY && batch.length) await attachJobCounts(pool, batch);
+    if (DERIVED && batch.length) await attachJobCounts(pool, batch);
     scanned = rows.length;
   } finally {
     await pool.end();
   }
 
   // Everything below runs with no DB connection open.
-  if (WORKDAY && batch.length) {
+  if (DERIVED && batch.length) {
     console.log(`  probing which of ${batch.length} derived domains resolve (biggest first)`);
     batch = await filterAlive(batch, SIZE);
   }

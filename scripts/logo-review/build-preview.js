@@ -106,7 +106,7 @@ function renderHtml(items, tag) {
       <div class="meta">
         <div class="name">${esc(it.company_name || it.domain)}</div>
         <div class="sub">#${it.id} &middot; ${esc(it.domain)} &middot; ${it.jobs} jobs</div>
-        ${it.scraped_from && norm(it.scraped_from) !== norm(it.domain) ? `<div class="sub">from ${esc(it.scraped_from)}</div>` : ''}
+        ${it.scraped_from && norm(it.scraped_from) !== norm(it.domain) ? `<div class="sub">from ${esc(it.scraped_from)}${it.slug_match === false ? ' <span class="tag warn">name unverified</span>' : ''}</div>` : ''}
         <div class="tags">${it.vendor ? '<span class="tag bad">vendor</span>' : ''}${!HIGH_CONFIDENCE.has(it.logo_type) ? `<span class="tag warn">${esc(it.logo_type)}</span>` : ''}</div>
       </div>
     </label>`).join('');
@@ -252,6 +252,8 @@ async function main() {
       // reviewer needs to see WHICH site the logo came from to judge whether it belongs to
       // this company. `domain` alone is the shared ATS host and says nothing.
       scraped_from: c.scrape_target,
+      // false only in SLUG mode, where the slug didn't resemble the company name.
+      slug_match: c.slug_match,
       logo_url: row.logo_url, logo_type: row.logo_type || 'unknown',
       vendor: isVendor(row.logo_url),
     });
@@ -315,7 +317,9 @@ async function main() {
 
   // Pre-select the ones the scraper is confident about and that aren't ATS boilerplate;
   // the human pass is about unchecking the misses, not hunting for the hits.
-  for (const it of withImages) it.suggest = !it.vendor && HIGH_CONFIDENCE.has(it.logo_type);
+  // A name-unverified slug is a guess about WHICH company the site belongs to, which is
+  // the one error the eyeball step is worst at catching — so never pre-check those.
+  for (const it of withImages) it.suggest = !it.vendor && HIGH_CONFIDENCE.has(it.logo_type) && it.slug_match !== false;
 
   fs.writeFileSync(REVIEW_JSON, JSON.stringify(withImages.map(({ data_uri, ...rest }) => rest), null, 2));
 
