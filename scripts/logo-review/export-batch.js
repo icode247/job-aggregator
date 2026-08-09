@@ -125,15 +125,21 @@ async function probeOnce(url, ms) {
     return 'alive';
   } catch (err) {
     // A DNS/TLS/connection-refused failure is a real answer; an abort is only impatience.
-    return err.name === 'AbortError' ? 'timeout' : 'dead';
+    return err.name === 'AbortError' ? 'timeout' : 'failed';
   } finally {
     clearTimeout(timer);
   }
 }
 
+// Retry every kind of failure, not just timeouts. A DNS error looks definitive but isn't:
+// the resolver here is a home router shared with six crawler instances, and it drops
+// queries under load — mid-run it briefly failed to resolve even the Heroku database host,
+// which resolved fine a moment later. Treating that as "domain is dead" silently withheld
+// companies from review (one batch probed 400 sites and passed 19).
 async function hostIsAlive(url) {
   const first = await probeOnce(url, 15000);
-  if (first !== 'timeout') return first === 'alive';
+  if (first === 'alive') return true;
+  await new Promise(r => setTimeout(r, 750));
   return (await probeOnce(url, 20000)) === 'alive';
 }
 
