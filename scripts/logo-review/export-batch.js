@@ -137,23 +137,31 @@ async function probeOnce(url, ms) {
 // which resolved fine a moment later. Treating that as "domain is dead" silently withheld
 // companies from review (one batch probed 400 sites and passed 19).
 async function hostIsAlive(url) {
-  const first = await probeOnce(url, 15000);
+  const first = await probeOnce(url, 10000);
   if (first === 'alive') return true;
-  await new Promise(r => setTimeout(r, 750));
-  return (await probeOnce(url, 20000)) === 'alive';
+  // The retry exists to survive a flaky resolver, and a transient failure clears quickly —
+  // so keep it short. A generous retry made every dead domain cost 35s, and once the pool's
+  // dead fraction rose the export stopped finishing at all.
+  await new Promise(r => setTimeout(r, 500));
+  return (await probeOnce(url, 8000)) === 'alive';
 }
 
-async function filterAlive(rows, size, conc = 15) {
+// Bounded by wall-clock as well as by size. Deep in a pool most candidates are dead, and
+// without a deadline the probe phase alone outlives the whole export.
+async function filterAlive(rows, size, conc = 20, budgetMs = 240000) {
   const kept = [];
-  let next = 0, checked = 0;
+  const stopAt = Date.now() + budgetMs;
+  let next = 0, checked = 0, ranOut = false;
   const worker = async () => {
     while (next < rows.length && kept.length < size) {
+      if (Date.now() > stopAt) { ranOut = true; return; }
       const r = rows[next++];
       if (await hostIsAlive(r.scrape_target)) kept.push(r);
       if (++checked % 50 === 0) console.log(`  probed ${checked}, alive ${kept.length}`);
     }
   };
   await Promise.all(Array.from({ length: conc }, worker));
+  if (ranOut) console.log(`  probe budget spent after ${checked} of ${rows.length} candidates — shipping ${Math.min(kept.length, size)}`);
   return kept.slice(0, size);
 }
 
