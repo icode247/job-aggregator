@@ -164,11 +164,12 @@ const SIZE = parseInt(process.argv[2] || '500', 10);
 // returns a near-empty batch while thousands of unreviewed ones sit further down the
 // tail — indistinguishable from a genuinely empty queue. Widen until the batch fills
 // or the query stops returning a full window (which means we have seen everything).
-// REDO pulls from a 5,677-company pool where every row is equally in need of review, so
-// there is nothing to prioritise and no reason to pull a wide window. A wide one is
-// actively harmful here: attachJobCounts then aggregates over ~7,000 ids and the export
-// never finishes.
-const WINDOW = REDO ? SIZE * 6 : Math.max(8000, SIZE * 16);
+// REDO pulls from a pool where every row is equally in need of review, so there is nothing
+// to prioritise — but the window still can't be tiny. Rows come back in physical order, so
+// a narrow one lands entirely inside a cluster of lapsed domains and returns almost
+// nothing (one pass probed 300 sites and passed 6). It can't be huge either: attachJobCounts
+// aggregates over every candidate, and a 7,000-id window made the export never finish.
+const WINDOW = REDO ? SIZE * 16 : Math.max(8000, SIZE * 16);
 const MAX_WINDOW = 200000;
 
 // Workday publishes tenants under three URL shapes and the tenant sits in a different
