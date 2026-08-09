@@ -15,9 +15,43 @@ if [ "${FORCE:-0}" != "1" ] && pgrep -f "crawl-companies-local|crawl-workable-ma
   exit 0
 fi
 
-export DATABASE_URL="$(heroku config:get DATABASE_URL -a fastapply-board 2>/dev/null)"
+# A LaunchAgent at login inherits a minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin) which holds
+# neither `heroku` (/opt/homebrew/bin) nor `node` (nvm). On 2026-08-08 the Mac rebooted at 17:18,
+# this fired at 17:20, `heroku` was not found, the old `2>/dev/null` swallowed "command not
+# found", DATABASE_URL came back empty and line 20 exited 1. The entire fleet stayed down for
+# 17 hours and the only trace was "FATAL: no DATABASE_URL", which named the symptom, not the
+# cause. Put the interactive shell's directories back before anything needs them.
+for d in /opt/homebrew/bin /usr/local/bin; do
+  [ -d "$d" ] && case ":$PATH:" in *":$d:"*) ;; *) PATH="$d:$PATH" ;; esac
+done
+# nvm installs node outside any standard prefix and the version changes; take the newest present
+# rather than pinning one that a future `nvm install` silently retires.
+NVM_BIN="$(ls -d "$HOME"/.nvm/versions/node/*/bin 2>/dev/null | sort -V | tail -1)"
+[ -n "$NVM_BIN" ] && case ":$PATH:" in *":$NVM_BIN:"*) ;; *) PATH="$NVM_BIN:$PATH" ;; esac
+export PATH
+
+command -v node >/dev/null 2>&1 || { echo "[$(date)] FATAL: node not on PATH ($PATH)"; exit 1; }
+command -v heroku >/dev/null 2>&1 || { echo "[$(date)] FATAL: heroku CLI not on PATH ($PATH)"; exit 1; }
+
+# Fetching the URL needs the network, and at login Wi-Fi may not be associated yet — a single
+# attempt ~2 minutes after boot is a coin flip. Retry, and print what actually failed.
+# stdout and stderr are captured SEPARATELY on purpose. The heroku CLI writes an update-available
+# warning to stderr on every invocation, so folding stderr into the value (2>&1) prepends that
+# banner to the URL and the postgres* test fails while the correct URL sits in the string.
+DATABASE_URL=""
+err_file="$(mktemp -t crawl-launch)"
+for attempt in 1 2 3 4 5 6; do
+  out="$(heroku config:get DATABASE_URL -a fastapply-board 2>"$err_file")"
+  case "$out" in
+    postgres*) DATABASE_URL="$out"; break ;;
+    *) echo "[$(date)] DATABASE_URL attempt $attempt/6 failed: $(tr '\n' ' ' <"$err_file" | sed 's/  */ /g' | cut -c1-160)"; sleep 20 ;;
+  esac
+done
+rm -f "$err_file"
+export DATABASE_URL
 export NODE_ENV=production
-[ -z "$DATABASE_URL" ] && { echo "FATAL: no DATABASE_URL"; exit 1; }
+[ -z "$DATABASE_URL" ] && { echo "[$(date)] FATAL: no DATABASE_URL after 6 attempts"; exit 1; }
+echo "[$(date)] DATABASE_URL resolved; launching fleet"
 
 LOG=/tmp
 # Postgres is standard-0 since 2026-08-05: 200 connections, not the 40 of essential-2.
