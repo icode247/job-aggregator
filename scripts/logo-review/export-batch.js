@@ -110,7 +110,7 @@ function workdayTenant(careerUrl) {
   return null;
 }
 
-async function buildWorkdayBatch(rows) {
+function buildWorkdayBatch(rows) {
   const seen = new Set();
   const candidates = [];
   let generic = 0, dup = 0;
@@ -123,12 +123,13 @@ async function buildWorkdayBatch(rows) {
     r.scrape_target = r.career_url = `https://${slug}.com`;
     candidates.push(r);
   }
-  console.log(`  ${candidates.length} tenants (skipped ${generic} generic, ${dup} sharing a tenant), probing which resolve`);
-  return await filterAlive(candidates, SIZE);
+  console.log(`  ${candidates.length} tenants (skipped ${generic} generic, ${dup} sharing a tenant)`);
+  return candidates;
 }
 
 async function main() {
   const pool = makePool();
+  let batch = [], scanned = 0;
   try {
     const processed = readProcessed();
     // Skip companies whose `domain` is a shared ATS host (recruiting.paylocity.com,
@@ -172,11 +173,14 @@ async function main() {
            LIMIT $1
         `, [limit]);
 
-    let window = WINDOW, rows = [], batch = [];
+    let window = WINDOW, rows = [];
     for (;;) {
       ({ rows } = await fetchWindow(window));
       const fresh = rows.filter(r => !processed.has(String(r.id)));
-      batch = WORKDAY ? await buildWorkdayBatch(fresh) : fresh.slice(0, SIZE);
+      // Derivation only — no network here. Liveness probing happens after the pool is
+      // closed, because probing hundreds of mostly-dead domains takes minutes and Heroku
+      // drops the idle connection out from under the next widening query.
+      batch = WORKDAY ? buildWorkdayBatch(fresh) : fresh.slice(0, SIZE);
       // A short batch is only meaningful if the window wasn't full — otherwise the
       // remainder is simply below the cut.
       if (batch.length >= SIZE || rows.length < window || window >= MAX_WINDOW) break;
@@ -186,17 +190,24 @@ async function main() {
     // What the scraper is pointed at, and what build-preview joins the results back on.
     // WORKDAY already set both (to the derived company site, not the Workday page).
     if (!WORKDAY) for (const r of batch) r.scrape_target = SHARED ? r.career_url : r.domain;
-    if (!batch.length) {
-      console.log(`EXPORTED 0 — queue is genuinely empty (scanned ${rows.length} rows, all reviewed)`);
-      return;
-    }
-
-    fs.writeFileSync(BATCH_JSON, JSON.stringify(batch, null, 2));
-    fs.writeFileSync(BATCH_CSV, 'website\n' + batch.map(r => r.scrape_target).join('\n') + '\n');
-    console.log(`EXPORTED ${batch.length} (jobs ${batch[0].jobs} -> ${batch[batch.length - 1].jobs})`);
+    scanned = rows.length;
   } finally {
     await pool.end();
   }
+
+  // Everything below runs with no DB connection open.
+  if (WORKDAY && batch.length) {
+    console.log(`  probing which of ${batch.length} derived domains resolve`);
+    batch = await filterAlive(batch, SIZE);
+  }
+  if (!batch.length) {
+    console.log(`EXPORTED 0 — queue is genuinely empty (scanned ${scanned} rows, all reviewed)`);
+    return;
+  }
+
+  fs.writeFileSync(BATCH_JSON, JSON.stringify(batch, null, 2));
+  fs.writeFileSync(BATCH_CSV, 'website\n' + batch.map(r => r.scrape_target).join('\n') + '\n');
+  console.log(`EXPORTED ${batch.length} (jobs ${batch[0].jobs} -> ${batch[batch.length - 1].jobs})`);
 }
 
 main().catch(err => { console.error('FATAL:', err.message); process.exit(1); });
