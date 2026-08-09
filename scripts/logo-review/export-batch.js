@@ -152,6 +152,16 @@ async function hostIsAlive(url) {
 // 24 live hosts, nearly all of that work repeated from earlier batches. Delete this file to
 // re-test everything (a host wrongly cached here is simply never offered again).
 const DEAD_HOSTS = path.join(STATE_DIR, 'dead-hosts.txt');
+// The companies behind those hosts, so the SQL window can exclude them. Skipping the hosts
+// in JS isn't enough: a dead-host company is never marked processed, so it keeps coming
+// back and permanently occupies a slot in the window. One export found only 12 new
+// candidates in a 1,920-row window because the rest were dead hosts it had already seen.
+// Delete this file (and dead-hosts.txt) to re-offer them.
+const DEAD_COMPANIES = path.join(STATE_DIR, 'dead-companies.txt');
+function readDeadCompanies() {
+  if (!fs.existsSync(DEAD_COMPANIES)) return [];
+  return fs.readFileSync(DEAD_COMPANIES, 'utf8').split('\n').map(s => Number(s.trim())).filter(Number.isFinite);
+}
 function readDeadHosts() {
   if (!fs.existsSync(DEAD_HOSTS)) return new Set();
   return new Set(fs.readFileSync(DEAD_HOSTS, 'utf8').split('\n').map(s => s.trim()).filter(Boolean));
@@ -165,7 +175,7 @@ async function filterAlive(rows, size, conc = 20, budgetMs = 240000) {
   rows = rows.filter(r => !dead.has(r.scrape_target));
   if (skipped !== rows.length) console.log(`  skipping ${skipped - rows.length} hosts already known dead`);
 
-  const kept = [], newlyDead = [];
+  const kept = [], newlyDead = [], newlyDeadIds = [];
   const stopAt = Date.now() + budgetMs;
   let next = 0, checked = 0, ranOut = false;
   const worker = async () => {
@@ -173,12 +183,15 @@ async function filterAlive(rows, size, conc = 20, budgetMs = 240000) {
       if (Date.now() > stopAt) { ranOut = true; return; }
       const r = rows[next++];
       if (await hostIsAlive(r.scrape_target)) kept.push(r);
-      else newlyDead.push(r.scrape_target);
+      else { newlyDead.push(r.scrape_target); newlyDeadIds.push(r.id); }
       if (++checked % 50 === 0) console.log(`  probed ${checked}, alive ${kept.length}`);
     }
   };
   await Promise.all(Array.from({ length: conc }, worker));
-  if (newlyDead.length) fs.appendFileSync(DEAD_HOSTS, newlyDead.join('\n') + '\n');
+  if (newlyDead.length) {
+    fs.appendFileSync(DEAD_HOSTS, newlyDead.join('\n') + '\n');
+    fs.appendFileSync(DEAD_COMPANIES, newlyDeadIds.join('\n') + '\n');
+  }
   if (ranOut) console.log(`  probe budget spent after ${checked} of ${rows.length} candidates — shipping ${Math.min(kept.length, size)}`);
   return kept.slice(0, size);
 }
@@ -287,7 +300,8 @@ async function main() {
     // timeout it was run under. Reviewed ids are excluded in SQL rather than in JS, so the
     // window can't saturate with them and no widening is needed. Job counts are attached
     // afterwards, for the ~SIZE survivors only.
-    const processedIds = [...processed].map(Number).filter(Number.isFinite);
+    // Dead-host companies are excluded here too, or they clog the window forever.
+    const processedIds = [...new Set([...[...processed].map(Number).filter(Number.isFinite), ...readDeadCompanies()])];
     const SLUG_URL_RE = {
       lever: '^https?://jobs\\.lever\\.co/[a-z0-9]',
       zoho: '^https?://[a-z0-9-]+\\.zohorecruit\\.com',
