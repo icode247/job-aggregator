@@ -88,6 +88,12 @@ const VENDOR_PATTERNS = [
   // Missing the second one flagged a real company logo (Global Prairie) as vendor art.
   /onelogin\.com\/(?!images\/(brands|account_branding)\/).*logo/i,
   /auth0\.com\/.*logo/i,
+  // Domain marketplaces. A company whose site has lapsed serves the parking page's art,
+  // which looks like an ordinary logo on a review card. The repeated-URL rule catches
+  // these only when two land in the same batch — a lone one would sail through.
+  /forsale\.godaddy\.com/i,
+  /static\.hugedomains\.com/i,
+  /img\.atom\.com/i,
 ];
 
 function isVendor(url) {
