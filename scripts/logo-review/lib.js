@@ -94,6 +94,7 @@ const VENDOR_PATTERNS = [
   /forsale\.godaddy\.com/i,
   /static\.hugedomains\.com/i,
   /img\.atom\.com/i,
+  /forsale\.spaceship-cdn\.com/i,
 ];
 
 function isVendor(url) {
