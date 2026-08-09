@@ -9,7 +9,8 @@
  * Writes data/logo/batch-companies.json + batch-websites.csv (scraper input).
  */
 const fs = require('fs');
-const { makePool, q, readProcessed, BATCH_JSON, BATCH_CSV } = require('./lib');
+const path = require('path');
+const { makePool, q, readProcessed, BATCH_JSON, BATCH_CSV, STATE_DIR } = require('./lib');
 
 // SHARED=1 flips to the companies whose `domain` is a shared ATS host. They have no
 // own-domain page to scrape, but each has a unique branded careers page — rendered by
@@ -146,10 +147,25 @@ async function hostIsAlive(url) {
   return (await probeOnce(url, 8000)) === 'alive';
 }
 
+// Hosts already found dead. Only the exported batch gets marked processed, so without this
+// every export re-probes the same lapsed domains: one late pass spent 800 probes to find
+// 24 live hosts, nearly all of that work repeated from earlier batches. Delete this file to
+// re-test everything (a host wrongly cached here is simply never offered again).
+const DEAD_HOSTS = path.join(STATE_DIR, 'dead-hosts.txt');
+function readDeadHosts() {
+  if (!fs.existsSync(DEAD_HOSTS)) return new Set();
+  return new Set(fs.readFileSync(DEAD_HOSTS, 'utf8').split('\n').map(s => s.trim()).filter(Boolean));
+}
+
 // Bounded by wall-clock as well as by size. Deep in a pool most candidates are dead, and
 // without a deadline the probe phase alone outlives the whole export.
 async function filterAlive(rows, size, conc = 20, budgetMs = 240000) {
-  const kept = [];
+  const dead = readDeadHosts();
+  const skipped = rows.length;
+  rows = rows.filter(r => !dead.has(r.scrape_target));
+  if (skipped !== rows.length) console.log(`  skipping ${skipped - rows.length} hosts already known dead`);
+
+  const kept = [], newlyDead = [];
   const stopAt = Date.now() + budgetMs;
   let next = 0, checked = 0, ranOut = false;
   const worker = async () => {
@@ -157,10 +173,12 @@ async function filterAlive(rows, size, conc = 20, budgetMs = 240000) {
       if (Date.now() > stopAt) { ranOut = true; return; }
       const r = rows[next++];
       if (await hostIsAlive(r.scrape_target)) kept.push(r);
+      else newlyDead.push(r.scrape_target);
       if (++checked % 50 === 0) console.log(`  probed ${checked}, alive ${kept.length}`);
     }
   };
   await Promise.all(Array.from({ length: conc }, worker));
+  if (newlyDead.length) fs.appendFileSync(DEAD_HOSTS, newlyDead.join('\n') + '\n');
   if (ranOut) console.log(`  probe budget spent after ${checked} of ${rows.length} candidates — shipping ${Math.min(kept.length, size)}`);
   return kept.slice(0, size);
 }
@@ -175,8 +193,8 @@ const SIZE = parseInt(process.argv[2] || '500', 10);
 // REDO pulls from a pool where every row is equally in need of review, so there is nothing
 // to prioritise — but the window still can't be tiny. Rows come back in physical order, so
 // a narrow one lands entirely inside a cluster of lapsed domains and returns almost
-// nothing (one pass probed 300 sites and passed 6). It can't be huge either: attachJobCounts
-// aggregates over every candidate, and a 7,000-id window made the export never finish.
+// nothing (one pass probed 300 sites and passed 6). It can't be huge either: every extra
+// candidate is another host to probe.
 const WINDOW = REDO ? SIZE * 16 : Math.max(8000, SIZE * 16);
 const MAX_WINDOW = 200000;
 
@@ -242,11 +260,8 @@ function buildSlugBatch(rows) {
   return candidates;
 }
 
-// The cheap window can't sort by job count, so fill the counts in for the derived
-// candidates and sort here instead. Counting jobs for a known id list is trivial next to
-// aggregating the whole logo-less Workday pool, and probing in impact order matters: an
-// unordered window handed back companies with 1-15 jobs, whose tenant slugs almost never
-// resolve to a real .com, so 1,000 probes yielded 8 live domains.
+// The cheap window can't sort by job count, so fill the counts in for the final batch and
+// sort here instead — the preview still leads with the biggest boards.
 async function attachJobCounts(pool, batch) {
   const { rows } = await q(pool, `
     SELECT company_id, COUNT(*)::int AS jobs
@@ -352,9 +367,6 @@ async function main() {
     // What the scraper is pointed at, and what build-preview joins the results back on.
     // WORKDAY already set both (to the derived company site, not the Workday page).
     if (!DERIVED) for (const r of batch) r.scrape_target = SHARED ? r.career_url : r.domain;
-    // Order the candidates by impact while the connection is still open — probing happens
-    // after the pool closes and must not be the thing holding it.
-    if (DERIVED && batch.length) await attachJobCounts(pool, batch);
     scanned = rows.length;
   } finally {
     await pool.end();
@@ -362,8 +374,17 @@ async function main() {
 
   // Everything below runs with no DB connection open.
   if (DERIVED && batch.length) {
-    console.log(`  probing which of ${batch.length} derived domains resolve (biggest first)`);
+    console.log(`  probing which of ${batch.length} derived domains resolve`);
     batch = await filterAlive(batch, SIZE);
+    // Counts come AFTER the probe, on the survivors only. Counting live jobs per company
+    // across the 23GB jobs table costs 547s for 1,920 ids and 2s for 120 — doing it up
+    // front, to order candidates by impact, was quietly the most expensive step in the
+    // export. The dead-host cache makes probe order cheap to get wrong, so it isn't worth
+    // paying for.
+    if (batch.length) {
+      const pool2 = makePool();
+      try { await attachJobCounts(pool2, batch); } finally { await pool2.end(); }
+    }
   }
   if (!batch.length) {
     console.log(`EXPORTED 0 — queue is genuinely empty (scanned ${scanned} rows, all reviewed)`);
