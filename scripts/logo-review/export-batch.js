@@ -88,6 +88,39 @@ const ATS_DOMAIN_RE = '(bamboohr|greenhouse|lever|ashbyhq|workable|smartrecruite
 // Scraping those hands back the vendor art this pass exists to remove.
 const ATS_HOSTS = /(paylocity|oraclecloud|myworkdayjobs|myworkdaysite|greenhouse|ashbyhq|lever\.co|icims|zohorecruit|workable|smartrecruiters|bamboohr|jazzhr|comeet|successfactors|taleo|jobvite|breezy|personio|recruitee|teamtailor|pinpointhq)\./i;
 
+// GREENHOUSE=1 targets the Greenhouse job board, which serves a logo the company uploaded
+// itself (external_greenhouse_job_boards/logos/...). 4,431 companies already use one, but
+// 413 with live jobs still have no logo at all. Scraped by gh-scrape.js, not render-scrape.
+const GREENHOUSE = process.env.GREENHOUSE === '1';
+// ats_slug is not trustworthy on its own: some rows hold a path segment from the careers
+// URL ("careers", "jobs") rather than a board slug, so prefer the slug in career_url and
+// fall back to ats_slug only when it isn't one of those generic words.
+const GENERIC_SLUGS = new Set(['careers', 'career', 'jobs', 'job', 'work', 'about', 'company', 'en', 'us']);
+function greenhouseSlug(row) {
+  const m = String(row.career_url || '').match(/^https?:\/\/(?:job-)?boards\.greenhouse\.io\/([a-z0-9][a-z0-9._-]*)/i);
+  if (m) return m[1].replace(/[._-]+$/, '');
+  const slug = String(row.ats_slug || '').trim().toLowerCase();
+  if (slug && !GENERIC_SLUGS.has(slug) && /^[a-z0-9][a-z0-9._-]*$/.test(slug)) return slug;
+  return null;
+}
+
+function buildGreenhouseBatch(rows) {
+  const seen = new Set();
+  const out = [];
+  let noSlug = 0, dup = 0;
+  for (const r of rows) {
+    const slug = greenhouseSlug(r);
+    if (!slug) { noSlug++; continue; }
+    if (seen.has(slug)) { dup++; continue; }
+    seen.add(slug);
+    r.scrape_target = r.career_url = `https://job-boards.greenhouse.io/${slug}`;
+    out.push(r);
+    if (out.length >= SIZE) break;
+  }
+  console.log(`  ${out.length} boards (skipped ${noSlug} with no usable slug, ${dup} sharing one)`);
+  return out;
+}
+
 const SLUG_ATS = { lever: 'lever', zoho: 'zoho' };
 const SLUG = SLUG_ATS[String(process.env.SLUG || '').toLowerCase()] || null;
 // The modes that scrape the company's own site rather than the ATS page, and so need the
@@ -338,7 +371,17 @@ async function main() {
       lever: '^https?://jobs\\.lever\\.co/[a-z0-9]',
       zoho: '^https?://[a-z0-9-]+\\.zohorecruit\\.com',
     };
-    const fetchWindow = async (limit) => REDO_ATS
+    const fetchWindow = async (limit) => GREENHOUSE
+      ? await q(pool, `
+          SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, c.ats_slug, 0 AS jobs
+            FROM companies c
+           WHERE c.logo_url IS NULL
+             AND c.ats IN ('greenhouse','grnhse')
+             AND NOT (c.id = ANY($2::bigint[]))
+             AND EXISTS (SELECT 1 FROM jobs j WHERE j.company_id = c.id AND j.removed_at IS NULL)
+           LIMIT $1
+        `, [limit, processedIds])
+      : REDO_ATS
       ? await q(pool, `
           SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, 0 AS jobs
             FROM companies c
@@ -418,7 +461,7 @@ async function main() {
       // Derivation only — no network here. Liveness probing happens after the pool is
       // closed, because probing hundreds of mostly-dead domains takes minutes and Heroku
       // drops the idle connection out from under the next widening query.
-      batch = REDO_ATS ? buildRedoAtsBatch(fresh) : REDO ? buildRedoBatch(fresh) : DERIVED ? buildSlugBatch(fresh) : fresh.slice(0, SIZE);
+      batch = GREENHOUSE ? buildGreenhouseBatch(fresh) : REDO_ATS ? buildRedoAtsBatch(fresh) : REDO ? buildRedoBatch(fresh) : DERIVED ? buildSlugBatch(fresh) : fresh.slice(0, SIZE);
       // A short batch is only meaningful if the window wasn't full — otherwise the
       // remainder is simply below the cut.
       if (batch.length >= SIZE || rows.length < window || window >= MAX_WINDOW) break;
@@ -427,7 +470,9 @@ async function main() {
     }
     // What the scraper is pointed at, and what build-preview joins the results back on.
     // WORKDAY already set both (to the derived company site, not the Workday page).
-    if (!DERIVED && !REDO_ATS) for (const r of batch) r.scrape_target = SHARED ? r.career_url : r.domain;
+    // The modes that build their own target (derived domain, careers page, job board) have
+    // already set it; only the plain own-domain and SHARED modes need it filled in here.
+    if (!DERIVED && !REDO_ATS && !GREENHOUSE) for (const r of batch) r.scrape_target = SHARED ? r.career_url : r.domain;
     scanned = rows.length;
   } finally {
     await pool.end();
@@ -440,7 +485,7 @@ async function main() {
     const pool2 = makePool();
     try { await attachJobCounts(pool2, batch); } finally { await pool2.end(); }
   }
-  if (REDO_ATS && batch.length) {
+  if ((REDO_ATS || GREENHOUSE) && batch.length) {
     const pool2 = makePool();
     try { await attachJobCounts(pool2, batch); } finally { await pool2.end(); }
   }
