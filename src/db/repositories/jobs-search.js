@@ -12,6 +12,7 @@
  * already run, and adds typo tolerance and relevance ranking Postgres full-text cannot.
  */
 const meili = require('../../utils/meili');
+const logger = require('../../logger');
 const { isShortAlias } = require('../../utils/location-aliases');
 const { resolveCountry } = require('../../utils/location-countries');
 const { parsePostedWindow } = require('../../utils/posted-window');
@@ -138,7 +139,13 @@ async function search(filters = {}) {
 
 
   const built = buildFilter(filters);
-  if (!built) return null;
+  if (!built) {
+    // The other silent fallback: a filter set the index cannot express faithfully. Same cost as
+    // the catch below — the request lands on the slow Postgres path — so it gets the same warning.
+    logger.warn({ filters: summariseFilters(filters) },
+      'Meili filter not expressible — falling back to Postgres (expect a slow query)');
+    return null;
+  }
 
   const limit = Math.min(parseInt(filters.limit, 10) || 50, 200);
   const offset = parseInt(filters.offset, 10) || 0;
@@ -213,9 +220,25 @@ async function search(filters = {}) {
       facets: res.facetDistribution || null,
     };
   } catch (err) {
-    // Never let an index problem break the board.
+    // Never let an index problem break the board — but say so. Falling back is not free: the
+    // Postgres equivalent of a narrow ATS filter measured 9s (18s with a date window) and blows
+    // the statement timeout, so a silent `return null` here surfaces to users as "failed to
+    // fetch" with nothing in the log to explain it. On 2026-08-10 that cost a full round of
+    // diagnosis for 33 timeouts whose cause was invisible.
+    logger.warn({ err: err.message, filters: summariseFilters(filters) },
+      'Meili search failed — falling back to Postgres (expect a slow query)');
     return null;
   }
+}
+
+// Small, bounded description of a filter set for logs — never the raw object, which carries
+// free-text search terms.
+function summariseFilters(filters = {}) {
+  return {
+    keys: Object.keys(filters).sort().join(','),
+    ats: Array.isArray(filters.ats) ? filters.ats.join('|').slice(0, 60) : undefined,
+    posted: filters.posted ? String(filters.posted).slice(0, 24) : undefined,
+  };
 }
 
 /** Facet counts with no query — replaces the four GROUP BY scans behind /api/facets. */
