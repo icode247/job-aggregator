@@ -269,7 +269,7 @@ function extractJsonLdSalary(html) {
 }
 
 async function fetchJazzHRDescription(job) {
-  if (!job.url) return null;
+  if (!job.url || !isPublicHttpsUrl(job.url)) return null;
   const res = await fetch(job.url, { signal: AbortSignal.timeout(10000) });
   if (!res.ok) return null;
   const html = await res.text();
@@ -291,7 +291,7 @@ async function fetchJazzHRDescription(job) {
 }
 
 async function fetchBreezyDescription(job) {
-  if (!job.url) return null;
+  if (!job.url || !isPublicHttpsUrl(job.url)) return null;
   const res = await fetch(job.url, { signal: AbortSignal.timeout(10000) });
   if (!res.ok) return null;
   const html = await res.text();
@@ -316,7 +316,7 @@ const PAYLOCITY_UAS = [
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
 ];
 async function fetchPaylocityDescription(job) {
-  if (!job.url) return null;
+  if (!job.url || !isPublicHttpsUrl(job.url)) return null;
   const MAX = 3;
   for (let attempt = 0; attempt <= MAX; attempt++) {
     await sleep(200 + Math.random() * 800); // 0.2-1s jitter, browser-like
@@ -365,10 +365,10 @@ async function fetchPaylocityDescription(job) {
 }
 
 async function fetchTaleoDescription(job) {
-  if (!job.url) return null;
-  const res = await fetch(job.url, { redirect: 'follow', signal: AbortSignal.timeout(15000) });
+  if (!job.url || !isPublicHttpsUrl(job.url)) return null;
+  const res = await fetchPublicHtml(job.url);
   if (!res.ok) return null;
-  const html = await res.text();
+  const html = res.html;
   // Try JSON-LD first
   const ld = extractJsonLdDescription(html);
   if (ld) return ld;
@@ -562,9 +562,10 @@ async function discoverGreenhouseToken(url) {
 
   let token = null;
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(15000), headers: WD_HEADERS });
+    // Careers-page URL comes from imported data — guard every hop of the redirect chain.
+    const res = await fetchPublicHtml(url, { headers: WD_HEADERS });
     if (res.ok) {
-      const html = await res.text();
+      const html = res.html;
       const m = html.match(/job_board(?:\/js)?\?for=([a-z0-9_]+)/i)
         || html.match(/job-boards\.greenhouse\.io\/([a-z0-9_]+)/i)
         || html.match(/boards\.greenhouse\.io\/embed\/job_board\?for=([a-z0-9_]+)/i);
@@ -597,7 +598,7 @@ async function fetchGreenhouseDescription(job) {
   }
 
   // Stored slug was not a board token. Recover the real one from the careers page.
-  if (!job.url) return null;
+  if (!job.url || !isPublicHttpsUrl(job.url)) return null;
   const token = await discoverGreenhouseToken(job.url);
   if (!token || token === job.ats_slug) return null;
 
@@ -713,14 +714,15 @@ async function fetchIcimsDescription(job) {
   const url = icimsIframeUrl(job);
   if (!url) return null;
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    // Host is derived from imported data, so the whole redirect chain is checked, not just
+    // the first URL.
+    const res = await fetchPublicHtml(url);
     // 410 Gone is iCIMS's answer for a pulled requisition. It is a permanent state, so mark the
     // row unavailable instead of re-fetching it every cycle forever.
     if (res.status === 410 || res.status === 404) return 'SKIP';
     if (!res.ok) return null;
-    const html = await res.text();
     // Extract description from JSON-LD (most reliable)
-    const ld = extractJsonLdDescription(html);
+    const ld = extractJsonLdDescription(res.html);
     if (ld) return ld;
   } catch { /* timeout or network error */ }
   return null;
@@ -801,7 +803,7 @@ async function fetchRipplingDescription(job) {
 }
 
 async function fetchZohoDescription(job) {
-  if (!job.url) return null;
+  if (!job.url || !isPublicHttpsUrl(job.url)) return null;
   const res = await fetch(job.url, { signal: AbortSignal.timeout(15000) });
   if (!res.ok) return null;
   const html = await res.text();
@@ -859,7 +861,7 @@ async function fetchWorkableDescription(job) {
 }
 
 async function fetchJobviteDescription(job) {
-  if (!job.url) return null;
+  if (!job.url || !isPublicHttpsUrl(job.url)) return null;
   const res = await fetch(job.url, { signal: AbortSignal.timeout(10000) });
   if (!res.ok) return null;
   const html = await res.text();
@@ -933,7 +935,7 @@ async function fetchPinpointDescription(job) {
 }
 
 async function fetchSuccessFactorsDescription(job) {
-  if (!job.url) return null;
+  if (!job.url || !isPublicHttpsUrl(job.url)) return null;
   const res = await fetch(job.url, { signal: AbortSignal.timeout(15000) });
   if (!res.ok) return null;
   const html = await res.text();
@@ -1065,13 +1067,9 @@ async function fetchDescription(job) {
   // that already failed, so the cost lands on the backlog rather than the steady path.
   if (!description && isPublicHttpsUrl(job.url)) {
     try {
-      const res = await fetch(job.url, {
-        redirect: 'follow',
-        signal: AbortSignal.timeout(15000),
-        headers: WD_HEADERS,
-      });
+      const res = await fetchPublicHtml(job.url, { headers: WD_HEADERS });
       if (res.ok) {
-        const html = await res.text();
+        const html = res.html;
         // NOT extractDescriptionFromHtml: its steps 3 and 4 fall back to og:description and
         // meta description behind a >100 char gate. Those are page blurbs, not job bodies —
         // measured here, they returned the COMPANY description cut off mid-word ("...creating a
@@ -1124,6 +1122,10 @@ function looksLikeRealDescription(text) {
 
 // SSRF guard for imported URLs: https only, a public DNS name, never an internal target. Used
 // before any fetch of a job.url value, which originates from third-party import data.
+//
+// The URL parser does more work here than it looks: `new URL()` normalises IPv4 shorthand, so
+// `127.1`, `0x7f.1` and `2130706433` all arrive at this check already rewritten to `127.0.0.1`
+// and are caught by the dotted-quad rule.
 function isPublicHttpsUrl(u) {
   let parsed;
   try { parsed = new URL(String(u || '')); } catch { return false; }
@@ -1133,6 +1135,37 @@ function isPublicHttpsUrl(u) {
   if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) return false;         // no raw IPv4 literals
   if (/(^|\.)(localhost|local|internal|localdomain)$/.test(host)) return false;
   return true;
+}
+
+/**
+ * Fetch HTML from an imported URL with the redirect chain checked at every hop.
+ *
+ * Validating only the URL we were handed is not enough: with `redirect: 'follow'` the runtime
+ * chases 3xx responses itself, so a perfectly public posting URL that redirects to
+ * http://169.254.169.254/ or an internal host lands there with the guard already satisfied and
+ * the body handed back to us. Follow redirects manually so isPublicHttpsUrl runs against every
+ * hop, and cap the chain so a redirect loop cannot hang a backfill worker.
+ */
+async function fetchPublicHtml(url, { headers, timeoutMs = 15000, maxRedirects = 4 } = {}) {
+  let current = String(url);
+  for (let hop = 0; hop <= maxRedirects; hop++) {
+    if (!isPublicHttpsUrl(current)) return { ok: false, status: 0, blocked: true };
+    const res = await fetch(current, {
+      redirect: 'manual',
+      signal: AbortSignal.timeout(timeoutMs),
+      headers,
+    });
+    if (res.status >= 300 && res.status < 400) {
+      const loc = res.headers.get('location');
+      if (!loc) return { ok: false, status: res.status };
+      // Relative Location headers are legal and common; resolve against the current hop.
+      try { current = new URL(loc, current).toString(); } catch { return { ok: false, status: res.status }; }
+      continue;
+    }
+    if (!res.ok) return { ok: false, status: res.status };
+    return { ok: true, status: res.status, html: await res.text() };
+  }
+  return { ok: false, status: 0, tooManyRedirects: true };
 }
 
 /**
