@@ -16,7 +16,10 @@ const path = require('path');
 const { BATCH_JSON, SCRAPED_CSV, REVIEW_JSON, PREVIEW_HTML, isVendor, HIGH_CONFIDENCE } = require('./lib');
 
 const CONC = 24;
-const MAX_BYTES = 420 * 1024; // skip anything too heavy to inline
+// Generous, because the downscale pass below is what actually controls page weight.
+// At 420KB this silently dropped company-uploaded originals — a Greenhouse batch found 9
+// logos and produced 1 card, with the other 8 fetching fine at 200/image.
+const MAX_BYTES = 4 * 1024 * 1024;
 
 // Plenty of hosts serve a perfectly good logo as application/octet-stream (Paylocity's
 // GetLogoFileById does it for ~half its images), so trusting Content-Type alone silently
