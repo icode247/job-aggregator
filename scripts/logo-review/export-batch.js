@@ -459,7 +459,10 @@ async function main() {
   }
   if (!batch.length) {
     console.log(`EXPORTED 0 — queue is genuinely empty (scanned ${scanned} rows, all reviewed)`);
-    return;
+    // Exit non-zero so a chained run stops here. Otherwise the scrape and preview steps
+    // happily rebuild the PREVIOUS batch — the files are all still on disk — and hand back
+    // a preview that looks new but re-offers companies already saved and retired.
+    process.exit(3);
   }
 
   fs.writeFileSync(BATCH_JSON, JSON.stringify(batch, null, 2));
