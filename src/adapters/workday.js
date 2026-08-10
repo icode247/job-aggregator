@@ -1,16 +1,33 @@
 const logger = require('../logger');
+const { WORKDAY_SITES } = require('./workday-sites');
 
 // Common Workday instances first (covers ~80% of tenants), then the higher-numbered
 // pods (wd10x/wd50x) seen across the company set. discoverConfig() tries these in
 // order and stops at the first that resolves, so ordering keeps the common case fast.
-const WD_NUMBERS = [1, 2, 3, 5, 10, 12, 102, 103, 105, 108, 115, 501, 502, 503, 504];
+//
+// 107 was absent until 2026-08-10, which made tp (TP-ICAP) undiscoverable no matter what its
+// robots.txt said — the pod was simply never probed.
+const WD_NUMBERS = [1, 2, 3, 5, 10, 12, 102, 103, 105, 107, 108, 115, 501, 502, 503, 504];
 const PAGE_SIZE = 20;
 const DETAIL_BATCH_SIZE = 3;
 
 /**
- * Discover the Workday instance number (wd1-wd12) and site slug.
+ * Resolve the Workday pod number and career site slug(s) for a tenant.
+ *
+ * Known tenants come from workday-sites.js and cost no requests. Everything else falls back to
+ * probing robots.txt across every pod, which is both slow (up to 16 requests) and unreliable:
+ * a tenant serving no robots.txt, or one with no Sitemap line, is indistinguishable from a
+ * tenant that does not exist, and gets written off as "could not discover config".
+ *
+ * Returns { wdNum, siteSlug, sites } — siteSlug is kept for callers that only handle one site
+ * (backfill-descriptions.js), sites is the full list for fetchJobs to merge across.
  */
 async function discoverConfig(slug) {
+  const known = WORKDAY_SITES[String(slug || '').toLowerCase()];
+  if (known && known.sites.length) {
+    return { wdNum: known.wdNum, siteSlug: known.sites[0], sites: known.sites };
+  }
+
   for (const wd of WD_NUMBERS) {
     try {
       const res = await fetch(
@@ -21,7 +38,7 @@ async function discoverConfig(slug) {
       const text = await res.text();
       const match = text.match(/Sitemap:.*myworkdayjobs\.com\/([^/\s]+)/);
       if (match) {
-        return { wdNum: wd, siteSlug: match[1] };
+        return { wdNum: wd, siteSlug: match[1], sites: [match[1]] };
       }
     } catch {
       // timeout or network error — try next
@@ -115,7 +132,49 @@ async function fetchJobs(clientname) {
   const config = await discoverConfig(clientname);
   if (!config) throw new Error(`Workday: could not discover config for ${clientname}`);
 
-  const { wdNum, siteSlug } = config;
+  const { wdNum } = config;
+  const sites = config.sites && config.sites.length ? config.sites : [config.siteSlug];
+
+  // A tenant can run several career sites — relx runs four (relx, LexisNexisLegal,
+  // ReedExhibitions, ElsevierJobs) — and a posting normally lives on exactly one of them, so
+  // fetching only the first would silently drop the rest of the company's jobs.
+  //
+  // One site failing must not lose the others: a dead or renamed site is common on multi-site
+  // tenants. Collect what works and only throw if every site failed, so the company keeps the
+  // jobs it does have rather than being marked failed wholesale.
+  if (sites.length > 1) {
+    const merged = new Map();
+    let meta = null;
+    const failures = [];
+
+    for (const site of sites) {
+      try {
+        const res = await fetchSiteJobs(clientname, wdNum, site);
+        for (const job of res.jobs) {
+          if (!merged.has(job.external_id)) merged.set(job.external_id, job);
+        }
+        if (!meta) meta = res.meta;
+      } catch (err) {
+        failures.push(`${site}: ${err.message}`);
+      }
+    }
+
+    if (!merged.size && failures.length === sites.length) {
+      throw new Error(`Workday: all ${sites.length} sites failed for ${clientname} — ${failures.join('; ')}`);
+    }
+    if (failures.length) {
+      logger.warn({ slug: clientname, failures }, 'Workday: some sites failed, keeping the rest');
+    }
+    logger.info({ slug: clientname, wdNum, sites: sites.length, fetched: merged.size },
+      'Workday multi-site fetch complete');
+    return { jobs: [...merged.values()], meta: meta || {} };
+  }
+
+  return fetchSiteJobs(clientname, wdNum, sites[0]);
+}
+
+/** Fetch every job from ONE Workday career site. */
+async function fetchSiteJobs(clientname, wdNum, siteSlug) {
   const baseUrl = `https://${clientname}.wd${wdNum}.myworkdayjobs.com/wday/cxs/${clientname}/${siteSlug}`;
 
   // Step 1: First request — get postings + facets
