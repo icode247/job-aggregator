@@ -70,6 +70,13 @@ const GENERIC_TENANTS = new Set([
 // this pass with its own decided-set so it stays out of the main queue:
 //   PROCESSED_FILE=data/logo/processed-redo.txt REDO=1 node .../export-batch.js 130
 const REDO = process.env.REDO === '1';
+// REDO=ats is the other half of that pool. 1,443 of the favicon stubs were generated from
+// the ATS host rather than a company site, so there is no domain to derive — but for the
+// ATS that do render a per-company logo (paylocity 945, pinpoint 163, zoho 23,
+// smartrecruiters 2) the careers page itself is the target, exactly as in SHARED mode. No
+// liveness probe: these hosts are always up. Oracle's 310 stay out — opaque tenant codes,
+// and a probe found 0 of 9 rendering anything.
+const REDO_ATS = process.env.REDO === 'ats';
 // Some of those favicons were generated from the ATS host rather than the company site.
 // Scraping those hands back the vendor art this pass exists to remove.
 const ATS_HOSTS = /(paylocity|oraclecloud|myworkdayjobs|myworkdaysite|greenhouse|ashbyhq|lever\.co|icims|zohorecruit|workable|smartrecruiters|bamboohr|jazzhr|comeet|successfactors|taleo|jobvite|breezy|personio|recruitee|teamtailor|pinpointhq)\./i;
@@ -234,6 +241,24 @@ function workdayTenant(careerUrl) {
 // exporting rows the preview would silently drop.
 // Point the scraper at the site the favicon was generated from. No slug guessing here, so
 // no name check is needed — the URL names the site directly.
+// Scrape the careers page itself. build-preview only trusts a join key exactly one company
+// claims, so keep one company per career_url.
+function buildRedoAtsBatch(rows) {
+  const seen = new Set();
+  const out = [];
+  let dup = 0;
+  for (const r of rows) {
+    const url = String(r.career_url).replace(/\/+$/, '');
+    if (seen.has(url)) { dup++; continue; }
+    seen.add(url);
+    r.scrape_target = r.career_url = url;
+    out.push(r);
+    if (out.length >= SIZE) break;
+  }
+  console.log(`  ${out.length} careers pages (skipped ${dup} sharing a URL)`);
+  return out;
+}
+
 function buildRedoBatch(rows) {
   const seen = new Set();
   const candidates = [];
@@ -306,13 +331,29 @@ async function main() {
       lever: '^https?://jobs\\.lever\\.co/[a-z0-9]',
       zoho: '^https?://[a-z0-9-]+\\.zohorecruit\\.com',
     };
-    const fetchWindow = async (limit) => REDO
+    const fetchWindow = async (limit) => REDO_ATS
+      ? await q(pool, `
+          SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, 0 AS jobs
+            FROM companies c
+           WHERE c.logo_url ILIKE '%gstatic.com/faviconV2%'
+             AND c.ats = ANY($3)
+             AND c.career_url IS NOT NULL AND c.career_url <> ''
+             AND NOT (c.id = ANY($2::bigint[]))
+             AND EXISTS (SELECT 1 FROM jobs j WHERE j.company_id = c.id AND j.removed_at IS NULL)
+           LIMIT $1
+        `, [limit, processedIds, SHARED_ATS])
+      : REDO
       ? await q(pool, `
           SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, 0 AS jobs,
                  substring(c.logo_url from 'url=(https?://[^&]+)') AS favicon_site
             FROM companies c
            WHERE c.logo_url ILIKE '%gstatic.com/faviconV2%'
              AND c.logo_url ~ 'url=https?://[^&]+'
+             -- Favicons generated from an ATS host are skipped in JS, but they have to be
+             -- excluded here too or they fill the window and hide the reachable ones: a
+             -- 1,920-row window surfaced 19 candidates while 218 reachable rows sat behind
+             -- 1,443 ATS-host ones.
+             AND c.logo_url !~* 'url=https?://[^&]*(paylocity|oraclecloud|myworkdayjobs|myworkdaysite|greenhouse|ashbyhq|lever\.co|icims|zohorecruit|workable|smartrecruiters|bamboohr|jazzhr|comeet|successfactors|taleo|jobvite|breezy|personio|recruitee|teamtailor|pinpointhq)\.'
              AND NOT (c.id = ANY($2::bigint[]))
              AND EXISTS (SELECT 1 FROM jobs j WHERE j.company_id = c.id AND j.removed_at IS NULL)
            LIMIT $1
@@ -371,7 +412,7 @@ async function main() {
       // Derivation only — no network here. Liveness probing happens after the pool is
       // closed, because probing hundreds of mostly-dead domains takes minutes and Heroku
       // drops the idle connection out from under the next widening query.
-      batch = REDO ? buildRedoBatch(fresh) : DERIVED ? buildSlugBatch(fresh) : fresh.slice(0, SIZE);
+      batch = REDO_ATS ? buildRedoAtsBatch(fresh) : REDO ? buildRedoBatch(fresh) : DERIVED ? buildSlugBatch(fresh) : fresh.slice(0, SIZE);
       // A short batch is only meaningful if the window wasn't full — otherwise the
       // remainder is simply below the cut.
       if (batch.length >= SIZE || rows.length < window || window >= MAX_WINDOW) break;
@@ -380,13 +421,17 @@ async function main() {
     }
     // What the scraper is pointed at, and what build-preview joins the results back on.
     // WORKDAY already set both (to the derived company site, not the Workday page).
-    if (!DERIVED) for (const r of batch) r.scrape_target = SHARED ? r.career_url : r.domain;
+    if (!DERIVED && !REDO_ATS) for (const r of batch) r.scrape_target = SHARED ? r.career_url : r.domain;
     scanned = rows.length;
   } finally {
     await pool.end();
   }
 
   // Everything below runs with no DB connection open.
+  if (REDO_ATS && batch.length) {
+    const pool2 = makePool();
+    try { await attachJobCounts(pool2, batch); } finally { await pool2.end(); }
+  }
   if (DERIVED && batch.length) {
     console.log(`  probing which of ${batch.length} derived domains resolve`);
     batch = await filterAlive(batch, SIZE);
