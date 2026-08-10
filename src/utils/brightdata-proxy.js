@@ -77,6 +77,28 @@ async function viaBrightData(orig, url, opts) {
   return new Response(env.body ?? '', { status: env.status_code, headers });
 }
 
+/**
+ * Fetch one URL's HTML through Web Unlocker, bypassing the BD_ROUTE_HOSTS allowlist.
+ *
+ * For callers that need an unlocked page for a host that must NOT be globally routed — the
+ * Oracle description backfill renders one job page at a time, but Oracle's own REST API serves
+ * most tenants fine and routing every oraclecloud.com call would bill for all of them.
+ *
+ * Returns null when the proxy is not enabled, so callers degrade to "no description this cycle"
+ * rather than throwing. Billing is per request: the caller is responsible for only reaching here
+ * on the tenants that genuinely need it.
+ */
+async function fetchUnlockedHtml(url, { timeoutMs = 45000 } = {}) {
+  if (!enabled) return null;
+  const res = await viaBrightData(
+    globalThis.fetch,
+    url,
+    { method: 'GET', signal: AbortSignal.timeout(timeoutMs) }
+  );
+  if (!res.ok) throw new Error(`Web Unlocker upstream HTTP ${res.status}`);
+  return res.text();
+}
+
 let installed = false;
 /** Wrap global fetch so BD_ROUTE_HOSTS egress via Web Unlocker. Idempotent. */
 function install() {
@@ -91,4 +113,4 @@ function install() {
   return true;
 }
 
-module.exports = { enabled, install, shouldRoute, ROUTE_HOSTS, ZONE };
+module.exports = { enabled, install, shouldRoute, fetchUnlockedHtml, ROUTE_HOSTS, ZONE };

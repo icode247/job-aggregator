@@ -6,11 +6,22 @@
  */
 const { query } = require('../db/connection');
 const { discoverConfig } = require('../adapters/workday');
+const { fetchUnlockedHtml } = require('../utils/brightdata-proxy');
 const logger = require('../logger');
 const metrics = require('../utils/metrics');
 
 // Only ATS platforms that return descriptions without Browserless.
 // Priority order: Ashby, Breezy, Greenhouse, Workable first, then rest.
+//
+// This map is the ONLY thing that decides what gets backfilled — `fetchDescription` having a
+// `case` for an ATS means nothing if the key is missing here. That gap went unnoticed for months
+// because the Oracle/Taleo/iCIMS/SuccessFactors *fetchers* were all present and looked wired in.
+// Measured 2026-08-10: 22,320 of the 35,695 live jobs missing a description (63%) were on ATSes
+// absent from this map, so no cycle ever asked for them. Probing the existing fetchers against
+// real rows before enabling: taleo 6/6, successfactors 5/6, oracle 2/6, oraclecloud 0/6 and
+// icims 1/6 — the latter three fixed below by deriving coordinates from job.url instead of the
+// mangled ats_slug. Keep concurrency lower here than on the ashby/greenhouse tier: these are
+// enterprise tenants that rate-limit far more aggressively.
 const ATS_CONFIG = {
   ashby:           { batchSize: 75, concurrency: 5 },
   breezy:          { batchSize: 75, concurrency: 5 },
@@ -28,6 +39,11 @@ const ATS_CONFIG = {
   workday:         { batchSize: 75, concurrency: 4 },
   comeet:          { batchSize: 50, concurrency: 4 },
   paylocity:       { batchSize: 60, concurrency: 3 },
+  taleo:           { batchSize: 60, concurrency: 3 },
+  successfactors:  { batchSize: 60, concurrency: 3 },
+  oracle:          { batchSize: 50, concurrency: 3 },
+  oraclecloud:     { batchSize: 50, concurrency: 3 },
+  icims:           { batchSize: 50, concurrency: 3 },
 };
 
 // Cache workday configs per slug with TTL (1 hour)
@@ -431,25 +447,47 @@ function extractOracleRenderedDescription(html) {
 // Oracle tenants known to have no public descriptions (empty API + empty rendered HTML)
 const ORACLE_SKIP_TENANTS = new Set(['hcbt']);
 
+// Pull tenant / region / site / job id straight out of an Oracle Candidate Experience URL:
+//   https://{tenant}.fa.{region}.oraclecloud.com/hcmUI/CandidateExperience/en/sites/{site}/job/{id}
+// ...with an optional `requisitions/` segment before `job/`.
+//
+// This is the authoritative source, NOT ats_slug. The slug is supposed to be
+// `tenant.region.siteNumber`, but rows imported from aggregators carry whatever the URL path
+// happened to yield — measured 2026-08-10: `hcmUI`, `eckx.em2`, `ibfhqy.ocs`, i.e. either a
+// literal path segment or a slug missing the site entirely. Every one of those failed the
+// `< 2 parts` / `no siteNumber` guards below and filled nothing, while the URL sitting in the
+// same row carried all four values. Slug stays as the fallback for rows with no URL.
+function parseOracleUrl(url) {
+  if (!url) return null;
+  const m = String(url).match(
+    /^https:\/\/([^./]+)\.fa\.([^./]+)\.oraclecloud\.com\/.*?\/sites\/([^/]+)\/(?:requisitions\/)?job\/(\d+)/i
+  );
+  if (!m) return null;
+  return { tenant: m[1], region: m[2], siteNumber: m[3], jobId: m[4] };
+}
+
 async function fetchOracleDescription(job) {
-  // Parse tenant.region.siteNumber from ats_slug
-  const parts = job.ats_slug.split('.');
-  if (parts.length < 2) {
-    logger.debug({ jobId: job.id, slug: job.ats_slug }, 'Oracle: slug has < 2 parts');
-    return null;
+  // URL first, ats_slug only as a fallback — see parseOracleUrl.
+  let coords = parseOracleUrl(job.url);
+  if (!coords) {
+    const parts = String(job.ats_slug || '').split('.');
+    if (parts.length < 3) {
+      logger.debug({ jobId: job.id, slug: job.ats_slug }, 'Oracle: no URL match and slug lacks tenant.region.site');
+      return null;
+    }
+    coords = {
+      tenant: parts[0],
+      region: parts[1],
+      siteNumber: parts.slice(2).join('.'),
+      jobId: String(job.external_id || '').replace(/^oracle(?:cloud)?_/, ''),
+    };
   }
-  const tenant = parts[0];
-  const region = parts[1];
+  const { tenant, region, siteNumber } = coords;
+  const jobId = coords.jobId;
 
   if (ORACLE_SKIP_TENANTS.has(tenant)) {
     return 'SKIP';
   }
-  const siteNumber = parts.slice(2).join('.') || null;
-  if (!siteNumber) {
-    logger.debug({ jobId: job.id, slug: job.ats_slug }, 'Oracle: no siteNumber in slug');
-    return null;
-  }
-  const jobId = job.external_id.replace('oracle_', '');
 
   // Strategy 1: REST API (fast, no proxy needed)
   let apiStatus = null;
@@ -481,10 +519,17 @@ async function fetchOracleDescription(job) {
     logger.warn({ jobId: job.id, slug: job.ats_slug, err: err.message, apiStatus }, 'Oracle API: request failed');
   }
 
-  // Strategy 2: Render page via proxy and extract from Knockout.js-rendered HTML
+  // Strategy 2: Render page via proxy and extract from Knockout.js-rendered HTML.
+  //
+  // This called an undefined `fetchUnlockedHtml` until 2026-08-10, so it threw ReferenceError on
+  // every single invocation and was swallowed by the catch below as "Oracle proxy: fetch failed"
+  // — the strategy had never once run. It is now the real Web Unlocker helper, which returns null
+  // (rather than throwing) when BRIGHTDATA_PROXY is off, so the default remains "API only" and
+  // no per-request billing starts without that flag being set deliberately.
   if (job.url) {
     try {
       const html = await fetchUnlockedHtml(job.url);
+      if (!html) return null; // unlocker disabled — API already tried, nothing further to do
       const htmlLen = html?.length || 0;
       const hasDescContent = html?.includes('job-details__description-content') || false;
       const oracleDesc = extractOracleRenderedDescription(html);
@@ -498,15 +543,72 @@ async function fetchOracleDescription(job) {
   return null;
 }
 
-async function fetchGreenhouseDescription(job) {
-  const jobId = nativeId(job, 'greenhouse');
+// Greenhouse board token, recovered from a company's own careers page and cached per host.
+//
+// Aggregator-imported rows (the jobloo bulk load) store a URL path segment where the board token
+// belongs — measured 2026-08-10: `careers`, `pages`, `careers-list.html`. The board API is keyed
+// on that token, so all ~2,000 of them 404'd on every cycle forever. The real job id was never
+// the problem: nativeId already recovers it from `?gh_jid=`. Only the token was missing, and the
+// careers page that the URL points at embeds it (`job_board/js?for=<token>`).
+const ghTokenCache = new Map();
+const GH_TOKEN_TTL_MS = 6 * 60 * 60 * 1000;
+
+async function discoverGreenhouseToken(url) {
+  let host;
+  try { host = new URL(url).host; } catch { return null; }
+
+  const hit = ghTokenCache.get(host);
+  if (hit && Date.now() - hit.at < GH_TOKEN_TTL_MS) return hit.token;
+
+  let token = null;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(15000), headers: WD_HEADERS });
+    if (res.ok) {
+      const html = await res.text();
+      const m = html.match(/job_board(?:\/js)?\?for=([a-z0-9_]+)/i)
+        || html.match(/job-boards\.greenhouse\.io\/([a-z0-9_]+)/i)
+        || html.match(/boards\.greenhouse\.io\/embed\/job_board\?for=([a-z0-9_]+)/i);
+      if (m) token = m[1];
+    }
+  } catch { /* leave null — cached as a negative so one dead careers page isn't refetched per job */ }
+
+  ghTokenCache.set(host, { token, at: Date.now() });
+  return token;
+}
+
+// Returns { content } on success, or { status } so the caller can tell "wrong board token"
+// (retryable — try discovery) from "this board says the requisition is gone" (permanent).
+async function greenhouseBoardFetch(board, jobId) {
   const res = await fetch(
-    `https://api.greenhouse.io/v1/boards/${encodeURIComponent(job.ats_slug)}/jobs/${jobId}?questions=true`,
+    `https://api.greenhouse.io/v1/boards/${encodeURIComponent(board)}/jobs/${jobId}?questions=true`,
     { signal: AbortSignal.timeout(10000) }
   );
-  if (!res.ok) return null;
+  if (!res.ok) return { status: res.status };
   const data = await res.json();
-  return data.content || null;
+  return { content: data.content || null, status: 200 };
+}
+
+async function fetchGreenhouseDescription(job) {
+  const jobId = nativeId(job, 'greenhouse');
+
+  if (job.ats_slug) {
+    const direct = await greenhouseBoardFetch(job.ats_slug, jobId);
+    if (direct.content) return direct.content;
+  }
+
+  // Stored slug was not a board token. Recover the real one from the careers page.
+  if (!job.url) return null;
+  const token = await discoverGreenhouseToken(job.url);
+  if (!token || token === job.ats_slug) return null;
+
+  const viaToken = await greenhouseBoardFetch(token, jobId);
+  if (viaToken.content) return viaToken.content;
+
+  // The careers page gave us a genuine board token and that board does not have this
+  // requisition — the posting is gone. Mark it rather than re-fetching it every cycle; a wall of
+  // these at the bottom of the id range is what the cursor kept re-walking after each restart.
+  if (viaToken.status === 404) return 'SKIP';
+  return null;
 }
 
 async function fetchLeverDescription(job) {
@@ -584,12 +686,37 @@ async function fetchAshbyDescription(job) {
   return board.size ? 'SKIP' : null;
 }
 
-async function fetchIcimsDescription(job) {
+// Build the iCIMS iframe endpoint from the job's own URL rather than from `{ats_slug}.icims.com`.
+//
+// The stored slug frequently does not match the host that actually serves the posting — measured
+// 2026-08-10: slug `careers-quiddity` vs host `career-fairs-quiddity`, slug `aujscareers-aus` vs
+// host `securitycareers-alliedbarton` — and customers on a vanity domain store the domain itself
+// as the slug (`jobs.ajg.com`), which built the nonsense host `jobs.ajg.com.icims.com`. The URL
+// already carries the correct host and requisition id, so prefer it and keep the slug as fallback.
+//
+// SSRF: job.url is imported data, so only ever fetch https on the iCIMS-hosted domain or the
+// exact host already recorded for this posting, and never a private/loopback target.
+function icimsIframeUrl(job) {
   const externalId = nativeId(job, 'icims');
-  // iCIMS iframe endpoint returns server-rendered HTML with JSON-LD
-  const url = `https://${job.ats_slug}.icims.com/jobs/${externalId}/job?in_iframe=1`;
+  const m = String(job.url || '').match(/^https:\/\/([a-z0-9.-]+)\/(.*\/)?jobs\/(\d+)/i);
+  if (m) {
+    const host = m[1].toLowerCase();
+    const safeHost = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host)
+      && !/^(localhost|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host);
+    if (safeHost) return `https://${host}/${m[2] || ''}jobs/${m[3]}/job?in_iframe=1`;
+  }
+  if (!/^[a-z0-9-]+$/i.test(String(job.ats_slug || ''))) return null;
+  return `https://${job.ats_slug}.icims.com/jobs/${externalId}/job?in_iframe=1`;
+}
+
+async function fetchIcimsDescription(job) {
+  const url = icimsIframeUrl(job);
+  if (!url) return null;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    // 410 Gone is iCIMS's answer for a pulled requisition. It is a permanent state, so mark the
+    // row unavailable instead of re-fetching it every cycle forever.
+    if (res.status === 410 || res.status === 404) return 'SKIP';
     if (!res.ok) return null;
     const html = await res.text();
     // Extract description from JSON-LD (most reliable)
@@ -883,7 +1010,10 @@ async function fetchDescription(job) {
       description = await fetchWorkdayDescription(job, rawData); break;
     case 'taleo':
       description = await fetchTaleoDescription(job); break;
+    // Same Candidate Experience product, two labels in our data — `oraclecloud` rows were
+    // reaching this switch, matching nothing, and returning null forever.
     case 'oracle':
+    case 'oraclecloud':
       description = await fetchOracleDescription(job); break;
     case 'smartrecruiters':
       description = await fetchSmartRecruitersDescription(job); break;
@@ -930,7 +1060,7 @@ async function fetchDescription(job) {
  * Process a single job — fetch description and update DB.
  * Returns 'filled' or 'failed'.
  */
-async function processJob(job, ats) {
+async function processJob(job, ats, failures) {
   try {
     const description = await fetchDescription(job);
     if (description === 'SKIP') {
@@ -943,13 +1073,26 @@ async function processJob(job, ats) {
       metrics.increment(`backfill.filled.${ats}`);
       return 'filled';
     } else {
-      // Leave description as NULL so it gets retried next cycle
+      // Leave description as NULL so it gets retried next cycle.
+      //
+      // This branch used to return with NO log at all — only the `catch` below logged — so a
+      // fetcher returning empty was indistinguishable from one that was never called. On
+      // 2026-08-10 that hid 16 consecutive all-zero batches behind a single warning line.
+      // Record a sample for the batch summary rather than a line per job: a full batch of
+      // failures is normal while the cursor crosses a wall of dead postings, and logging each
+      // one buries the batches that matter.
       metrics.increment(`backfill.failed.${ats}`);
+      if (failures && failures.length < 3) {
+        failures.push({ jobId: job.id, slug: job.ats_slug, url: String(job.url || '').slice(0, 110) });
+      }
       return 'failed';
     }
   } catch (err) {
     // Leave description as NULL so it gets retried next cycle
     metrics.increment(`backfill.failed.${ats}`);
+    if (failures && failures.length < 3) {
+      failures.push({ jobId: job.id, slug: job.ats_slug, err: err.message.slice(0, 90) });
+    }
     logger.warn({ jobId: job.id, ats: job.ats, slug: job.ats_slug, err: err.message }, 'Backfill fetch failed');
     return 'failed';
   }
@@ -1037,12 +1180,14 @@ async function backfillForAts(ats, batchSize, concurrency) {
 
   if (jobs.length === 0) return { filled: 0, failed: 0 };
 
-  const results = await runWithConcurrency(jobs, concurrency, (job) => processJob(job, ats));
+  const failures = [];
+  const results = await runWithConcurrency(jobs, concurrency, (job) => processJob(job, ats, failures));
 
   const filled = results.filter(r => r === 'filled').length;
   const failed = results.filter(r => r === 'failed').length;
+  const skipped = results.filter(r => r === 'skipped').length;
 
-  return { filled, failed };
+  return { filled, failed, skipped, failures };
 }
 
 async function backfillDescriptions() {
@@ -1051,9 +1196,13 @@ async function backfillDescriptions() {
   // Run all ATS platforms in parallel — each has its own rate limiting via delayMs
   const results = await Promise.allSettled(
     Object.entries(ATS_CONFIG).map(async ([ats, cfg]) => {
-      const { filled, failed } = await backfillForAts(ats, cfg.batchSize, cfg.concurrency);
-      if (filled > 0 || failed > 0) {
-        logger.info({ ats, filled, failed }, 'Description backfill: ATS batch done');
+      const { filled, failed, skipped, failures } = await backfillForAts(ats, cfg.batchSize, cfg.concurrency);
+      if (filled > 0 || failed > 0 || skipped > 0) {
+        // Carry a sample of WHY on any batch that filled nothing — that is the case where the
+        // counts alone tell you nothing and someone has to go diagnose it.
+        const detail = { ats, filled, failed, skipped };
+        if (filled === 0 && failures && failures.length) detail.sample = failures;
+        logger.info(detail, 'Description backfill: ATS batch done');
       }
       return { ats, filled, failed };
     })
