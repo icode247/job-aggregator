@@ -1051,9 +1051,88 @@ async function fetchDescription(job) {
       description = await fetchPaylocityDescription(job); break;
   }
 
-  // No Browserless proxy fallback — all active ATS platforms return descriptions
-  // via their own APIs. If the ATS fetcher returned nothing, we just retry next cycle.
+  // Last resort: the posting's own page.
+  //
+  // The note that used to sit here — "all active ATS platforms return descriptions via their own
+  // APIs, so if the ATS fetcher returned nothing we just retry next cycle" — is true only when
+  // `ats_slug` is right. For the ~615k aggregator-imported rows it frequently is not: it holds a
+  // URL path segment or a URL-encoded fragment (`en`, `careers`, `forward%20financing`), so the
+  // API call is built against a board that does not exist and the row retries forever.
+  //
+  // The URL in the same row still points at the real posting, and every one of these ATSes
+  // server-renders a JobPosting JSON-LD block on it. Measured 2026-08-10 on rows that had failed
+  // their ATS fetcher: 11 of 12 returned 200 with usable JSON-LD. One extra request only on jobs
+  // that already failed, so the cost lands on the backlog rather than the steady path.
+  if (!description && isPublicHttpsUrl(job.url)) {
+    try {
+      const res = await fetch(job.url, {
+        redirect: 'follow',
+        signal: AbortSignal.timeout(15000),
+        headers: WD_HEADERS,
+      });
+      if (res.ok) {
+        const html = await res.text();
+        // NOT extractDescriptionFromHtml: its steps 3 and 4 fall back to og:description and
+        // meta description behind a >100 char gate. Those are page blurbs, not job bodies —
+        // measured here, they returned the COMPANY description cut off mid-word ("...creating a
+        // better world for dogs in the future. I..."). Writing one is worse than writing
+        // nothing: description stops being NULL, so the row leaves the candidate set and the
+        // truncated blurb becomes permanent. Only the two structural extractors are trusted.
+        const candidate = extractJsonLdDescription(html) || extractBodyDescription(html);
+        description = looksLikeRealDescription(candidate) ? candidate : null;
+      } else if (res.status === 404 || res.status === 410) {
+        // The posting itself is gone — stop re-fetching it every cycle.
+        return 'SKIP';
+      }
+    } catch { /* network/timeout — leave null and retry next cycle */ }
+  }
+
   return description;
+}
+
+// Quality gate for the generic URL fallback ONLY — the per-ATS fetchers hit real job endpoints
+// and are trusted as-is.
+//
+// A write here is irreversible in practice: it clears description IS NULL, so the row leaves the
+// backfill's candidate set and nothing ever revisits it. That makes a wrong fill strictly worse
+// than no fill, so anything that looks like a page blurb rather than a job body is rejected —
+// too short after tag-stripping, or cut off with an ellipsis the way meta descriptions are.
+function looksLikeRealDescription(text) {
+  if (!text) return false;
+  const plain = String(text)
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&(?:amp;)*(?:nbsp|#160);/gi, ' ')
+    .replace(/&(?:amp;)+/gi, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (plain.length < 300) return false;
+  if (/(?:\.\.\.|…)$/.test(plain)) return false;
+
+  // Unrendered client-side template. Breezy serves an SPA shell whose markup still contains
+  // %BREADCRUMB_JOB_OPENINGS% / %BUTTON_APPLY_TO_POSITION% placeholders — there is no job body
+  // in the HTML at all, so anything harvested from that page is chrome.
+  if (/%[A-Z][A-Z0-9_]{4,}%/.test(plain)) return false;
+
+  // Truncation without an explicit ellipsis: meta/og blurbs are cut to a character budget and
+  // stop mid-sentence ("...ASX-listed enterprises. If you have"). A real job body ends on
+  // terminal punctuation. Only enforced below 800 chars, since a long text that happens to end
+  // on a bare word is far more likely to be a genuine (if untidy) posting than a blurb.
+  if (plain.length < 800 && !/[.!?:;)"'\]]$/.test(plain)) return false;
+
+  return true;
+}
+
+// SSRF guard for imported URLs: https only, a public DNS name, never an internal target. Used
+// before any fetch of a job.url value, which originates from third-party import data.
+function isPublicHttpsUrl(u) {
+  let parsed;
+  try { parsed = new URL(String(u || '')); } catch { return false; }
+  if (parsed.protocol !== 'https:') return false;
+  const host = parsed.hostname.toLowerCase();
+  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host)) return false; // needs a dot; rejects bare/IPv6
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) return false;         // no raw IPv4 literals
+  if (/(^|\.)(localhost|local|internal|localdomain)$/.test(host)) return false;
+  return true;
 }
 
 /**
