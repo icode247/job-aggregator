@@ -101,6 +101,13 @@ const GREENHOUSE = process.env.GREENHOUSE === '1';
 // site path, which is what the logo URL hangs off. The bare-host ones are skipped: without
 // a site path the board lands on Workday's outage page.
 const WD_BOARD = process.env.WD_BOARD === '1';
+// ASHBY=1 re-offers Ashby companies. They were always eligible through SHARED (ashby is in
+// SHARED_ATS) and 674 companies already carry an Ashby wordmark, but 174 with live jobs
+// still have none — reviewed once, nothing found, retired. The board puts the company's
+// uploaded mark at app.ashbyhq.com/api/images/org-theme-wordmark/..., which render-scrape
+// picks up (the class carries "wordmark"), so a second pass with its own decided-set is
+// worth running.
+const ASHBY = process.env.ASHBY === '1';
 // ats_slug is not trustworthy on its own: some rows hold a path segment from the careers
 // URL ("careers", "jobs") rather than a board slug, so prefer the slug in career_url and
 // fall back to ats_slug only when it isn't one of those generic words.
@@ -398,7 +405,18 @@ async function main() {
       lever: '^https?://jobs\\.lever\\.co/[a-z0-9]',
       zoho: '^https?://[a-z0-9-]+\\.zohorecruit\\.com',
     };
-    const fetchWindow = async (limit) => WD_BOARD
+    const fetchWindow = async (limit) => ASHBY
+      ? await q(pool, `
+          SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, 0 AS jobs
+            FROM companies c
+           WHERE c.logo_url IS NULL
+             AND c.ats = 'ashby'
+             AND c.career_url ~* '^https?://jobs\\.ashbyhq\\.com/[a-z0-9]'
+             AND NOT (c.id = ANY($2::bigint[]))
+             AND EXISTS (SELECT 1 FROM jobs j WHERE j.company_id = c.id AND j.removed_at IS NULL)
+           LIMIT $1
+        `, [limit, processedIds])
+      : WD_BOARD
       ? await q(pool, `
           SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, 0 AS jobs
             FROM companies c
@@ -499,7 +517,7 @@ async function main() {
       // Derivation only — no network here. Liveness probing happens after the pool is
       // closed, because probing hundreds of mostly-dead domains takes minutes and Heroku
       // drops the idle connection out from under the next widening query.
-      batch = WD_BOARD ? buildBoardBatch(fresh) : GREENHOUSE ? buildGreenhouseBatch(fresh) : REDO_ATS ? buildRedoAtsBatch(fresh) : REDO ? buildRedoBatch(fresh) : DERIVED ? buildSlugBatch(fresh) : fresh.slice(0, SIZE);
+      batch = (WD_BOARD || ASHBY) ? buildBoardBatch(fresh) : GREENHOUSE ? buildGreenhouseBatch(fresh) : REDO_ATS ? buildRedoAtsBatch(fresh) : REDO ? buildRedoBatch(fresh) : DERIVED ? buildSlugBatch(fresh) : fresh.slice(0, SIZE);
       // A short batch is only meaningful if the window wasn't full — otherwise the
       // remainder is simply below the cut.
       if (batch.length >= SIZE || rows.length < window || window >= MAX_WINDOW) break;
@@ -510,7 +528,7 @@ async function main() {
     // WORKDAY already set both (to the derived company site, not the Workday page).
     // The modes that build their own target (derived domain, careers page, job board) have
     // already set it; only the plain own-domain and SHARED modes need it filled in here.
-    if (!DERIVED && !REDO_ATS && !GREENHOUSE && !WD_BOARD) for (const r of batch) r.scrape_target = SHARED ? r.career_url : r.domain;
+    if (!DERIVED && !REDO_ATS && !GREENHOUSE && !WD_BOARD && !ASHBY) for (const r of batch) r.scrape_target = SHARED ? r.career_url : r.domain;
     scanned = rows.length;
   } finally {
     await pool.end();
@@ -523,7 +541,7 @@ async function main() {
     const pool2 = makePool();
     try { await attachJobCounts(pool2, batch); } finally { await pool2.end(); }
   }
-  if ((REDO_ATS || GREENHOUSE || WD_BOARD) && batch.length) {
+  if ((REDO_ATS || GREENHOUSE || WD_BOARD || ASHBY) && batch.length) {
     const pool2 = makePool();
     try { await attachJobCounts(pool2, batch); } finally { await pool2.end(); }
   }
