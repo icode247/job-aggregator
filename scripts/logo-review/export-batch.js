@@ -382,28 +382,26 @@ async function main() {
         `, [limit, processedIds, SLUG, SLUG_URL_RE[SLUG]])
       : SHARED
       ? await q(pool, `
-          SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, COUNT(j.id)::int AS jobs
+          SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, 0 AS jobs
             FROM companies c
-            JOIN jobs j ON j.company_id = c.id AND j.removed_at IS NULL
            WHERE c.logo_url IS NULL
              AND c.career_url IS NOT NULL AND c.career_url <> ''
-             AND c.ats = ANY($2)
+             AND c.ats = ANY($3)
+             AND NOT (c.id = ANY($2::bigint[]))
              AND c.domain IN (SELECT domain FROM companies GROUP BY domain HAVING COUNT(*) > 1)
-           GROUP BY c.id
-           ORDER BY jobs DESC
+             AND EXISTS (SELECT 1 FROM jobs j WHERE j.company_id = c.id AND j.removed_at IS NULL)
            LIMIT $1
-        `, [limit, SHARED_ATS])
+        `, [limit, processedIds, SHARED_ATS])
       : await q(pool, `
-          SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, COUNT(j.id)::int AS jobs
+          SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, 0 AS jobs
             FROM companies c
-            JOIN jobs j ON j.company_id = c.id AND j.removed_at IS NULL
            WHERE c.logo_url IS NULL
              AND c.domain IS NOT NULL AND c.domain <> ''
+             AND NOT (c.id = ANY($2::bigint[]))
              AND c.domain NOT IN (SELECT domain FROM companies GROUP BY domain HAVING COUNT(*) > 1)
-           GROUP BY c.id
-           ORDER BY jobs DESC
+             AND EXISTS (SELECT 1 FROM jobs j WHERE j.company_id = c.id AND j.removed_at IS NULL)
            LIMIT $1
-        `, [limit]);
+        `, [limit, processedIds]);
 
     let window = WINDOW, rows = [];
     for (;;) {
@@ -428,6 +426,12 @@ async function main() {
   }
 
   // Everything below runs with no DB connection open.
+  if (!DERIVED && !REDO_ATS && batch.length) {
+    // Same reason as the derived modes: aggregating job counts over the whole window is
+    // what made this query cost two minutes a call. Count the final slice instead.
+    const pool2 = makePool();
+    try { await attachJobCounts(pool2, batch); } finally { await pool2.end(); }
+  }
   if (REDO_ATS && batch.length) {
     const pool2 = makePool();
     try { await attachJobCounts(pool2, batch); } finally { await pool2.end(); }
