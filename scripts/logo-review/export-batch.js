@@ -77,6 +77,13 @@ const REDO = process.env.REDO === '1';
 // liveness probe: these hosts are always up. Oracle's 310 stay out — opaque tenant codes,
 // and a probe found 0 of 9 rendering anything.
 const REDO_ATS = process.env.REDO === 'ats';
+// SKIP_ATS_DOMAIN=1 drops companies whose "own domain" is really an ATS-hosted careers
+// site (<company>.bamboohr.com). They pass the shared-domain test because the hostname is
+// unique per company, but there is no company website behind it — icon-scrape.js refuses
+// them, and one 120-company batch came back 100 ATS hosts. Their logos are reachable
+// through career_url instead (SHARED / REDO=ats), not through their domain.
+const SKIP_ATS_DOMAIN = process.env.SKIP_ATS_DOMAIN === '1';
+const ATS_DOMAIN_RE = '(bamboohr|greenhouse|lever|ashbyhq|workable|smartrecruiters|jazzhr|jobvite|icims|myworkdayjobs|myworkdaysite|zohorecruit|recruitee|teamtailor|breezy|personio|comeet|paylocity|rippling|pinpointhq|successfactors|taleo|oraclecloud|applytojob|careerpuck)\\.';
 // Some of those favicons were generated from the ATS host rather than the company site.
 // Scraping those hands back the vendor art this pass exists to remove.
 const ATS_HOSTS = /(paylocity|oraclecloud|myworkdayjobs|myworkdaysite|greenhouse|ashbyhq|lever\.co|icims|zohorecruit|workable|smartrecruiters|bamboohr|jazzhr|comeet|successfactors|taleo|jobvite|breezy|personio|recruitee|teamtailor|pinpointhq)\./i;
@@ -399,9 +406,10 @@ async function main() {
              AND c.domain IS NOT NULL AND c.domain <> ''
              AND NOT (c.id = ANY($2::bigint[]))
              AND c.domain NOT IN (SELECT domain FROM companies GROUP BY domain HAVING COUNT(*) > 1)
+             AND ($3::boolean IS NOT TRUE OR c.domain !~* $4)
              AND EXISTS (SELECT 1 FROM jobs j WHERE j.company_id = c.id AND j.removed_at IS NULL)
            LIMIT $1
-        `, [limit, processedIds]);
+        `, [limit, processedIds, SKIP_ATS_DOMAIN, ATS_DOMAIN_RE]);
 
     let window = WINDOW, rows = [];
     for (;;) {
