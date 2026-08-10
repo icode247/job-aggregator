@@ -44,6 +44,18 @@ async function get(url, opts = {}) {
 
 const abs = (href, base) => { try { return new URL(href, base).href; } catch { return null; } };
 
+// A careers site hosted BY an ATS serves the ATS's icon, never the company's. These slip
+// past the shared-domain test in export-batch because the hostname is unique per company
+// (<company>.bamboohr.com), but the icon behind it is the same vendor mark every time —
+// one batch had 11 companies all returning staticfe.bamboohr.com/favicon.ico. Refuse them
+// outright rather than relying on the repeated-URL rule, which only fires when several
+// land in the same batch.
+const ATS_HOST = /(^|\.)(bamboohr|greenhouse|lever|ashbyhq|workable|smartrecruiters|jazzhr|jobvite|icims|myworkdayjobs|myworkdaysite|zohorecruit|recruitee|teamtailor|breezy|personio|comeet|paylocity|rippling|pinpointhq|successfactors|taleo|oraclecloud|applytojob|breezy|careerpuck|jobs\.lever)\./i;
+
+// The same rule applied to the icon we ended up with: a company site can redirect to, or
+// hotlink its icon from, its ATS.
+const isAtsUrl = url => { try { return ATS_HOST.test(new URL(url).hostname); } catch { return false; } };
+
 // Parse declared icons out of the page head, best first.
 function declaredIcons(html, base) {
   const out = [];
@@ -82,10 +94,12 @@ async function servesImage(url) {
 async function iconFor(target) {
   // own-domain batches carry a bare hostname; SHARED/derived ones carry a full URL.
   const site = /^https?:\/\//i.test(target) ? target : 'https://' + String(target || '').replace(/^\/+/, '');
+  if (isAtsUrl(site)) return { status: 'ats host' };
   let base = site, html = '';
   try {
     const res = await get(site);
     base = res.url || site;
+    if (isAtsUrl(base)) return { status: 'ats host (redirected)' };
     html = await res.text();
   } catch (err) {
     return { status: 'error: ' + err.message };
@@ -98,6 +112,7 @@ async function iconFor(target) {
   for (const c of candidates) {
     if (!c.url || seen.has(c.url)) continue;
     seen.add(c.url);
+    if (isAtsUrl(c.url)) continue;
     if (await servesImage(c.url)) return { logo_url: c.url, logo_type: c.type, status: 'ok' };
   }
   return { status: 'no icon' };
