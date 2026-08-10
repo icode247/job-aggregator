@@ -895,13 +895,27 @@ async function fetchComeetDescription(job) {
   if (slugParts.length < 2) return null;
   const [uid, ...tokenParts] = slugParts;
   const token = tokenParts.join(':');
+  // `details=true` is required. Without it the endpoint answers 200 with position METADATA only
+  // — name, department, location, urls — and no description field of any kind, which is why this
+  // filled 0 of 1,963 while looking perfectly healthy: the request succeeded every time.
   const res = await fetch(
-    `https://www.comeet.co/careers-api/2.0/company/${encodeURIComponent(uid)}/positions/${encodeURIComponent(positionUid)}?token=${encodeURIComponent(token)}`,
+    `https://www.comeet.co/careers-api/2.0/company/${encodeURIComponent(uid)}/positions/${encodeURIComponent(positionUid)}?token=${encodeURIComponent(token)}&details=true`,
     { signal: AbortSignal.timeout(10000) }
   );
   if (!res.ok) return null;
   const data = await res.json();
-  return data.details?.description || data.description || null;
+
+  // details is an ARRAY of {name, value} sections (Description, Responsibilities, Requirements,
+  // Benefits), not an object keyed by name — `data.details?.description` was always undefined
+  // even on a response that carried the text. Empty sections are normal; drop them.
+  if (Array.isArray(data.details)) {
+    const body = data.details
+      .filter((d) => d && d.value && String(d.value).trim())
+      .map((d) => (d.name ? `<h3>${d.name}</h3>\n${d.value}` : String(d.value)))
+      .join('\n');
+    if (body.trim()) return body;
+  }
+  return data.description || null;
 }
 
 function buildPinpointSections(data) {
