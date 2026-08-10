@@ -71,7 +71,9 @@ const VENDOR_PATTERNS = [
   // URL — so matching assets|logo here flagged real company logos as vendor art.
   /myworkdayjobs\.com\/.*\/favicon/i,
   /workdaycdn\.com/i,
-  /community\.workday\.com\/.*wday-logo/i,
+  // Whole outage page, not just its logo: it also serves tools.svg, which three boards
+  // (Petco, Walmart, otis) returned in one batch.
+  /community\.workday\.com\/themes\/custom\/outage_page/i,
   /greenhouse\.io\/embed/i,
   /ashbyprd.*apple-touch/i,
   /gstatic\.com\/faviconV2/i,

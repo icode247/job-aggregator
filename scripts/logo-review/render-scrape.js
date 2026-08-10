@@ -44,7 +44,7 @@ const VENDOR = [
   /workdaycdn\.com/i,
   // Workday's outage/error page, which a wrong tenant URL lands on — it serves Workday's
   // own mark and would otherwise be recorded as that company's logo.
-  /community\.workday\.com\/.*wday-logo/i,
+  /community\.workday\.com\/themes\/custom\/outage_page/i,
   /comeet\.co\/(assets|images)/i,
   /icims\.com\/.*favicon/i,
   /gstatic\.com\/faviconV2/i,
