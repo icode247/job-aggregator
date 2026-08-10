@@ -66,7 +66,12 @@ const VENDOR_PATTERNS = [
   /lever\.co\/img/i,
   /paylocity\.com\/.*cdn/i,
   /careerpuck/i,
-  /myworkdayjobs\.com\/.*(assets|logo)/i,
+  // Favicon only. Workday serves each tenant's OWN uploaded mark at
+  // <tenant>.wdN.myworkdayjobs.com/<Site>/assets/logo — 4,138 companies already use that
+  // URL — so matching assets|logo here flagged real company logos as vendor art.
+  /myworkdayjobs\.com\/.*\/favicon/i,
+  /workdaycdn\.com/i,
+  /community\.workday\.com\/.*wday-logo/i,
   /greenhouse\.io\/embed/i,
   /ashbyprd.*apple-touch/i,
   /gstatic\.com\/faviconV2/i,

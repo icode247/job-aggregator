@@ -15,8 +15,8 @@ const { makePool, q, readProcessed, BATCH_JSON, BATCH_CSV, STATE_DIR } = require
 // SHARED=1 flips to the companies whose `domain` is a shared ATS host. They have no
 // own-domain page to scrape, but each has a unique branded careers page — rendered by
 // scripts/logo-review/render-scrape.js. Restricted to the ATS that actually publish a
-// per-company logo: Workday career_urls in the DB are malformed (missing the wdN
-// subdomain, so DNS fails) and Workable/Comeet boards only ever show vendor art.
+// per-company logo. (The old note here said Workday career_urls were malformed and DNS
+// failed — that was never the real blocker; see WD_BOARD below.)
 const SHARED = process.env.SHARED === '1';
 // jazzhr and pinpoint were absent with no rationale recorded, unlike workday (malformed
 // career_urls) and workable/comeet (vendor art only). A 40-company probe on 2026-08-08 found
@@ -26,14 +26,17 @@ const SHARED = process.env.SHARED === '1';
 // workable added 2026-08-08: the "vendor art only" exclusion predates the headless renderer,
 // and a re-probe found 6 of 9 companies serving a distinct per-company logo with no vendor
 // art at all. Small sample, so expect the review page to be the real check. Still excluded by
-// the same probe: comeet (0 of 36 rendered a logo) and workday — 92 of 102 pages loaded fine
-// but expose no logo element, so the documented DNS rationale was never the real blocker.
+// the same probe: comeet (0 of 36 rendered a logo). Workday was excluded on the same
+// evidence — 92 of 102 pages "exposed no logo element" — but that reading was wrong: the
+// logo was there and render-scrape was discarding it as vendor art. See WD_BOARD.
 const SHARED_ATS = ['paylocity', 'rippling', 'smartrecruiters', 'ashby', 'bamboohr', 'greenhouse', 'grnhse', 'successfactors', 'jazzhr', 'pinpoint', 'workable'];
 
-// WORKDAY=1 is a third mode, for the largest logo-less bucket left: 3,271 companies /
-// 413k live jobs. Scraping the Workday page itself is a dead end — a probe found 92 of
-// 102 pages load fine but expose no logo element at all, which is why every earlier pass
-// returned "no candidate". The way in is the tenant slug: career_url is
+// WORKDAY=1 reaches Workday companies through the tenant slug rather than the board.
+// It was built when Workday boards appeared to expose no logo element — which turned out
+// to be render-scrape discarding the tenant logo as vendor art (fixed; see WD_BOARD, which
+// is now the better route). This mode still earns its place for companies whose career_url
+// has no site path, where the board can't be scraped at all. The way in is the tenant slug:
+// career_url is
 // https://<tenant>.myworkdayjobs.com, and the tenant is almost always the company's real
 // identity (cvshealth, dollartree, pwc, micron). So derive <tenant>.com and scrape the
 // company's OWN website, where the logo actually lives.
@@ -92,6 +95,12 @@ const ATS_HOSTS = /(paylocity|oraclecloud|myworkdayjobs|myworkdaysite|greenhouse
 // itself (external_greenhouse_job_boards/logos/...). 4,431 companies already use one, but
 // 413 with live jobs still have no logo at all. Scraped by gh-scrape.js, not render-scrape.
 const GREENHOUSE = process.env.GREENHOUSE === '1';
+// WD_BOARD=1 scrapes the Workday board itself, now that render-scrape no longer discards
+// the tenant logo at <tenant>.wdN.myworkdayjobs.com/<Site>/assets/logo as vendor art.
+// 4,010 Workday companies have live jobs and no logo; 2,538 have a career_url carrying the
+// site path, which is what the logo URL hangs off. The bare-host ones are skipped: without
+// a site path the board lands on Workday's outage page.
+const WD_BOARD = process.env.WD_BOARD === '1';
 // ats_slug is not trustworthy on its own: some rows hold a path segment from the careers
 // URL ("careers", "jobs") rather than a board slug, so prefer the slug in career_url and
 // fall back to ats_slug only when it isn't one of those generic words.
@@ -102,6 +111,24 @@ function greenhouseSlug(row) {
   const slug = String(row.ats_slug || '').trim().toLowerCase();
   if (slug && !GENERIC_SLUGS.has(slug) && /^[a-z0-9][a-z0-9._-]*$/.test(slug)) return slug;
   return null;
+}
+
+// Scrape the board exactly as the DB records it; build-preview only trusts a join key one
+// company claims, so keep one company per board URL.
+function buildBoardBatch(rows) {
+  const seen = new Set();
+  const out = [];
+  let dup = 0;
+  for (const r of rows) {
+    const url = String(r.career_url).replace(/\/+$/, '');
+    if (seen.has(url)) { dup++; continue; }
+    seen.add(url);
+    r.scrape_target = r.career_url = url;
+    out.push(r);
+    if (out.length >= SIZE) break;
+  }
+  console.log(`  ${out.length} boards (skipped ${dup} sharing a URL)`);
+  return out;
 }
 
 function buildGreenhouseBatch(rows) {
@@ -371,7 +398,18 @@ async function main() {
       lever: '^https?://jobs\\.lever\\.co/[a-z0-9]',
       zoho: '^https?://[a-z0-9-]+\\.zohorecruit\\.com',
     };
-    const fetchWindow = async (limit) => GREENHOUSE
+    const fetchWindow = async (limit) => WD_BOARD
+      ? await q(pool, `
+          SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, 0 AS jobs
+            FROM companies c
+           WHERE c.logo_url IS NULL
+             AND c.ats = 'workday'
+             AND c.career_url ~* '^https?://[^/]+/.+'
+             AND NOT (c.id = ANY($2::bigint[]))
+             AND EXISTS (SELECT 1 FROM jobs j WHERE j.company_id = c.id AND j.removed_at IS NULL)
+           LIMIT $1
+        `, [limit, processedIds])
+      : GREENHOUSE
       ? await q(pool, `
           SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, c.ats_slug, 0 AS jobs
             FROM companies c
@@ -461,7 +499,7 @@ async function main() {
       // Derivation only — no network here. Liveness probing happens after the pool is
       // closed, because probing hundreds of mostly-dead domains takes minutes and Heroku
       // drops the idle connection out from under the next widening query.
-      batch = GREENHOUSE ? buildGreenhouseBatch(fresh) : REDO_ATS ? buildRedoAtsBatch(fresh) : REDO ? buildRedoBatch(fresh) : DERIVED ? buildSlugBatch(fresh) : fresh.slice(0, SIZE);
+      batch = WD_BOARD ? buildBoardBatch(fresh) : GREENHOUSE ? buildGreenhouseBatch(fresh) : REDO_ATS ? buildRedoAtsBatch(fresh) : REDO ? buildRedoBatch(fresh) : DERIVED ? buildSlugBatch(fresh) : fresh.slice(0, SIZE);
       // A short batch is only meaningful if the window wasn't full — otherwise the
       // remainder is simply below the cut.
       if (batch.length >= SIZE || rows.length < window || window >= MAX_WINDOW) break;
@@ -472,7 +510,7 @@ async function main() {
     // WORKDAY already set both (to the derived company site, not the Workday page).
     // The modes that build their own target (derived domain, careers page, job board) have
     // already set it; only the plain own-domain and SHARED modes need it filled in here.
-    if (!DERIVED && !REDO_ATS && !GREENHOUSE) for (const r of batch) r.scrape_target = SHARED ? r.career_url : r.domain;
+    if (!DERIVED && !REDO_ATS && !GREENHOUSE && !WD_BOARD) for (const r of batch) r.scrape_target = SHARED ? r.career_url : r.domain;
     scanned = rows.length;
   } finally {
     await pool.end();
@@ -485,7 +523,7 @@ async function main() {
     const pool2 = makePool();
     try { await attachJobCounts(pool2, batch); } finally { await pool2.end(); }
   }
-  if ((REDO_ATS || GREENHOUSE) && batch.length) {
+  if ((REDO_ATS || GREENHOUSE || WD_BOARD) && batch.length) {
     const pool2 = makePool();
     try { await attachJobCounts(pool2, batch); } finally { await pool2.end(); }
   }
