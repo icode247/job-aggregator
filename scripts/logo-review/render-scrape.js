@@ -36,8 +36,15 @@ const VENDOR = [
   // path, not the domain — otherwise every Workable company gets "jobs by workable".
   /\/job-board\/assets\//i,
   /boards\.greenhouse\.io\/(apple-icon|favicon)/i,
-  /myworkdayjobs\.com\/.*\/(assets|images)\/(logo|favicon)/i,
+  // NOT the tenant logo: Workday serves each tenant's own uploaded mark at
+  // <tenant>.wdN.myworkdayjobs.com/<Site>/assets/logo, and blanket-matching assets/logo
+  // discarded it as vendor art. That is why Workday boards looked like they exposed no
+  // logo element at all. Workday's own chrome lives on workdaycdn.com, matched below.
+  /myworkdayjobs\.com\/.*\/(assets|images)\/favicon/i,
   /workdaycdn\.com/i,
+  // Workday's outage/error page, which a wrong tenant URL lands on — it serves Workday's
+  // own mark and would otherwise be recorded as that company's logo.
+  /community\.workday\.com\/.*wday-logo/i,
   /comeet\.co\/(assets|images)/i,
   /icims\.com\/.*favicon/i,
   /gstatic\.com\/faviconV2/i,
