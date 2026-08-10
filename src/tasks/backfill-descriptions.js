@@ -39,12 +39,30 @@ const ATS_CONFIG = {
   workday:         { batchSize: 75, concurrency: 4 },
   comeet:          { batchSize: 50, concurrency: 4 },
   paylocity:       { batchSize: 60, concurrency: 3 },
+};
+
+// Platforms with a working fetcher but NO apply automation — users cannot apply to these jobs, so
+// a description on them buys nothing today. They are prospective inventory only.
+//
+// OFF BY DEFAULT, and that is a product decision, not a technical one. src/utils/supported-ats.js
+// calls its list "platforms we can actually crawl AND apply to" and includes all five, but that
+// gate reflects ADAPTER coverage, not AUTOMATION coverage — it is not the authority on what is
+// applyable. Enabling these was a mistake on 2026-08-10: they are 64% of the outstanding backlog
+// (21,003 of 32,715) and taleo alone is 14,518, so they soak up most of the cycle while workable,
+// comeet, greenhouse and workday — the ones users actually see — wait behind them.
+//
+// The fetchers stay wired and tested so this is a one-line switch the day automation lands.
+const NO_AUTOMATION_ATS = {
   taleo:           { batchSize: 60, concurrency: 3 },
   successfactors:  { batchSize: 60, concurrency: 3 },
   oracle:          { batchSize: 50, concurrency: 3 },
   oraclecloud:     { batchSize: 50, concurrency: 3 },
   icims:           { batchSize: 50, concurrency: 3 },
 };
+
+if (process.env.BACKFILL_NO_AUTOMATION_ATS === '1') {
+  Object.assign(ATS_CONFIG, NO_AUTOMATION_ATS);
+}
 
 // Cache workday configs per slug with TTL (1 hour)
 const wdConfigCache = new Map();
