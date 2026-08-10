@@ -607,27 +607,121 @@ async function greenhouseBoardFetch(board, jobId) {
   return { content: data.content || null, status: 200 };
 }
 
+// Slug values that are demonstrably URL path segments rather than board tokens. Used only to
+// stop a known-bad slug being offered back as a candidate — never to reject one outright, since
+// the real test is whether the board API answers for it.
+const GH_NON_TOKENS = new Set([
+  'careers', 'jobs', 'job-board', 'en', 'careersitem', 'job-detail', 'about', 'company',
+  'open-roles', 'join-us', 'job-openings', 'job-openings-2', 'job-description', 'embed',
+  'pages', 'careers-list.html', 'careers-and-culture', 'who-we-are', 'apply', 'openings',
+]);
+
+const ghNorm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+// Hyphens are legal in a board token (`domino-data-lab` is a real board), so they cannot be used
+// to tell a token from a path segment — GH_NON_TOKENS does that job instead. A wrong candidate
+// only costs one 404, so this stays permissive.
+const ghUsable = (s) => !!s && /^[a-z0-9_-]+$/i.test(s) && !GH_NON_TOKENS.has(String(s).toLowerCase());
+
+// Board hosts that put the token straight in the URL path. careerpuck is a third-party host for
+// Greenhouse boards, and its rows are the ones where company_name is least reliable — all three
+// unresolved samples were labelled "Avalara" while the path named madisonreedcolorbar,
+// domino-data-lab and lyft. The path wins over the company record here.
+function greenhouseTokenFromUrl(url) {
+  const u = String(url || '');
+  const m = u.match(/app\.careerpuck\.com\/job-board\/([a-z0-9_-]+)\//i)
+    || u.match(/(?:job-boards|boards)\.greenhouse\.io\/(?:embed\/)?([a-z0-9_-]+)\/jobs?\//i);
+  return m && ghUsable(m[1]) ? m[1] : null;
+}
+
+// Board tokens we already hold for the SAME company under a different companies row.
+//
+// The most productive source by a distance, and it costs one cached query: the company is usually
+// crawled correctly elsewhere in the table by our own greenhouse crawler, and only the
+// aggregator-imported row carries the broken slug. Matching on company_name — not domain alone —
+// is what makes it work. Measured over 40 imported rows: domain-only resolved 35%, adding the
+// name match took it to 75% (sibling-name 22, sibling-domain 7, domain-derived 1).
+const ghSiblingCache = new Map();
+
+async function greenhouseSiblingSlugs(job) {
+  const key = job.company_id || `${job.domain}|${job.company_name}`;
+  if (ghSiblingCache.has(key)) return ghSiblingCache.get(key);
+
+  let slugs = [];
+  try {
+    const { rows } = await query(
+      `SELECT ats_slug FROM companies
+        WHERE ats = 'greenhouse' AND ats_slug IS NOT NULL
+          AND (company_name = ? OR (domain IS NOT NULL AND domain = ?))
+        LIMIT 25`,
+      [job.company_name || '', job.domain || '']
+    );
+    slugs = rows.map((r) => r.ats_slug).filter(ghUsable);
+  } catch { /* a sibling lookup failure must never fail the job */ }
+
+  ghSiblingCache.set(key, slugs);
+  return slugs;
+}
+
+// Does this board exist at all? Separates "wrong token" from "right token, dead requisition".
+const ghBoardExistsCache = new Map();
+async function greenhouseBoardExists(token) {
+  if (ghBoardExistsCache.has(token)) return ghBoardExistsCache.get(token);
+  let ok = false;
+  try {
+    const res = await fetch(
+      `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(token)}/jobs?content=false`,
+      { signal: AbortSignal.timeout(10000) }
+    );
+    ok = res.ok;
+  } catch { /* network — treat as unknown rather than real */ }
+  ghBoardExistsCache.set(token, ok);
+  return ok;
+}
+
 async function fetchGreenhouseDescription(job) {
   const jobId = nativeId(job, 'greenhouse');
+  const tried = new Set();
+  let sawRealBoard = false;
 
-  if (job.ats_slug) {
-    const direct = await greenhouseBoardFetch(job.ats_slug, jobId);
-    if (direct.content) return direct.content;
+  const attempt = async (token) => {
+    if (!token || tried.has(token)) return null;
+    tried.add(token);
+    const res = await greenhouseBoardFetch(token, jobId);
+    if (res.content) return res.content;
+    if (res.status === 404 && !sawRealBoard) sawRealBoard = await greenhouseBoardExists(token);
+    return null;
+  };
+
+  // 1. The token spelled out in the URL path (careerpuck / greenhouse-hosted boards), then the
+  //    stored slug on the chance it is a real token.
+  let out = await attempt(greenhouseTokenFromUrl(job.url));
+  if (out) return out;
+  out = await attempt(job.ats_slug);
+  if (out) return out;
+
+  // 2. The careers page the URL points at, which embeds the token on classic boards.
+  if (job.url && isPublicHttpsUrl(job.url)) {
+    out = await attempt(await discoverGreenhouseToken(job.url));
+    if (out) return out;
   }
 
-  // Stored slug was not a board token. Recover the real one from the careers page.
-  if (!job.url || !isPublicHttpsUrl(job.url)) return null;
-  const token = await discoverGreenhouseToken(job.url);
-  if (!token || token === job.ats_slug) return null;
+  // 3. A sibling row for the same company, then the domain and company name normalised. Modern
+  //    careers pages load the board client-side, so step 2 finds nothing on them and these are
+  //    the only remaining sources.
+  for (const s of await greenhouseSiblingSlugs(job)) {
+    out = await attempt(s);
+    if (out) return out;
+  }
+  const host = job.domain ? String(job.domain).replace(/^www\./, '').split('.')[0] : null;
+  for (const guess of [ghNorm(host), ghNorm(job.company_name)]) {
+    if (!ghUsable(guess)) continue;
+    out = await attempt(guess);
+    if (out) return out;
+  }
 
-  const viaToken = await greenhouseBoardFetch(token, jobId);
-  if (viaToken.content) return viaToken.content;
-
-  // The careers page gave us a genuine board token and that board does not have this
-  // requisition — the posting is gone. Mark it rather than re-fetching it every cycle; a wall of
-  // these at the bottom of the id range is what the cursor kept re-walking after each restart.
-  if (viaToken.status === 404) return 'SKIP';
-  return null;
+  // Only mark the row gone when a board we know is real disowned the requisition. Marking on a
+  // bare 404 would burn rows whose token we simply never found.
+  return sawRealBoard ? 'SKIP' : null;
 }
 
 async function fetchLeverDescription(job) {
@@ -1298,7 +1392,8 @@ async function backfillForAts(ats, batchSize, concurrency) {
   let jobs;
   try {
     ({ rows: jobs } = await query(
-      `SELECT j.id, j.ats, j.external_id, j.url, j.raw_data, c.ats_slug
+      `SELECT j.id, j.ats, j.external_id, j.url, j.raw_data, j.company_id,
+              c.ats_slug, c.company_name, c.domain
        FROM jobs j JOIN companies c ON j.company_id = c.id
        WHERE j.removed_at IS NULL
        AND j.description IS NULL
