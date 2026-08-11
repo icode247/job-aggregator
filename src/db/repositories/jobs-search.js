@@ -12,6 +12,7 @@
  * already run, and adds typo tolerance and relevance ranking Postgres full-text cannot.
  */
 const meili = require('../../utils/meili');
+const logger = require('../../logger');
 const { isShortAlias } = require('../../utils/location-aliases');
 const { resolveCountry } = require('../../utils/location-countries');
 const { parsePostedWindow } = require('../../utils/posted-window');
@@ -138,22 +139,61 @@ async function search(filters = {}) {
 
 
   const built = buildFilter(filters);
-  if (!built) return null;
+  if (!built) {
+    // The other silent fallback: a filter set the index cannot express faithfully. Same cost as
+    // the catch below — the request lands on the slow Postgres path — so it gets the same warning.
+    logger.warn({ filters: summariseFilters(filters) },
+      'Meili filter not expressible — falling back to Postgres (expect a slow query)');
+    return null;
+  }
 
   const limit = Math.min(parseInt(filters.limit, 10) || 50, 200);
   const offset = parseInt(filters.offset, 10) || 0;
 
+  const q = buildQuery(filters);
+  const facets = ['employment_type', 'experience_level', 'ats', 'workplace_type', 'role_category'];
+
+  // How many distinct roles the caller asked for. The SQL path AND's the words inside one role
+  // but OR's the roles against each other, so `q` = "developer,designer" must match either. A
+  // single Meilisearch query cannot express that OR, and 'all' would demand both words at once —
+  // turning a two-role search into a search for jobs that are somehow both. So 'all' is applied
+  // only to single-role queries; multi-role keeps the permissive default, which is no worse than
+  // today's behaviour and is the case the SQL path already disagreed with.
+  const roleCount = filters.q ? String(filters.q).split(',').map((r) => r.trim()).filter(Boolean).length : 0;
+  const strict = roleCount === 1;
+
+  // Freshness ordering is applied ONLY when there is no search text.
+  //
+  // Passing an explicit `sort` activates the `sort` ranking rule, which sits at position 5 of
+  // ['words','typo','proximity','attribute','sort','exactness', ...] — ahead of `exactness`. So on
+  // a text query it demoted an exact title match below a fresher loose one. With no `sort`, the
+  // trailing `first_seen_ts:desc` ranking rule still breaks ties by recency, which is the
+  // behaviour we actually wanted: relevance first, newest among equals.
+  const base = {
+    filter: built.filter,
+    limit,
+    offset,
+    facets,
+    ...(q ? {} : { sort: ['first_seen_ts:desc'] }),
+  };
+
   try {
-    const res = await meili.search({
-      q: buildQuery(filters),
-      filter: built.filter,
-      limit,
-      offset,
-      // Freshness first, matching the board's existing ordering. With no search terms there is
-      // nothing to rank by relevance, so sort is the only meaningful order.
-      sort: ['first_seen_ts:desc'],
-      facets: ['employment_type', 'experience_level', 'ats', 'workplace_type', 'role_category'],
-    });
+    // matchingStrategy defaults to 'last', which DROPS query words from the end until it finds
+    // enough results — so "senior technical writer" happily returned "Senior Technical Program
+    // Manager", and with title/company_name/department/location all searchable it could satisfy
+    // "senior" from the title and "technical" from the department. 'all' requires every term.
+    let res = await meili.search({ ...base, q, matchingStrategy: strict ? 'all' : 'last' });
+
+    // Requiring every term can legitimately return nothing on a long or unusual query, and an
+    // empty board is worse than a loose one. Fall back to the permissive strategy only then, so
+    // precision is the default and recall is the safety net rather than the other way round.
+    if (strict && res && !(res.hits || []).length && q && q.trim().split(/\s+/).length > 1) {
+      const loose = await meili.search({ ...base, q, matchingStrategy: 'last' });
+      if (loose && (loose.hits || []).length) {
+        logger.info({ q: q.slice(0, 60) }, 'Meili: no exact-match results, widened the query');
+        res = loose;
+      }
+    }
     if (!res) return null;
 
     const rows = (res.hits || []).map((h) => ({
@@ -213,9 +253,25 @@ async function search(filters = {}) {
       facets: res.facetDistribution || null,
     };
   } catch (err) {
-    // Never let an index problem break the board.
+    // Never let an index problem break the board — but say so. Falling back is not free: the
+    // Postgres equivalent of a narrow ATS filter measured 9s (18s with a date window) and blows
+    // the statement timeout, so a silent `return null` here surfaces to users as "failed to
+    // fetch" with nothing in the log to explain it. On 2026-08-10 that cost a full round of
+    // diagnosis for 33 timeouts whose cause was invisible.
+    logger.warn({ err: err.message, filters: summariseFilters(filters) },
+      'Meili search failed — falling back to Postgres (expect a slow query)');
     return null;
   }
+}
+
+// Small, bounded description of a filter set for logs — never the raw object, which carries
+// free-text search terms.
+function summariseFilters(filters = {}) {
+  return {
+    keys: Object.keys(filters).sort().join(','),
+    ats: Array.isArray(filters.ats) ? filters.ats.join('|').slice(0, 60) : undefined,
+    posted: filters.posted ? String(filters.posted).slice(0, 24) : undefined,
+  };
 }
 
 /** Facet counts with no query — replaces the four GROUP BY scans behind /api/facets. */
