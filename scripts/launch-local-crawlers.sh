@@ -116,12 +116,18 @@ launch A "lever"                                   "$LOG/crawl-A.log" "$COMMON P
 # ephemeral-port exhaustion) for ~71h and stored 0 jobs; direct they flow at hundreds/min.
 launch B "recruitee,breezy"                        "$LOG/crawl-B.log" "$COMMON PROXY_DISABLED=1"
 launch C "ashby"                                   "$LOG/crawl-C.log" "$COMMON PROXY_DISABLED=1"
-# Instance F took rippling, which is now the Render worker's. Repointed to icims — one of the
-# three largest platforms and, per the product decision on 2026-08-06, one nothing is crawling
-# because its apply automation is not built. Building the inventory now costs a local instance
-# and nothing else. oracle and successfactors are the obvious next two; add them as their own
-# instances once icims is shown to be behaving, not all three at once.
-launch F "icims"                                   "$LOG/crawl-F.log" "$COMMON PROXY_DISABLED=1"
+# Instance F (icims) — RETIRED 2026-08-11. The premise above was that building prospective
+# inventory "costs a local instance and nothing else". It stopped being free: with 12 crawlers
+# plus the backfills running, the database went IO-bound (2 autovacuum workers 25min into a 23GB
+# TOAST, a base backup mid-checkpoint, 8 of 9 active queries waiting), and the description
+# backfill's candidate scan — the most timeout-sensitive query we run — started failing and
+# cooling off platforms for an hour at a time. 76 cool-offs in one stretch.
+#
+# icims and taleo are the two worst offenders and the two with the least value: no apply
+# automation, so users cannot act on the jobs, and both ran badly anyway — icims 285 errors over
+# 1,000 companies, taleo 131 errors at 1 company/min. Dropping them buys back write capacity for
+# the platforms users actually apply to. Re-enable when the apply automation lands.
+# launch F "icims"                                 "$LOG/crawl-F.log" "$COMMON PROXY_DISABLED=1"
 # Instance J (jazzhr): applytojob.com JSON API, works DIRECT. Added when the ats-slugs
 # seed brought in ~2.5k jazzhr companies that nothing was crawling.
 launch J "jazzhr"                                  "$LOG/crawl-J.log" "$COMMON PROXY_DISABLED=1"
@@ -153,7 +159,10 @@ launch Z "zoho"                                    "$LOG/crawl-Z.log" "$COMMON P
 # list on these instances is the real allowlist. Concurrency 2 and a longer per-company
 # timeout because taleo has no bulk listing endpoint: every job needs its own detail page
 # (see src/adapters/taleo.js), so a board is slow even after the adapter was parallelised.
-launch T "taleo"                                   "$LOG/crawl-T.log" "CONCURRENCY=2 DELAY_MS=400 PG_POOL_MAX=2 FETCH_TIMEOUT=240000 PROXY_DISABLED=1"
+# RETIRED 2026-08-11 alongside instance F — see the note there. taleo is the worst value per unit
+# of database load in the fleet: no apply automation, and because it has no bulk listing endpoint
+# every job costs its own detail request, so it managed ~1 company/min with 131 errors over 280.
+# launch T "taleo"                                 "$LOG/crawl-T.log" "CONCURRENCY=2 DELAY_MS=400 PG_POOL_MAX=2 FETCH_TIMEOUT=240000 PROXY_DISABLED=1"
 # Instance E (workable direct via IPRoyal proxy) is intentionally NOT auto-started
 # here: it uses the METERED residential proxy, so it must be a controlled one-time
 # drain, not an always-on refresh loop (a 60-min refresh would burn the GB plan).
