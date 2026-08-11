@@ -108,6 +108,12 @@ const WD_BOARD = process.env.WD_BOARD === '1';
 // picks up (the class carries "wordmark"), so a second pass with its own decided-set is
 // worth running.
 const ASHBY = process.env.ASHBY === '1';
+// COMEET=1 — 386 companies this pipeline recorded as unreachable because career_url is an
+// opaque id (comeet.co/jobs/98.008). The id turned out to be half the address: Comeet
+// serves the logo at comeet.co/pub/<slug>/<uid>/logo, and the slug comes from the job URL
+// or from company_name. Built by comeet-logos.js — no page scrape at all. The batch
+// carries one job URL per company, since that is where the slug lives.
+const COMEET = process.env.COMEET === '1';
 // ats_slug is not trustworthy on its own: some rows hold a path segment from the careers
 // URL ("careers", "jobs") rather than a board slug, so prefer the slug in career_url and
 // fall back to ats_slug only when it isn't one of those generic words.
@@ -122,6 +128,24 @@ function greenhouseSlug(row) {
 
 // Scrape the board exactly as the DB records it; build-preview only trusts a join key one
 // company claims, so keep one company per board URL.
+// The scrape target is only a join key here — comeet-logos.js builds the real URL from
+// career_url + slug. Keep one company per career_url so build-preview can join on it.
+function buildComeetBatch(rows) {
+  const seen = new Set();
+  const out = [];
+  let dup = 0;
+  for (const r of rows) {
+    const url = String(r.career_url).replace(/\/+$/, '');
+    if (seen.has(url)) { dup++; continue; }
+    seen.add(url);
+    r.scrape_target = url;
+    out.push(r);
+    if (out.length >= SIZE) break;
+  }
+  console.log(`  ${out.length} comeet boards (skipped ${dup} sharing a career_url)`);
+  return out;
+}
+
 function buildBoardBatch(rows) {
   const seen = new Set();
   const out = [];
@@ -405,7 +429,21 @@ async function main() {
       lever: '^https?://jobs\\.lever\\.co/[a-z0-9]',
       zoho: '^https?://[a-z0-9-]+\\.zohorecruit\\.com',
     };
-    const fetchWindow = async (limit) => ASHBY
+    const fetchWindow = async (limit) => COMEET
+      ? await q(pool, `
+          SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, 0 AS jobs,
+                 (SELECT j.url FROM jobs j
+                   WHERE j.company_id = c.id AND j.removed_at IS NULL AND j.url ILIKE '%comeet.com/jobs/%'
+                   LIMIT 1) AS job_url
+            FROM companies c
+           WHERE c.logo_url IS NULL
+             AND c.ats = 'comeet'
+             AND c.career_url ~* 'comeet\\.co/jobs/'
+             AND NOT (c.id = ANY($2::bigint[]))
+             AND EXISTS (SELECT 1 FROM jobs j WHERE j.company_id = c.id AND j.removed_at IS NULL)
+           LIMIT $1
+        `, [limit, processedIds])
+      : ASHBY
       ? await q(pool, `
           SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, 0 AS jobs
             FROM companies c
@@ -517,7 +555,7 @@ async function main() {
       // Derivation only — no network here. Liveness probing happens after the pool is
       // closed, because probing hundreds of mostly-dead domains takes minutes and Heroku
       // drops the idle connection out from under the next widening query.
-      batch = (WD_BOARD || ASHBY) ? buildBoardBatch(fresh) : GREENHOUSE ? buildGreenhouseBatch(fresh) : REDO_ATS ? buildRedoAtsBatch(fresh) : REDO ? buildRedoBatch(fresh) : DERIVED ? buildSlugBatch(fresh) : fresh.slice(0, SIZE);
+      batch = COMEET ? buildComeetBatch(fresh) : (WD_BOARD || ASHBY) ? buildBoardBatch(fresh) : GREENHOUSE ? buildGreenhouseBatch(fresh) : REDO_ATS ? buildRedoAtsBatch(fresh) : REDO ? buildRedoBatch(fresh) : DERIVED ? buildSlugBatch(fresh) : fresh.slice(0, SIZE);
       // A short batch is only meaningful if the window wasn't full — otherwise the
       // remainder is simply below the cut.
       if (batch.length >= SIZE || rows.length < window || window >= MAX_WINDOW) break;
@@ -528,7 +566,7 @@ async function main() {
     // WORKDAY already set both (to the derived company site, not the Workday page).
     // The modes that build their own target (derived domain, careers page, job board) have
     // already set it; only the plain own-domain and SHARED modes need it filled in here.
-    if (!DERIVED && !REDO_ATS && !GREENHOUSE && !WD_BOARD && !ASHBY) for (const r of batch) r.scrape_target = SHARED ? r.career_url : r.domain;
+    if (!DERIVED && !REDO_ATS && !GREENHOUSE && !WD_BOARD && !ASHBY && !COMEET) for (const r of batch) r.scrape_target = SHARED ? r.career_url : r.domain;
     scanned = rows.length;
   } finally {
     await pool.end();
@@ -541,7 +579,7 @@ async function main() {
     const pool2 = makePool();
     try { await attachJobCounts(pool2, batch); } finally { await pool2.end(); }
   }
-  if ((REDO_ATS || GREENHOUSE || WD_BOARD || ASHBY) && batch.length) {
+  if ((REDO_ATS || GREENHOUSE || WD_BOARD || ASHBY || COMEET) && batch.length) {
     const pool2 = makePool();
     try { await attachJobCounts(pool2, batch); } finally { await pool2.end(); }
   }
