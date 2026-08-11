@@ -197,7 +197,7 @@ function buildGreenhouseBatch(rows) {
   return out;
 }
 
-const SLUG_ATS = { lever: 'lever', zoho: 'zoho' };
+const SLUG_ATS = { lever: 'lever', zoho: 'zoho', rippling: 'rippling' };
 const SLUG = SLUG_ATS[String(process.env.SLUG || '').toLowerCase()] || null;
 // The modes that scrape the company's own site rather than the ATS page, and so need the
 // liveness probe and the after-the-fact job counts.
@@ -213,7 +213,24 @@ function slugFor(ats, careerUrl) {
     const m = u.match(/^([a-z0-9-]+)\.zohorecruit\.com/);
     return m ? m[1] : null;
   }
+  if (ats === 'rippling') {
+    const m = u.match(/^ats\.rippling\.com\/([a-z0-9][a-z0-9._-]*)/);
+    if (!m) return null;
+    // Boards are often named "<company>-careers" / "<company>-jobs". Those suffixes are
+    // about the board, not the company, and derive to domains nobody owns
+    // (sterlingcareers.com, androscareers.com). Strip them before guessing a website.
+    return m[1].replace(/[._-]*(careers?|jobs?|hiring|talent)$/i, '').replace(/[._-]+$/, '');
+  }
   return null;
+}
+
+// A slug can spell more than one plausible domain: "mitchell-martin" is both
+// mitchellmartin.com and mitchell-martin.com, and which one exists varies by company.
+// Offer both and let the liveness probe decide.
+function domainCandidates(slug) {
+  const flat = slug.replace(/[._-]/g, '');
+  const dashed = slug.replace(/[._]/g, '-');
+  return [...new Set([flat, dashed])].filter(d => d.length > 2).map(d => `https://${d}.com`);
 }
 
 // Does the slug plausibly belong to this company? Compares letters-only forms both ways,
@@ -305,8 +322,16 @@ async function filterAlive(rows, size, conc = 20, budgetMs = 240000) {
     while (next < rows.length && kept.length < size) {
       if (Date.now() > stopAt) { ranOut = true; return; }
       const r = rows[next++];
-      if (await hostIsAlive(r.scrape_target)) kept.push(r);
-      else { newlyDead.push(r.scrape_target); newlyDeadIds.push(r.id); }
+      // Try every spelling of the domain before believing the company has no site.
+      const cands = r.candidates && r.candidates.length ? r.candidates : [r.scrape_target];
+      let hit = null;
+      for (const c of cands) {
+        if (dead.has(c)) continue;
+        if (await hostIsAlive(c)) { hit = c; break; }
+        newlyDead.push(c);
+      }
+      if (hit) { r.scrape_target = r.career_url = hit; kept.push(r); }
+      else newlyDeadIds.push(r.id);
       if (++checked % 50 === 0) console.log(`  probed ${checked}, alive ${kept.length}`);
     }
   };
@@ -402,7 +427,9 @@ function buildSlugBatch(rows) {
     if (seen.has(slug)) { dup++; continue; }
     seen.add(slug);
     r.tenant = slug;
-    r.scrape_target = r.career_url = `https://${slug}.com`;
+    const cands = SLUG === 'rippling' ? domainCandidates(slug) : [`https://${slug}.com`];
+    r.candidates = cands;
+    r.scrape_target = r.career_url = cands[0];
     // Workday tenants are corporate and reliable; the Lever/Zoho slugs are the ones that
     // need the name check, so only they can come back unverified.
     r.slug_match = WORKDAY ? true : nameLooksRelated(slug, r.company_name);
@@ -446,6 +473,7 @@ async function main() {
     const SLUG_URL_RE = {
       lever: '^https?://jobs\\.lever\\.co/[a-z0-9]',
       zoho: '^https?://[a-z0-9-]+\\.zohorecruit\\.com',
+      rippling: '^https?://ats\\.rippling\\.com/[a-z0-9]',
     };
     const fetchWindow = async (limit) => ATS_CFG
       ? await q(pool, `
