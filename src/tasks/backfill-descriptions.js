@@ -1373,7 +1373,10 @@ const COOLOFF_MS = 60 * 60 * 1000;
 
 async function backfillForAts(ats, batchSize, concurrency) {
   const until = descCooloff.get(ats) || 0;
-  if (Date.now() < until) return { filled: 0, failed: 0, skipped: true };
+  // `cooling`, not `skipped` — skipped is a COUNT of jobs marked unavailable this batch, and
+  // returning a boolean under that name printed `gone: true` in the batch summary, which reads
+  // as a job count and hid the fact that the platform never ran at all.
+  if (Date.now() < until) return { filled: 0, failed: 0, skipped: 0, cooling: true };
   // Keyset walk on the primary key, NOT `ORDER BY random()`.
   //
   // random() was chosen for a real reason: failed jobs stay description=NULL, so a fixed
@@ -1435,7 +1438,14 @@ async function backfillDescriptions() {
   // Run all ATS platforms in parallel — each has its own rate limiting via delayMs
   const results = await Promise.allSettled(
     Object.entries(ATS_CONFIG).map(async ([ats, cfg]) => {
-      const { filled, failed, skipped, failures } = await backfillForAts(ats, cfg.batchSize, cfg.concurrency);
+      const { filled, failed, skipped, failures, cooling } = await backfillForAts(ats, cfg.batchSize, cfg.concurrency);
+      // A cooling platform is not idle — its candidate scan timed out and it is deliberately
+      // sitting out the next hour. That is worth one line, because a silent absence from the
+      // summary is indistinguishable from "nothing left to fill".
+      if (cooling) {
+        logger.info({ ats }, 'Description backfill: platform cooling off after a scan timeout');
+        return { ats, filled: 0, failed: 0 };
+      }
       if (filled > 0 || failed > 0 || skipped > 0) {
         // Carry a sample of WHY on any batch that filled nothing — that is the case where the
         // counts alone tell you nothing and someone has to go diagnose it.
