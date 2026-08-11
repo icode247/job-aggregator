@@ -120,6 +120,18 @@ const COMEET = process.env.COMEET === '1';
 // is on the JOB page instead (jobs.workable.com/view/...), server-rendered, so the batch
 // carries a job URL per company and workable-logos.js reads it with a plain fetch.
 const WORKABLE = process.env.WORKABLE === '1';
+// ATS_MODE=recruitee|oracle|breezy — three more pools reachable once you know where each
+// one hides the logo. recruitee and oracle are server-rendered and read by ats-logos.js;
+// breezy is JS-rendered and goes through render-scrape. oracle covers both the 'oracle'
+// and 'oraclecloud' labels, which are the same product under two names in this DB, and
+// targets a JOB page because the tenant root does not carry the header.
+const ATS_MODE = String(process.env.ATS_MODE || '').toLowerCase();
+const ATS_MODES = {
+  recruitee: { ats: ['recruitee'], job: false },
+  oracle: { ats: ['oracle', 'oraclecloud'], job: true },
+  breezy: { ats: ['breezy'], job: false },
+};
+const ATS_CFG = ATS_MODES[ATS_MODE] || null;
 // ats_slug is not trustworthy on its own: some rows hold a path segment from the careers
 // URL ("careers", "jobs") rather than a board slug, so prefer the slug in career_url and
 // fall back to ats_slug only when it isn't one of those generic words.
@@ -435,7 +447,20 @@ async function main() {
       lever: '^https?://jobs\\.lever\\.co/[a-z0-9]',
       zoho: '^https?://[a-z0-9-]+\\.zohorecruit\\.com',
     };
-    const fetchWindow = async (limit) => WORKABLE
+    const fetchWindow = async (limit) => ATS_CFG
+      ? await q(pool, `
+          SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, 0 AS jobs,
+                 ${ATS_CFG.job ? `(SELECT j.url FROM jobs j
+                     WHERE j.company_id = c.id AND j.removed_at IS NULL LIMIT 1)` : 'NULL'} AS job_url
+            FROM companies c
+           WHERE c.logo_url IS NULL
+             AND c.ats = ANY($3)
+             AND c.career_url IS NOT NULL AND c.career_url <> ''
+             AND NOT (c.id = ANY($2::bigint[]))
+             AND EXISTS (SELECT 1 FROM jobs j WHERE j.company_id = c.id AND j.removed_at IS NULL)
+           LIMIT $1
+        `, [limit, processedIds, ATS_CFG.ats])
+      : WORKABLE
       ? await q(pool, `
           SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, 0 AS jobs,
                  (SELECT j.url FROM jobs j
@@ -575,7 +600,7 @@ async function main() {
       // Derivation only — no network here. Liveness probing happens after the pool is
       // closed, because probing hundreds of mostly-dead domains takes minutes and Heroku
       // drops the idle connection out from under the next widening query.
-      batch = (COMEET || WORKABLE) ? buildComeetBatch(fresh) : (WD_BOARD || ASHBY) ? buildBoardBatch(fresh) : GREENHOUSE ? buildGreenhouseBatch(fresh) : REDO_ATS ? buildRedoAtsBatch(fresh) : REDO ? buildRedoBatch(fresh) : DERIVED ? buildSlugBatch(fresh) : fresh.slice(0, SIZE);
+      batch = (COMEET || WORKABLE || ATS_CFG) ? buildComeetBatch(fresh) : (WD_BOARD || ASHBY) ? buildBoardBatch(fresh) : GREENHOUSE ? buildGreenhouseBatch(fresh) : REDO_ATS ? buildRedoAtsBatch(fresh) : REDO ? buildRedoBatch(fresh) : DERIVED ? buildSlugBatch(fresh) : fresh.slice(0, SIZE);
       // A short batch is only meaningful if the window wasn't full — otherwise the
       // remainder is simply below the cut.
       if (batch.length >= SIZE || rows.length < window || window >= MAX_WINDOW) break;
@@ -586,7 +611,7 @@ async function main() {
     // WORKDAY already set both (to the derived company site, not the Workday page).
     // The modes that build their own target (derived domain, careers page, job board) have
     // already set it; only the plain own-domain and SHARED modes need it filled in here.
-    if (!DERIVED && !REDO_ATS && !GREENHOUSE && !WD_BOARD && !ASHBY && !COMEET && !WORKABLE) for (const r of batch) r.scrape_target = SHARED ? r.career_url : r.domain;
+    if (!DERIVED && !REDO_ATS && !GREENHOUSE && !WD_BOARD && !ASHBY && !COMEET && !WORKABLE && !ATS_CFG) for (const r of batch) r.scrape_target = SHARED ? r.career_url : r.domain;
     scanned = rows.length;
   } finally {
     await pool.end();
@@ -599,7 +624,7 @@ async function main() {
     const pool2 = makePool();
     try { await attachJobCounts(pool2, batch); } finally { await pool2.end(); }
   }
-  if ((REDO_ATS || GREENHOUSE || WD_BOARD || ASHBY || COMEET || WORKABLE) && batch.length) {
+  if ((REDO_ATS || GREENHOUSE || WD_BOARD || ASHBY || COMEET || WORKABLE || ATS_CFG) && batch.length) {
     const pool2 = makePool();
     try { await attachJobCounts(pool2, batch); } finally { await pool2.end(); }
   }
