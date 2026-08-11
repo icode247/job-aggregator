@@ -150,17 +150,50 @@ async function search(filters = {}) {
   const limit = Math.min(parseInt(filters.limit, 10) || 50, 200);
   const offset = parseInt(filters.offset, 10) || 0;
 
+  const q = buildQuery(filters);
+  const facets = ['employment_type', 'experience_level', 'ats', 'workplace_type', 'role_category'];
+
+  // How many distinct roles the caller asked for. The SQL path AND's the words inside one role
+  // but OR's the roles against each other, so `q` = "developer,designer" must match either. A
+  // single Meilisearch query cannot express that OR, and 'all' would demand both words at once —
+  // turning a two-role search into a search for jobs that are somehow both. So 'all' is applied
+  // only to single-role queries; multi-role keeps the permissive default, which is no worse than
+  // today's behaviour and is the case the SQL path already disagreed with.
+  const roleCount = filters.q ? String(filters.q).split(',').map((r) => r.trim()).filter(Boolean).length : 0;
+  const strict = roleCount === 1;
+
+  // Freshness ordering is applied ONLY when there is no search text.
+  //
+  // Passing an explicit `sort` activates the `sort` ranking rule, which sits at position 5 of
+  // ['words','typo','proximity','attribute','sort','exactness', ...] — ahead of `exactness`. So on
+  // a text query it demoted an exact title match below a fresher loose one. With no `sort`, the
+  // trailing `first_seen_ts:desc` ranking rule still breaks ties by recency, which is the
+  // behaviour we actually wanted: relevance first, newest among equals.
+  const base = {
+    filter: built.filter,
+    limit,
+    offset,
+    facets,
+    ...(q ? {} : { sort: ['first_seen_ts:desc'] }),
+  };
+
   try {
-    const res = await meili.search({
-      q: buildQuery(filters),
-      filter: built.filter,
-      limit,
-      offset,
-      // Freshness first, matching the board's existing ordering. With no search terms there is
-      // nothing to rank by relevance, so sort is the only meaningful order.
-      sort: ['first_seen_ts:desc'],
-      facets: ['employment_type', 'experience_level', 'ats', 'workplace_type', 'role_category'],
-    });
+    // matchingStrategy defaults to 'last', which DROPS query words from the end until it finds
+    // enough results — so "senior technical writer" happily returned "Senior Technical Program
+    // Manager", and with title/company_name/department/location all searchable it could satisfy
+    // "senior" from the title and "technical" from the department. 'all' requires every term.
+    let res = await meili.search({ ...base, q, matchingStrategy: strict ? 'all' : 'last' });
+
+    // Requiring every term can legitimately return nothing on a long or unusual query, and an
+    // empty board is worse than a loose one. Fall back to the permissive strategy only then, so
+    // precision is the default and recall is the safety net rather than the other way round.
+    if (strict && res && !(res.hits || []).length && q && q.trim().split(/\s+/).length > 1) {
+      const loose = await meili.search({ ...base, q, matchingStrategy: 'last' });
+      if (loose && (loose.hits || []).length) {
+        logger.info({ q: q.slice(0, 60) }, 'Meili: no exact-match results, widened the query');
+        res = loose;
+      }
+    }
     if (!res) return null;
 
     const rows = (res.hits || []).map((h) => ({
