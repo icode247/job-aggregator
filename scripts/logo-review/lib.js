@@ -108,10 +108,19 @@ function isVendor(url) {
   return VENDOR_PATTERNS.some(re => re.test(url || ''));
 }
 
+// A signed URL is correct in review and dead within days. Rippling serves its logos from
+// CloudFront with roughly a 7-day TTL, and 2,203 companies already carry one that expired
+// on 2026-08-05 and now 403s. Capturing these is worse than capturing nothing: the review
+// page shows a real logo, and the site shows a broken image a week later.
+const EXPIRING = /[?&](Expires|X-Amz-Expires|Signature|X-Amz-Signature|Key-Pair-Id)=/i;
+function isExpiring(url) {
+  return EXPIRING.test(String(url || ''));
+}
+
 // Types the scraper is confident about; favicon/og-image are guesses worth eyeballing.
 const HIGH_CONFIDENCE = new Set(['img-logo', 'inline-svg']);
 
 module.exports = {
   STATE_DIR, PROCESSED, BATCH_JSON, BATCH_CSV, SCRAPED_CSV, REVIEW_JSON, PREVIEW_HTML,
-  databaseUrl, makePool, q, readProcessed, appendProcessed, isVendor, HIGH_CONFIDENCE,
+  databaseUrl, makePool, q, readProcessed, appendProcessed, isVendor, isExpiring, HIGH_CONFIDENCE,
 };

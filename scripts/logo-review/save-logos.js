@@ -10,7 +10,7 @@
  * companies don't come back in a later batch.
  */
 const fs = require('fs');
-const { makePool, q, appendProcessed, readProcessed, REVIEW_JSON, BATCH_JSON } = require('./lib');
+const { makePool, q, appendProcessed, readProcessed, isExpiring, REVIEW_JSON, BATCH_JSON } = require('./lib');
 
 async function main() {
   const idsFile = process.argv[2];
@@ -20,7 +20,15 @@ async function main() {
   const review = JSON.parse(fs.readFileSync(REVIEW_JSON, 'utf8'));
   const byId = new Map(review.map(r => [String(r.id), r]));
 
-  const hits = requested.map(id => byId.get(id)).filter(Boolean);
+  let hits = requested.map(id => byId.get(id)).filter(Boolean);
+  // Refuse signed URLs even when approved: they render fine on the review page and 403 a
+  // few days later. Better no logo than a broken one.
+  const expiring = hits.filter(h => isExpiring(h.logo_url));
+  if (expiring.length) {
+    hits = hits.filter(h => !isExpiring(h.logo_url));
+    console.log(`REFUSED ${expiring.length} approved logo(s) with an expiring signed URL:`);
+    for (const h of expiring.slice(0, 5)) console.log(`  #${h.id} ${h.company_name}`);
+  }
   const missing = requested.filter(id => !byId.has(id));
 
   // A stale paste (ids from a previous batch) would silently save nothing and then
