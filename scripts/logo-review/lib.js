@@ -102,6 +102,11 @@ const VENDOR_PATTERNS = [
   /static\.hugedomains\.com/i,
   /img\.atom\.com/i,
   /forsale\.spaceship-cdn\.com/i,
+  // Site-builder defaults. A company that never replaced the starter mark serves the
+  // builder's own art, which looks like an ordinary logo on a card. Same shape as the
+  // domain marketplaces: caught so far only when two landed in one batch.
+  /assets\.squarespace\.com\/universal\//i,
+  /static\.parastorage\.com\/.*pfavico/i,
 ];
 
 function isVendor(url) {
