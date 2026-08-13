@@ -190,11 +190,32 @@ async function search(filters = {}) {
     if (strict && res && !(res.hits || []).length && q && q.trim().split(/\s+/).length > 1) {
       const loose = await meili.search({ ...base, q, matchingStrategy: 'last' });
       if (loose && (loose.hits || []).length) {
-        logger.info({ q: q.slice(0, 60) }, 'Meili: no exact-match results, widened the query');
+        // Log what it took to rescue the search, not just that we rescued it. `widenedTo` is the
+        // number the user actually sees; a small number means the strict query was merely
+        // over-tight, while a large one means we have swapped precision for a page of loosely
+        // related jobs — which is the complaint this whole change set exists to fix. `filters`
+        // distinguishes "nobody hires this role in that city" from "the query itself is wrong",
+        // and those want opposite responses.
+        logger.info({
+          q: q.slice(0, 60),
+          words: q.trim().split(/\s+/).length,
+          widenedTo: loose.estimatedTotalHits ?? (loose.hits || []).length,
+          filters: summariseFilters(filters),
+        }, 'Meili: no exact-match results, widened the query');
         res = loose;
       }
     }
     if (!res) return null;
+
+    // An empty board is the single most user-visible failure this path can produce, and until now
+    // it was the ONLY outcome that logged nothing at all: strict found nothing, widening either
+    // did not run or also found nothing, and the request returned zero rows silently. Whether
+    // that is correct ("no jobs match, fair enough") or a bug (a filter we build wrong, a
+    // location token that never matches) is not answerable without knowing what was asked.
+    if (!(res.hits || []).length) {
+      logger.info({ q: q.slice(0, 60) || null, filters: summariseFilters(filters) },
+        'Meili: zero results');
+    }
 
     const rows = (res.hits || []).map((h) => ({
       id: h.id,
@@ -267,11 +288,26 @@ async function search(filters = {}) {
 // Small, bounded description of a filter set for logs — never the raw object, which carries
 // free-text search terms.
 function summariseFilters(filters = {}) {
-  return {
+  // Every filter that can NARROW a result set to zero belongs here, because the whole point of
+  // these lines is explaining a zero. The first cut logged only keys/ats/posted, and when
+  // "Project Manager" started widening 86 times a day there was no way to tell whether the
+  // culprit was a location nobody hires in or something wrong with the query — the same
+  // "logged the symptom, not the cause" gap that cost a round of diagnosis on the fleet launcher.
+  const s = {
     keys: Object.keys(filters).sort().join(','),
     ats: Array.isArray(filters.ats) ? filters.ats.join('|').slice(0, 60) : undefined,
     posted: filters.posted ? String(filters.posted).slice(0, 24) : undefined,
+    location: filters.location ? String(filters.location).slice(0, 40) : undefined,
+    workMode: filters.workMode || undefined,
+    experienceLevel: filters.experienceLevel || undefined,
+    employmentType: filters.employmentType || undefined,
+    remote: filters.remote === undefined ? undefined : !!filters.remote,
+    visa: filters.visa === undefined ? undefined : !!filters.visa,
+    companyId: filters.companyId || undefined,
   };
+  // Drop the absent ones so a broad search logs one short line rather than ten nulls.
+  for (const k of Object.keys(s)) if (s[k] === undefined) delete s[k];
+  return s;
 }
 
 /** Facet counts with no query — replaces the four GROUP BY scans behind /api/facets. */
