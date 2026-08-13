@@ -210,8 +210,19 @@ echo "launched paylocity description backfill -> $LOG/backfill-paylocity.log  wr
 # scan legitimately runs longer than that here. PG_POOL_MAX stays small — the 40-connection
 # ceiling in this comment's original form is long gone (standard-0 allows 200, ~25 in use), but
 # there is no reason for a background loop to hold more than it needs.
+#
+# CONCURRENCY was 25 and that number is about DATABASE cost, which is no longer the binding
+# constraint — the binding constraint is SOCKETS. The pruner makes an HTTP liveness request per
+# candidate job, so 25-way concurrency held 129 open sockets on 2026-08-13, roughly 5x more than
+# any crawler, with 351 connections sitting in TIME_WAIT. macOS then refused new outbound
+# connections and three crawlers failed on `read EADDRNOTAVAIL`: zoho 966 errors at 2/min, jazzhr
+# 140, pinpoint down to 66 jobs across 1,857 companies.
+#
+# 8 keeps this useful (it still clears thousands of rows an hour) while leaving ports for the
+# crawlers, which are the higher-value work — a dead job that lingers an extra day costs far less
+# than a live job never fetched.
 nohup bash -c "while true; do \
-  env LOOP=1 INTERVAL_S=300 LIMIT=5000 CONCURRENCY=25 PARTITION_REMAINDER=1 \
+  env LOOP=1 INTERVAL_S=300 LIMIT=5000 CONCURRENCY=8 PARTITION_REMAINDER=1 \
       PG_STATEMENT_TIMEOUT=120000 PG_POOL_MAX=2 node scripts/prune-dead-jobs-local.js; \
   echo \"[\$(date)] prune-dead-local exited rc=\$? — restarting in 30s\"; sleep 30; \
 done" >"$LOG/prune-dead-local.log" 2>&1 &
