@@ -6,11 +6,19 @@
  * unsatisfied customers Phase 0 surfaced), splits the OR-lists into (title × location)
  * queries, and fetches those exact jobs from every ENABLED source, upserting into Postgres.
  *
- * Sources:
- *   liftmycv    — always on (public keyword+location API, free). Biggest catalog.
- *   wonsulting  — on when WONSULTING_COOKIE is set (long-lived ~2y browser cookie). Free.
- *   googlejobs  — on when GOOGLE_JOBS=1 AND SCRAPINGDOG_KEY set. PAID per request — hard
- *                 capped by GOOGLE_JOBS_MAX_REQ per process run; keep it low. Opt-in.
+ * Sources — all free, all keyword+location APIs:
+ *   liftmycv    — always on. app.liftmycv.com/api/v1/jobs/search
+ *   jobhose     — always on. jobhose-prod.scale.jobs (scale.jobs). Currently the strongest
+ *                 contributor of the three by new companies per day.
+ *   wonsulting  — on when WONSULTING_COOKIE and WONSULTING_XSRF are set (long-lived cookie).
+ *
+ * A `googledork` source (Serper-backed Google dorking for ATS boards) lived here until
+ * 2026-08-14 and was removed — it was PAID per query and had been switched off in production
+ * the whole time, contributing nothing. Discovery of that kind belongs in the dedicated
+ * scripts/discover-*.js tools, not in the loop that answers user demand.
+ *
+ * `resumly` also once appeared as demand_resumly (2,568 companies) but has not been in SOURCES
+ * for some time; it stopped producing on 2026-07-30.
  *
  * Jobs are stored per-source (company keyed by career_url, external_id = source job id) so
  * they merge with existing rows rather than duplicating. origin = demand_<source>.
@@ -18,10 +26,10 @@
  * Run:  DATABASE_URL=... node src/tasks/demand-crawl.js          # one drain of due demand
  *       DATABASE_URL=... LOOP=1 node src/tasks/demand-crawl.js   # keep re-checking
  *       DATABASE_URL=... DRY=1 node src/tasks/demand-crawl.js    # fetch+map, write nothing
- * Env:  DEMAND_MAX_RESULTS(10) DEMAND_BATCH(15) DEMAND_RECRAWL_HOURS(6)
+ * Env:  DEMAND_MAX_RESULTS(10) DEMAND_BATCH(25) DEMAND_RECRAWL_HOURS(48)
  *       DEMAND_MAX_TITLES(3) DEMAND_MAX_LOCATIONS(2) DEMAND_PAGES(1) DEMAND_PAGE_SIZE(100)
  *       DEMAND_DELAY_MS(1200) RECHECK_S(600)
- *       WONSULTING_COOKIE  GOOGLE_JOBS(0) SCRAPINGDOG_KEY GOOGLE_JOBS_MAX_REQ(40)
+ *       WONSULTING_COOKIE  WONSULTING_XSRF  JOBHOSE_USER_ID
  */
 // Load .env at repo root so the always-on fleet picks up WONSULTING_COOKIE / SCRAPINGDOG_KEY /
 // SERPER_API_KEY without them being exported in the shell. Real env vars take precedence.
@@ -245,69 +253,7 @@ const jobhose = {
   },
 };
 
-// Google-dork discovery via Serper (PAID, capped). For each demanded (role, location) we run
-// ONE combined dork — `"role" location (site:greenhouse OR site:lever OR ...)` — across the
-// supported path-slug ATS, pull the company slugs out of the result URLs, and insert those
-// companies as active+unsynced so the FREE ATS fleet harvests ALL their jobs (last_synced_at
-// NULL => the fleet's NULLS-FIRST order crawls them next). Serper pays only for DISCOVERY; the
-// jobs come free. Self-disables the instant the key errors/exhausts (non-200) so it never
-// burns attempts, hard-capped per cycle. Enabled by default when SERPER_API_KEY is present.
-const SERPER_KEY = process.env.SERPER_API_KEY || '';
-const GOOGLE_DORK_ON = process.env.GOOGLE_DORK !== '0' && !!SERPER_KEY;
-const DORK_MAX_REQ = parseInt(process.env.DORK_MAX_REQ || '40', 10); // per-CYCLE Serper query cap
-const ATS_SITE = { greenhouse: ['boards.greenhouse.io', 'job-boards.greenhouse.io'], lever: ['jobs.lever.co'], ashby: ['jobs.ashbyhq.com'], smartrecruiters: ['jobs.smartrecruiters.com'] };
-const DORK_ATS = (process.env.DORK_ATS || Object.keys(ATS_SITE).join(',')).split(',').map((s) => s.trim()).filter((a) => ATS_SITE[a]);
-const DORK_SITES = DORK_ATS.flatMap((a) => ATS_SITE[a]);
-let dorkReqUsed = 0, dorkDisabled = false, dorkNewCompanies = 0;
-
-function serperSearch(q) {
-  return new Promise((resolve, reject) => {
-    const payload = JSON.stringify({ q, num: 20, gl: 'us' });
-    const req = https.request({ hostname: 'google.serper.dev', path: '/search', method: 'POST', timeout: 25000,
-      headers: { 'X-API-KEY': SERPER_KEY, 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) } },
-      (res) => { let d = ''; res.on('data', (c) => (d += c)); res.on('end', () => { let j = {}; try { j = JSON.parse(d); } catch {} resolve({ status: res.statusCode, json: j }); }); });
-    req.on('error', reject); req.on('timeout', function () { this.destroy(); reject(new Error('timeout')); });
-    req.write(payload); req.end();
-  });
-}
-
-const googledork = {
-  name: 'googledork',
-  enabled: () => GOOGLE_DORK_ON && !dorkDisabled && dorkReqUsed < DORK_MAX_REQ,
-  async search(title, location) {
-    if (dorkDisabled || dorkReqUsed >= DORK_MAX_REQ) return [];
-    dorkReqUsed++;
-    const sites = DORK_SITES.map((s) => `site:${s}`).join(' OR ');
-    const dork = `"${title}"${location ? ` ${location}` : ''} (${sites})`;
-    let res;
-    try { res = await serperSearch(dork); }
-    catch (e) { logger.warn({ err: e.message }, 'serper query failed'); return []; }
-    if (res.status !== 200) { dorkDisabled = true; logger.warn({ status: res.status, msg: res.json?.message }, 'SERP unavailable/exhausted — googledork off for this run'); return []; }
-    const found = new Map();
-    for (const o of (res.json.organic || [])) {
-      const c = deriveCompany(o.link, null, null, 'googledork');
-      let slug; try { slug = decodeURIComponent(c.slug || ''); } catch { slug = c.slug || ''; }
-      if (!DORK_ATS.includes(c.ats) || !/^[a-zA-Z0-9][a-zA-Z0-9._-]{1,60}$/.test(slug)) continue;
-      if (!found.has(c.careerUrl)) found.set(c.careerUrl, { ats: c.ats, slug, careerUrl: c.careerUrl, domain: c.domain });
-    }
-    if (!DRY) {
-      for (const c of found.values()) {
-        try {
-          const r = await query(
-            `INSERT INTO companies (company_name, domain, ats, ats_slug, career_url, status, origin, last_synced_at, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, 'active', 'demand_googledork', NULL, NOW(), NOW())
-             ON CONFLICT (career_url) DO NOTHING RETURNING id`,
-            [c.slug, c.domain, c.ats, c.slug, c.careerUrl]);
-          if (r.rows.length) dorkNewCompanies++;
-        } catch (e) { logger.debug({ err: e.message }, 'dork company insert failed'); }
-      }
-      if (found.size) logger.info({ title: title.slice(0, 32), loc: location, hits: found.size, reqUsed: dorkReqUsed }, 'googledork: discovered ATS companies (fleet will harvest)');
-    }
-    return []; // no jobs returned directly — the free fleet harvests the discovered companies
-  },
-};
-
-const SOURCES = [liftmycv, wonsulting, jobhose, googledork];
+const SOURCES = [liftmycv, wonsulting, jobhose];
 
 // ---------- storage ----------
 async function upsertNormalized(n) {
@@ -398,7 +344,6 @@ async function ensureColumns() {
 }
 
 async function cycle() {
-  dorkReqUsed = 0; dorkNewCompanies = 0; // per-cycle reset (Serper cap + discovery counter)
   const active = SOURCES.filter((s) => s.enabled()).map((s) => s.name);
   logger.info({ sources: active, dry: DRY }, 'demand-crawl: active sources');
   const { rows } = await query(
@@ -415,7 +360,7 @@ async function cycle() {
     totalAdded += added; totalFetched += fetched;
     logger.info({ q: (row.query_text || '').slice(0, 48), loc: row.location, searches: row.search_count, was_results: row.last_result_count, now_results: resultCount, fetched, added, perSource, dry: DRY }, 'demand crawled');
   }
-  logger.info({ demands: rows.length, fetched: totalFetched, added: totalAdded, dorkReqUsed, dorkNewCompanies, dorkDisabled, dry: DRY }, 'demand-crawl cycle complete');
+  logger.info({ demands: rows.length, fetched: totalFetched, added: totalAdded, dry: DRY }, 'demand-crawl cycle complete');
   return { demands: rows.length, added: totalAdded };
 }
 
