@@ -125,6 +125,9 @@ const WORKABLE = process.env.WORKABLE === '1';
 // breezy is JS-rendered and goes through render-scrape. oracle covers both the 'oracle'
 // and 'oraclecloud' labels, which are the same product under two names in this DB, and
 // targets a JOB page because the tenant root does not carry the header.
+// SPROUT=1 — any logo-less company, matched by NAME against the Sprout logo CDN. It is
+// ATS-agnostic, so it runs across the whole remaining pool rather than one board type.
+const SPROUT = process.env.SPROUT === '1';
 const ATS_MODE = String(process.env.ATS_MODE || '').toLowerCase();
 const ATS_MODES = {
   recruitee: { ats: ['recruitee'], job: false },
@@ -148,6 +151,15 @@ function greenhouseSlug(row) {
 // company claims, so keep one company per board URL.
 // The scrape target is only a join key here — comeet-logos.js builds the real URL from
 // career_url + slug. Keep one company per career_url so build-preview can join on it.
+// Matching is on company_name, so the join key must be unique per company: ids are the
+// only thing guaranteed unique here, and build-preview joins on scrape_target.
+function buildSproutBatch(rows) {
+  const out = rows.slice(0, SIZE);
+  for (const r of out) r.scrape_target = `sprout://${r.id}`;
+  console.log(`  ${out.length} companies to match by name against the Sprout CDN`);
+  return out;
+}
+
 function buildComeetBatch(rows) {
   const seen = new Set();
   const out = [];
@@ -475,7 +487,17 @@ async function main() {
       zoho: '^https?://[a-z0-9-]+\\.zohorecruit\\.com',
       rippling: '^https?://ats\\.rippling\\.com/[a-z0-9]',
     };
-    const fetchWindow = async (limit) => ATS_CFG
+    const fetchWindow = async (limit) => SPROUT
+      ? await q(pool, `
+          SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, 0 AS jobs
+            FROM companies c
+           WHERE c.logo_url IS NULL
+             AND c.company_name IS NOT NULL AND c.company_name <> ''
+             AND NOT (c.id = ANY($2::bigint[]))
+             AND EXISTS (SELECT 1 FROM jobs j WHERE j.company_id = c.id AND j.removed_at IS NULL)
+           LIMIT $1
+        `, [limit, processedIds])
+      : ATS_CFG
       ? await q(pool, `
           SELECT c.id, c.company_name, c.domain, c.career_url, c.ats, 0 AS jobs,
                  ${ATS_CFG.job ? `(SELECT j.url FROM jobs j
@@ -639,7 +661,7 @@ async function main() {
     // WORKDAY already set both (to the derived company site, not the Workday page).
     // The modes that build their own target (derived domain, careers page, job board) have
     // already set it; only the plain own-domain and SHARED modes need it filled in here.
-    if (!DERIVED && !REDO_ATS && !GREENHOUSE && !WD_BOARD && !ASHBY && !COMEET && !WORKABLE && !ATS_CFG) for (const r of batch) r.scrape_target = SHARED ? r.career_url : r.domain;
+    if (!DERIVED && !REDO_ATS && !GREENHOUSE && !WD_BOARD && !ASHBY && !COMEET && !WORKABLE && !ATS_CFG && !SPROUT) for (const r of batch) r.scrape_target = SHARED ? r.career_url : r.domain;
     scanned = rows.length;
   } finally {
     await pool.end();
@@ -652,7 +674,7 @@ async function main() {
     const pool2 = makePool();
     try { await attachJobCounts(pool2, batch); } finally { await pool2.end(); }
   }
-  if ((REDO_ATS || GREENHOUSE || WD_BOARD || ASHBY || COMEET || WORKABLE || ATS_CFG) && batch.length) {
+  if ((REDO_ATS || GREENHOUSE || WD_BOARD || ASHBY || COMEET || WORKABLE || ATS_CFG || SPROUT) && batch.length) {
     const pool2 = makePool();
     try { await attachJobCounts(pool2, batch); } finally { await pool2.end(); }
   }
