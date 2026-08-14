@@ -131,6 +131,10 @@ const SPROUT = process.env.SPROUT === '1';
 const ATS_MODE = String(process.env.ATS_MODE || '').toLowerCase();
 const ATS_MODES = {
   recruitee: { ats: ['recruitee'], job: false },
+  // icims was never in SHARED_ATS and its domains are unique per company
+  // (careers-ecgmc.icims.com), so it fails the shared-domain test too — it had no pass at
+  // all until now. A 25-company probe found 13 logos with no vendor art.
+  icims: { ats: ['icims'], job: false },
   oracle: { ats: ['oracle', 'oraclecloud'], job: true },
   breezy: { ats: ['breezy'], job: false },
 };
