@@ -6,6 +6,7 @@
  */
 const { query } = require('../db/connection');
 const { discoverConfig } = require('../adapters/workday');
+const { parseWorkdayUrl, workdayCxsUrl } = require('../utils/workday-url');
 const { fetchUnlockedHtml } = require('../utils/brightdata-proxy');
 const logger = require('../logger');
 const metrics = require('../utils/metrics');
@@ -112,42 +113,8 @@ const WD_HEADERS = {
 
 // Derive the CXS coordinates straight from a posting URL — no robots.txt discovery or rawData
 // needed. This is what makes demand/aggregator-imported workday jobs (no rawData.externalPath)
-// fillable. Workday serves career sites under TWO host shapes and the tenant sits in a different
-// place in each, so both are parsed here:
-//
-//   https://{tenant}.wd{N}.myworkdayjobs.com/[lang/]{site}/job/{path}
-//   https://wd{N}.myworkdaysite.com/recruiting/{tenant}/{site}/job/{path}
-//
-// The second form used to be rejected by a bare `hostname.includes('myworkdayjobs.com')` check,
-// which silently dropped every posting on it — 11% of the outstanding backlog, all of them
-// live and fillable (probed 2026-08-17). Workday is migrating tenants onto myworkdaysite.com,
-// so that share grows over time.
-//
-// The cxs base is returned whole rather than as (tenant, wdNum) parts: the two shapes reuse the
-// SAME /wday/cxs/{tenant}/{site} path but hang it off different hosts, and rebuilding the host
-// from parts is what produced the bug in the first place.
-function parseWorkdayUrl(url) {
-  try {
-    const u = new URL(url);
-    const parts = u.pathname.split('/').filter(Boolean);
-    const jobIdx = parts.indexOf('job');
-    if (jobIdx < 1) return null;
-    const externalPath = '/' + parts.slice(jobIdx).join('/');
-    const site = parts[jobIdx - 1];
-
-    if (u.hostname.endsWith('.myworkdayjobs.com')) {
-      const tenant = u.hostname.split('.')[0];
-      if (!tenant || !/\.wd\d+\./.test(u.hostname)) return null;
-      return { host: u.hostname, tenant, site, externalPath };
-    }
-    // myworkdaysite.com carries the tenant in the path, not the hostname.
-    if (u.hostname.endsWith('.myworkdaysite.com') && parts[0] === 'recruiting' && parts[1]) {
-      return { host: u.hostname, tenant: parts[1], site, externalPath };
-    }
-    return null;
-  } catch { return null; }
-}
-
+// fillable. Shared with the dead-job pruner so the two cannot disagree about what a posting URL
+// points at; see src/utils/workday-url.js for the two host shapes and why endsWith matters.
 async function fetchWorkdayDescription(job, rawData) {
   // URL-first: works for jobs without rawData.externalPath (demand/aggregator imports).
   const p = parseWorkdayUrl(job.url);
@@ -156,8 +123,7 @@ async function fetchWorkdayDescription(job, rawData) {
   let urlStatus = null;
   if (p) {
     try {
-      const cxs = `https://${p.host}/wday/cxs/${p.tenant}/${p.site}${p.externalPath}`;
-      const res = await fetch(cxs, { headers: WD_HEADERS, signal: AbortSignal.timeout(10000) });
+      const res = await fetch(workdayCxsUrl(p), { headers: WD_HEADERS, signal: AbortSignal.timeout(10000) });
       urlStatus = res.status;
       if (res.ok) {
         const detail = await res.json();
