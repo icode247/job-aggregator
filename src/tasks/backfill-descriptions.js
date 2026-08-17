@@ -110,36 +110,68 @@ const WD_HEADERS = {
   'Accept-Language': 'en-US,en;q=0.9',
 };
 
-// Derive the CXS coordinates straight from a myworkdayjobs URL:
+// Derive the CXS coordinates straight from a posting URL — no robots.txt discovery or rawData
+// needed. This is what makes demand/aggregator-imported workday jobs (no rawData.externalPath)
+// fillable. Workday serves career sites under TWO host shapes and the tenant sits in a different
+// place in each, so both are parsed here:
+//
 //   https://{tenant}.wd{N}.myworkdayjobs.com/[lang/]{site}/job/{path}
-// gives tenant, wdNum, site and the externalPath — no robots.txt discovery or rawData needed.
-// This is what makes demand/aggregator-imported workday jobs (no rawData.externalPath) fillable.
+//   https://wd{N}.myworkdaysite.com/recruiting/{tenant}/{site}/job/{path}
+//
+// The second form used to be rejected by a bare `hostname.includes('myworkdayjobs.com')` check,
+// which silently dropped every posting on it — 11% of the outstanding backlog, all of them
+// live and fillable (probed 2026-08-17). Workday is migrating tenants onto myworkdaysite.com,
+// so that share grows over time.
+//
+// The cxs base is returned whole rather than as (tenant, wdNum) parts: the two shapes reuse the
+// SAME /wday/cxs/{tenant}/{site} path but hang it off different hosts, and rebuilding the host
+// from parts is what produced the bug in the first place.
 function parseWorkdayUrl(url) {
   try {
     const u = new URL(url);
-    if (!u.hostname.includes('myworkdayjobs.com')) return null;
-    const wd = (u.hostname.match(/\.wd(\d+)\./) || [])[1];
-    const tenant = u.hostname.split('.')[0];
     const parts = u.pathname.split('/').filter(Boolean);
     const jobIdx = parts.indexOf('job');
-    if (!wd || !tenant || jobIdx < 1) return null;
-    return { tenant, wd, site: parts[jobIdx - 1], externalPath: '/' + parts.slice(jobIdx).join('/') };
+    if (jobIdx < 1) return null;
+    const externalPath = '/' + parts.slice(jobIdx).join('/');
+    const site = parts[jobIdx - 1];
+
+    if (u.hostname.endsWith('.myworkdayjobs.com')) {
+      const tenant = u.hostname.split('.')[0];
+      if (!tenant || !/\.wd\d+\./.test(u.hostname)) return null;
+      return { host: u.hostname, tenant, site, externalPath };
+    }
+    // myworkdaysite.com carries the tenant in the path, not the hostname.
+    if (u.hostname.endsWith('.myworkdaysite.com') && parts[0] === 'recruiting' && parts[1]) {
+      return { host: u.hostname, tenant: parts[1], site, externalPath };
+    }
+    return null;
   } catch { return null; }
 }
 
 async function fetchWorkdayDescription(job, rawData) {
   // URL-first: works for jobs without rawData.externalPath (demand/aggregator imports).
   const p = parseWorkdayUrl(job.url);
+  // HTTP status of the URL-derived attempt, or null if it never got a response (timeout/DNS).
+  // Only a real status is evidence about the posting; a timeout must stay retryable.
+  let urlStatus = null;
   if (p) {
     try {
-      const cxs = `https://${p.tenant}.wd${p.wd}.myworkdayjobs.com/wday/cxs/${p.tenant}/${p.site}${p.externalPath}`;
+      const cxs = `https://${p.host}/wday/cxs/${p.tenant}/${p.site}${p.externalPath}`;
       const res = await fetch(cxs, { headers: WD_HEADERS, signal: AbortSignal.timeout(10000) });
+      urlStatus = res.status;
       if (res.ok) {
         const detail = await res.json();
         const desc = detail?.jobPostingInfo?.jobDescription;
         if (desc && desc.trim()) return desc;
         if (detail?.jobPostingInfo) return 'SKIP'; // 200 but empty body → upstream-empty
       }
+      // 403 on the coordinates taken from the posting's own URL means the posting itself is
+      // gone — Workday returns it for unpublished/expired requisitions, NOT as a bot block.
+      // Verified on tenant `aep` 2026-08-17: live postings on that same site return 200 with a
+      // description and no cookies or special headers, while our stored row returns 403.
+      // Nothing downstream can recover it, so skip before paying for robots.txt discovery —
+      // this is 73% of the workday backlog and it was being re-fetched every cycle forever.
+      if (urlStatus === 403) return 'SKIP';
     } catch { /* fall through to discovery-based path below */ }
   }
 
@@ -149,10 +181,15 @@ async function fetchWorkdayDescription(job, rawData) {
     config = await discoverAllSiteSlugs(job.ats_slug);
     setWdConfig(cacheKey, config);
   }
-  if (!config) return null;
+  // A 404/422 says the site slug in the URL didn't resolve the posting. Discovery is the only
+  // thing that could still rescue it by trying sibling slugs; with no config there is nothing
+  // left to try, so stop retrying rather than looping on it forever.
+  if (!config) return urlStatus === 404 || urlStatus === 422 ? 'SKIP' : null;
 
   const { wdNum, siteSlugs } = config;
-  const externalPath = rawData?.externalPath;
+  // Fall back to the path parsed out of the URL: aggregator-imported rows have no
+  // rawData.externalPath, and without this they bailed here and were retried every cycle.
+  const externalPath = rawData?.externalPath || p?.externalPath;
   if (!externalPath) return null;
 
   // Try each site slug until one works. Track whether we got a confirmed
@@ -174,8 +211,10 @@ async function fetchWorkdayDescription(job, rawData) {
       if (detail?.jobPostingInfo) sawEmptyDescription = true;
     } catch { /* timeout — try next */ }
   }
-  // Tenant-level permission block OR truly empty posting: not retryable.
-  if (sawForbidden || sawEmptyDescription) return 'SKIP';
+  // Dead posting, tenant-level permission block, or truly empty posting: not retryable.
+  // urlStatus 404/422 lands here too — every slug the tenant advertises has now been tried
+  // against the URL's own path and none resolved it.
+  if (sawForbidden || sawEmptyDescription || urlStatus === 404 || urlStatus === 422) return 'SKIP';
   return null;
 }
 
