@@ -84,6 +84,7 @@ const TARGET_ROWS = LIMIT;
 const MIN_WINDOW = 25_000;
 const MAX_WINDOW = 50_000_000;
 let windowSize = parseInt(process.env.WINDOW || '500000', 10);
+let lastHeartbeat = 0;
 
 async function batch() {
   let jobs = null;
@@ -122,6 +123,17 @@ async function batch() {
     }
 
     if (rows.length) { jobs = rows; break; }
+
+    // Windows holding no workday rows are skipped silently, which made a healthy run look
+    // wedged: the dense upper half of the id space is ~100x slower to scan per id (a window
+    // there reads every row of every ATS and filters), so the loop can spend many minutes
+    // between batches with nothing to say. Heartbeat at most every 30s so progress stays
+    // visible without flooding the log during the fast, empty lower half.
+    if (Date.now() - lastHeartbeat > 30000) {
+      lastHeartbeat = Date.now();
+      console.log(`  ...scanning: cursor=${cursor} (${(100 * cursor / maxId).toFixed(1)}%) `
+        + `window=${windowSize} last=${elapsed}ms empty`);
+    }
   }
   if (!jobs) return null;
 
