@@ -17,10 +17,10 @@
  * Keep this list in sync with src/adapters/index.js when adapters are added/removed.
  */
 const SUPPORTED_ATS = new Set([
-  // 21 adapters (src/adapters/index.js)
+  // 22 adapters (src/adapters/index.js)
   'greenhouse', 'ashby', 'lever', 'workable', 'recruitee', 'smartrecruiters', 'rippling',
   'personio', 'breezy', 'jazzhr', 'workday', 'zoho', 'icims', 'oracle', 'bamboohr', 'taleo',
-  'pinpoint', 'successfactors', 'comeet', 'paylocity', 'teamtailor',
+  'pinpoint', 'successfactors', 'comeet', 'paylocity', 'teamtailor', 'jobvite',
   // Oracle Fusion (kept)
   'oraclecloud',
 ]);
