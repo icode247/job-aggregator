@@ -35,18 +35,95 @@ const CONCURRENCY = parseInt(process.env.CONCURRENCY || '8', 10);
 
 // Cursor, not OFFSET: rows leave the candidate set as they are retired, so an OFFSET walk would
 // skip a growing window of unchecked rows. Ascending id only ever moves forward.
-let cursor = 0;
+//
+// Persisted, because this is a ~40-hour walk over a 28GB table and the candidate query does
+// time out occasionally — the first run died at batch 4 on `Query read timeout`. Restarting from
+// zero is correct but wasteful: already-retired rows are filtered out by `removed_at IS NULL`,
+// so a restart only re-checks the LIVE rows it already cleared, and those are the expensive ones
+// (a live job costs a full HTTP round trip to confirm). The file lives outside /tmp, which is
+// wiped on reboot.
+const fs = require('fs');
+const path = require('path');
+const CURSOR_FILE = process.env.CURSOR_FILE
+  || path.join(process.env.HOME || '.', '.fastapply-workday-prune-cursor');
+
+function loadCursor() {
+  try { return parseInt(fs.readFileSync(CURSOR_FILE, 'utf8').trim(), 10) || 0; } catch { return 0; }
+}
+function saveCursor(id) {
+  try { fs.writeFileSync(CURSOR_FILE, String(id)); } catch { /* progress only — never fatal */ }
+}
+
+let cursor = loadCursor();
+
+// Upper bound of the id space, read once at startup off the primary key (~200ms).
+let maxId = 0;
+
+// The candidate set is walked as ID WINDOWS, not as `ORDER BY id LIMIT n`.
+//
+// The sorted form is what killed the first run. `WHERE removed_at IS NULL AND ats='workday'
+// AND id > ? ORDER BY id LIMIT 2000` has no index that satisfies both the filter and the order:
+// idx_jobs_ats_active covers (ats) WHERE removed_at IS NULL but says nothing about id order, and
+// idx_jobs_desc_backfill (ats, id) is partial on `description IS NULL` so this query cannot use
+// it. Postgres therefore sorted ~1.15M matching rows per batch and timed out at 120s, every
+// time. Same ORDER BY trap that took out all four worker loops before.
+//
+// A half-open id window needs no sort at all — it is a primary-key range scan with a filter:
+//
+//   WHERE id > lo AND id <= lo + window AND removed_at IS NULL AND ats='workday'
+//
+// Measured against the exact range the sorted query died on: 214-296ms versus a 120s timeout.
+//
+// The window SIZE has to adapt, because workday rows are wildly unevenly distributed across the
+// id space — essentially none below id 68M, then a few hundred per 23M through the middle, and
+// the great bulk above 183M where the bulk imports minted their ids. One fixed size is either
+// glacial through the empty stretches or returns an unmanageable batch in the dense ones. So the
+// window grows when a range comes back sparse and fast, and shrinks when it comes back dense or
+// slow. TARGET_ROWS is the batch size we actually want to hand to the HTTP checkers.
+const TARGET_ROWS = LIMIT;
+const MIN_WINDOW = 25_000;
+const MAX_WINDOW = 50_000_000;
+let windowSize = parseInt(process.env.WINDOW || '500000', 10);
 
 async function batch() {
-  const { rows: jobs } = await query(
-    `SELECT id, url FROM jobs
-      WHERE removed_at IS NULL AND ats = 'workday' AND id > ?
-      ORDER BY id
-      LIMIT ?`,
-    [cursor, LIMIT]
-  );
-  if (!jobs.length) return null;
-  cursor = jobs[jobs.length - 1].id;
+  let jobs = null;
+  // Skip forward through empty stretches without handing an empty batch back to the caller;
+  // otherwise a sparse region ends the run early as if the candidate set were exhausted.
+  while (cursor < maxId) {
+    const lo = cursor;
+    const hi = Math.min(lo + windowSize, maxId);
+    const started = Date.now();
+    let rows;
+    try {
+      ({ rows } = await query(
+        `SELECT id, url FROM jobs
+          WHERE id > ? AND id <= ?
+            AND removed_at IS NULL AND ats = 'workday'`,
+        [lo, hi]
+      ));
+    } catch (err) {
+      // A window too big to finish is a sizing problem, not a failure — shrink and retry it.
+      if (windowSize > MIN_WINDOW) {
+        windowSize = Math.max(MIN_WINDOW, Math.floor(windowSize / 4));
+        console.log(`  window ${lo}..${hi} failed (${err.message.slice(0, 40)}) — shrinking to ${windowSize}`);
+        continue;
+      }
+      throw err;
+    }
+    const elapsed = Date.now() - started;
+    cursor = hi;
+    saveCursor(cursor);
+
+    // Re-tune for the next window.
+    if (rows.length > TARGET_ROWS * 1.5 || elapsed > 20000) {
+      windowSize = Math.max(MIN_WINDOW, Math.floor(windowSize / 2));
+    } else if (rows.length < TARGET_ROWS / 4 && elapsed < 5000) {
+      windowSize = Math.min(MAX_WINDOW, windowSize * 2);
+    }
+
+    if (rows.length) { jobs = rows; break; }
+  }
+  if (!jobs) return null;
 
   const dead = [];
   let alive = 0, uncertain = 0;
@@ -78,17 +155,36 @@ async function batch() {
 
 (async () => {
   console.log(`${SHADOW ? 'SHADOW (no writes)' : 'ARMED (will set removed_at)'} — limit=${LIMIT} concurrency=${CONCURRENCY}`);
+  // Off the primary key, so this is ~200ms even under crawl load.
+  ({ rows: [{ hi: maxId }] } = await query('SELECT MAX(id) AS hi FROM jobs'));
+  maxId = Number(maxId);
+  console.log(`resuming from cursor ${cursor} of ${maxId} (${(100 * cursor / maxId).toFixed(1)}%), window ${windowSize}`);
   let n = 0, totChecked = 0, totDead = 0, totAlive = 0, totUncertain = 0;
+  let consecutiveErrors = 0;
   const started = Date.now();
   while (BATCHES === 0 || n < BATCHES) {
-    const r = await batch();
+    let r;
+    try {
+      r = await batch();
+      consecutiveErrors = 0;
+    } catch (err) {
+      // The candidate scan competes with eleven crawlers writing to the same table, so a read
+      // timeout here is congestion, not a bug — back off and retry rather than abandoning a
+      // multi-hour walk. Give up only if it never recovers.
+      if (++consecutiveErrors >= 10) throw err;
+      const backoff = Math.min(60, 5 * consecutiveErrors);
+      console.log(`[${new Date().toISOString()}] batch error (${consecutiveErrors}/10): ${err.message} — retrying in ${backoff}s`);
+      await new Promise((res) => setTimeout(res, backoff * 1000));
+      continue;
+    }
     if (!r) { console.log('candidate set exhausted'); break; }
     n++; totChecked += r.checked; totDead += r.dead; totAlive += r.alive; totUncertain += r.uncertain;
     const mins = (Date.now() - started) / 60000;
     console.log(
       `[${new Date().toISOString()}] batch ${n} checked=${r.checked} dead=${r.dead} alive=${r.alive} ` +
       `uncertain=${r.uncertain} | total dead=${totDead}/${totChecked} (${(100 * totDead / totChecked).toFixed(1)}%) ` +
-      `${Math.round(totChecked / Math.max(mins, 0.01))}/min cursor=${cursor}`
+      `${Math.round(totChecked / Math.max(mins, 0.01))}/min ` +
+      `cursor=${cursor} (${(100 * cursor / maxId).toFixed(1)}%) window=${windowSize}`
     );
     // Breathing room for the crawlers' sockets and the API's database.
     await new Promise((r) => setTimeout(r, 2000));
