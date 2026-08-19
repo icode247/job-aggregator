@@ -87,24 +87,35 @@ function slugCandidates(name, domain) {
     && !/^\d+$/.test(s) && !SLUG_BLOCKLIST.has(s));
 }
 
-/** 200 = real board, 302 = no such slug. Anything else is inconclusive. */
-async function probe(slug) {
-  try {
-    const res = await fetch(`https://jobs.jobvite.com/${encodeURIComponent(slug)}`, {
-      method: 'HEAD',
-      headers: HEADERS,
-      redirect: 'manual',
-      signal: AbortSignal.timeout(15000),
-    });
-    if (res.status === 200) return 'hit';
-    if (res.status === 302 || res.status === 301) return 'miss';
-    // 403/429 mean Cloudflare is pushing back — surfaced so the caller can slow down rather
-    // than silently recording thousands of false misses.
-    if (res.status === 403 || res.status === 429) return 'blocked';
-    return 'other';
-  } catch {
-    return 'error';
+/**
+ * 200 = real board, 302 = no such slug. Anything else is inconclusive.
+ *
+ * Retried, because a bare single attempt produced 39,866 errors across 121,361 candidates on the
+ * first run — a third of the search space, lost to transient connection failures under sustained
+ * concurrency rather than to anything about the slugs. Two extra attempts with a short backoff
+ * turn nearly all of those into a definitive hit or miss.
+ */
+async function probe(slug, attempts = 3) {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const res = await fetch(`https://jobs.jobvite.com/${encodeURIComponent(slug)}`, {
+        method: 'HEAD',
+        headers: HEADERS,
+        redirect: 'manual',
+        signal: AbortSignal.timeout(15000),
+      });
+      if (res.status === 200) return 'hit';
+      if (res.status === 302 || res.status === 301) return 'miss';
+      // 403/429 mean Cloudflare is pushing back — surfaced so the caller can slow down rather
+      // than silently recording thousands of false misses. Not retried here: the caller backs
+      // off and re-queues, which is the correct response to being throttled.
+      if (res.status === 403 || res.status === 429) return 'blocked';
+      return 'other';
+    } catch {
+      if (i < attempts - 1) await new Promise((r) => setTimeout(r, 500 * (i + 1)));
+    }
   }
+  return 'error';
 }
 
 async function main() {
@@ -162,7 +173,11 @@ async function main() {
         continue;
       }
       blockedStreak = 0;
-      ckStream.write(slug + '\n');
+      // ONLY a definitive answer is checkpointed. A network error is not evidence that the slug
+      // does not exist, and the first run wrote those to the checkpoint anyway — 39,866 of
+      // 121,361 candidates (33%) were recorded as probed without ever having been tested, and
+      // could never be retried. Leaving them out means a rerun picks them up.
+      if (r === 'hit' || r === 'miss') ckStream.write(slug + '\n');
 
       if (r === 'hit') {
         let jobCount = null, companyName = null;
