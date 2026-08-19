@@ -36,6 +36,18 @@ function decodeEntities(s) {
     .trim();
 }
 
+/** "United States, United States" -> "United States". Order-preserving, case-insensitive. */
+function dedupeSegments(s) {
+  const seen = new Set();
+  return String(s || '').split(',').map((p) => p.trim()).filter((p) => {
+    if (!p) return false;
+    const k = p.toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  }).join(', ');
+}
+
 /**
  * Parse the listing index into [{ id, title, location, department }].
  *
@@ -59,9 +71,11 @@ function parseListing(html, slug) {
 
   for (const m of html.matchAll(linkRe)) {
     const rawLoc = m[3];
+    // Jobvite renders an empty city as a repeat of the country, so the cell arrives as
+    // "United States, United States" on real boards. Dedupe segments rather than storing that.
     const location = /jv-meta/i.test(rawLoc)
       ? null // "2 Locations" placeholder — resolved from JSON-LD
-      : decodeEntities(rawLoc.replace(/<[^>]+>/g, '')) || null;
+      : dedupeSegments(decodeEntities(rawLoc.replace(/<[^>]+>/g, ''))) || null;
     const dept = headings.filter((h) => h.at < m.index).pop();
     out.push({
       id: m[1],
@@ -71,6 +85,58 @@ function parseListing(html, slug) {
     });
   }
   return out;
+}
+
+// Where the description block ends. Checked in order; the earliest match after the opening div
+// wins, so a tenant that omits one of these still terminates at the next.
+const DESC_TERMINATORS = [
+  '<div class="jv-share-widget', '<div class="jv-job-detail-bottom',
+  '<p class="jv-powered-by', '<div class="jv-footer', '</article>',
+];
+
+/**
+ * Fallback for tenants that serve no JSON-LD.
+ *
+ * Not every Jobvite career site emits a JobPosting block — uplight and ookla do, nutanix does
+ * not, and its detail pages are a perfectly good 72KB of HTML with a 7,704-character
+ * description in them. Without this, those tenants yield a job with no description and no
+ * company name, which is exactly the three biggest boards discovery found (jbs 345 jobs,
+ * nutanix 103, legalzoom 16).
+ *
+ * Deliberately narrow: it returns ONLY description, company and title. Location and department
+ * are already carried by the listing index and are parsed reliably there, whereas the detail
+ * page packs them into a separator-delimited <p> whose field order is not guaranteed across
+ * tenants — guessing at that would mislabel a department as a location.
+ *
+ * Shaped like a JobPosting so callers cannot tell the two sources apart.
+ */
+function parseDetailHtml(html) {
+  const start = html.search(/<div[^>]*class="[^"]*jv-job-detail-description[^"]*"[^>]*>/i);
+  let description = null;
+  if (start !== -1) {
+    const from = html.indexOf('>', start) + 1;
+    let end = html.length;
+    for (const t of DESC_TERMINATORS) {
+      const at = html.indexOf(t, from);
+      if (at !== -1 && at < end) end = at;
+    }
+    // HTML comments have to go first: this block is served with the previous revision of the
+    // posting commented out ahead of the live copy ("<!-- removed ===== ... -->"), which would
+    // otherwise be concatenated into the description as duplicate text.
+    const body = html.slice(from, end).replace(/<!--[\s\S]*?-->/g, '').trim();
+    if (body.replace(/<[^>]+>/g, '').trim().length > 50) description = body;
+  }
+
+  // "<title>Nutanix Careers - Senior Engineering Manager</title>" -> company + title.
+  const titleTag = (html.match(/<title>([\s\S]*?)<\/title>/i) || [])[1] || '';
+  const m = decodeEntities(titleTag).match(/^(.*?)\s+Careers\s*-\s*(.*)$/i);
+
+  if (!description && !m) return null;
+  return {
+    description,
+    hiringOrganization: m ? m[1].trim() : null,
+    title: m ? m[2].trim() : null,
+  };
 }
 
 /** Pull the schema.org JobPosting out of a detail page, or null. */
@@ -144,7 +210,8 @@ async function fetchDetail(slug, id) {
       signal: AbortSignal.timeout(15000),
     });
     if (!res.ok) return null;
-    return parseJobPosting(await res.text());
+    const html = await res.text();
+    return parseJobPosting(html) || parseDetailHtml(html);
   } catch {
     return null;
   }
