@@ -29,9 +29,20 @@
  * `jobvite` is already in its ATS_HOST vendor-art pattern (scripts/logo-review/icon-scrape.js),
  * so these rows are skipped rather than all being assigned Jobvite's own logo.
  *
+ * AGENCY BOARDS ARE EXCLUDED BY SLUG, not detected automatically.
+ *
+ * The hiringOrganization rule above assumes one board belongs to one company. That breaks for
+ * staffing and benefits firms who run recruiting on behalf of clients: jobs.jobvite.com/onedigital
+ * is titled "OneDigital Northeast Careers" but its postings carry hiringOrganization "Saint Vincent
+ * de Paul" — a client, not the board owner. Taking the first posting's name would file the board
+ * under whichever client happened to post most recently, and it would change on the next crawl.
+ * There is no reliable signal for this in a single posting, so known agency boards are listed in
+ * EXCLUDE and skipped until someone decides how to model a multi-tenant board.
+ *
  *   IN         discovery JSONL      (default data/jobvite-slugs.jsonl)
  *   APPLY=1    actually write       (default 0 = dry run)
  *   MIN_JOBS   only import boards with at least this many openings (default 1)
+ *   EXCLUDE    comma-separated slugs to skip (default: known agency boards)
  */
 const fs = require('fs');
 const path = require('path');
@@ -40,6 +51,11 @@ const { query, closeDb } = require('../src/db/connection');
 const IN = process.env.IN || path.join(__dirname, '..', 'data', 'jobvite-slugs.jsonl');
 const APPLY = process.env.APPLY === '1';
 const MIN_JOBS = parseInt(process.env.MIN_JOBS || '1', 10);
+// Multi-tenant agency boards — see the header. Override with EXCLUDE= to import anyway.
+const DEFAULT_EXCLUDE = 'onedigital';
+const EXCLUDE = new Set(
+  (process.env.EXCLUDE ?? DEFAULT_EXCLUDE).split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
+);
 
 function clean(name) {
   return String(name || '').replace(/\s+/g, ' ').trim().slice(0, 200);
@@ -49,12 +65,17 @@ async function main() {
   const rows = fs.readFileSync(IN, 'utf8').split('\n')
     .filter((l) => l.trim()).map((l) => JSON.parse(l));
 
-  const eligible = rows.filter((r) => (r.jobs || 0) >= MIN_JOBS);
+  const withJobs = rows.filter((r) => (r.jobs || 0) >= MIN_JOBS);
+  const excluded = withJobs.filter((r) => EXCLUDE.has(String(r.slug).toLowerCase()));
+  const eligible = withJobs.filter((r) => !EXCLUDE.has(String(r.slug).toLowerCase()));
   const named = eligible.filter((r) => clean(r.jobviteName));
   const unnamed = eligible.filter((r) => !clean(r.jobviteName));
 
   console.log(`${APPLY ? 'APPLY' : 'DRY RUN'} — ${rows.length} boards in file`);
-  console.log(`  with >= ${MIN_JOBS} jobs : ${eligible.length}`);
+  console.log(`  with >= ${MIN_JOBS} jobs : ${withJobs.length}`);
+  if (excluded.length) {
+    console.log(`  skipped (agency board)  : ${excluded.length} -> ${excluded.map((r) => r.slug).join(', ')}`);
+  }
   console.log(`  importable (named)      : ${named.length}`);
   console.log(`  skipped (no jobvite name): ${unnamed.length}${unnamed.length ? ' -> ' + unnamed.map((r) => r.slug).join(', ') : ''}`);
   console.log();

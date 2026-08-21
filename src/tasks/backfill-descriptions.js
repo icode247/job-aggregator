@@ -1364,24 +1364,38 @@ async function runWithConcurrency(items, concurrency, fn) {
 // worker; a restart simply begins the rotation again from the start.
 const descCursor = new Map();
 
-// Per-ATS cool-off after a timeout. The candidate query has no index to serve it: only ~1.5% of
-// live jobs lack a description (measured 2026-08-07: 854 of 55,791 sampled), so the keyset walk
-// traverses ~98.5% of the table looking for them and exceeds the statement timeout on the larger
-// platforms. The caller loops all ~15 platforms every 5 minutes, so a permanently-failing one
-// burned twelve full scans an hour and filled nothing.
+// Per-ATS cool-off after a timeout. Originally this existed because the candidate query had no
+// index to serve it and genuinely could not finish. That is no longer true — idx_jobs_desc_backfill
+// (scripts/add-desc-backfill-index.sql) is live, and the same query now measures 206-622ms.
 //
-// Backing off keeps the platforms that DO complete working while the hopeless ones stop costing
-// I/O. The real fix is the partial index in scripts/add-desc-backfill-index.sql — once that
-// exists the query is an index range scan and nothing times out.
+// So a timeout today means CONTENTION, not a hopeless platform, and the old policy read it exactly
+// backwards. Measured 2026-08-21: nine platforms cooled off inside the same second (07:34:42), and
+// eight more at 06:28:12 — scans do not fail in synchronised groups because eight tables went bad
+// at once, they fail that way because they were all queued behind one connection. The fleet runs
+// this process at PG_POOL_MAX=1 deliberately (the Heroku role ceiling is 40 and the live API needs
+// the headroom), and backfillDescriptions fired all ~15 platform scans at once into that single
+// slot. They then hit the 20s query_timeout together and each earned an hour in the corner.
+//
+// Two changes: scans are serialised at the caller (see backfillDescriptions), and a single timeout
+// no longer parks a platform. Two CONSECUTIVE timeouts do, and only for 15 minutes, because the
+// congestion that causes them clears in minutes rather than hours.
 const descCooloff = new Map();
-const COOLOFF_MS = 60 * 60 * 1000;
+const descTimeoutStreak = new Map();
+const COOLOFF_MS = 15 * 60 * 1000;
+const COOLOFF_AFTER_TIMEOUTS = 2;
 
-async function backfillForAts(ats, batchSize, concurrency) {
+/**
+ * Fetch one platform's candidate rows. Split out from backfillForAts so the caller can run the
+ * DB half serially while keeping the HTTP half parallel — see backfillDescriptions.
+ *
+ * Returns { jobs } on success, { cooling: true } while backing off, or { timedOut: true }.
+ */
+async function scanCandidates(ats, batchSize) {
   const until = descCooloff.get(ats) || 0;
   // `cooling`, not `skipped` — skipped is a COUNT of jobs marked unavailable this batch, and
   // returning a boolean under that name printed `gone: true` in the batch summary, which reads
   // as a job count and hid the fact that the platform never ran at all.
-  if (Date.now() < until) return { filled: 0, failed: 0, skipped: 0, cooling: true };
+  if (Date.now() < until) return { cooling: true };
   // Keyset walk on the primary key, NOT `ORDER BY random()`.
   //
   // random() was chosen for a real reason: failed jobs stay description=NULL, so a fixed
@@ -1414,18 +1428,33 @@ async function backfillForAts(ats, batchSize, concurrency) {
   } catch (err) {
     // Only a timeout earns a cool-off; a real error should still surface to the caller.
     if (/timeout/i.test(err.message)) {
-      descCooloff.set(ats, Date.now() + COOLOFF_MS);
-      logger.warn({ ats, cooloffMins: COOLOFF_MS / 60000 },
-        'desc backfill: candidate scan timed out, backing off (needs the partial index)');
-      return { filled: 0, failed: 0, timedOut: true };
+      const streak = (descTimeoutStreak.get(ats) || 0) + 1;
+      descTimeoutStreak.set(ats, streak);
+      if (streak >= COOLOFF_AFTER_TIMEOUTS) {
+        descCooloff.set(ats, Date.now() + COOLOFF_MS);
+        descTimeoutStreak.set(ats, 0);
+        logger.warn({ ats, streak, cooloffMins: COOLOFF_MS / 60000 },
+          'desc backfill: candidate scan timed out twice running, backing off');
+      } else {
+        // One timeout is congestion, and congestion clears. Say so, but do not sideline a
+        // platform that will very likely answer in 250ms on the next pass.
+        logger.info({ ats }, 'desc backfill: candidate scan timed out once, retrying next cycle');
+      }
+      return { timedOut: true };
     }
     throw err;
   }
+  // A completed scan clears the streak — only CONSECUTIVE timeouts should compound.
+  descTimeoutStreak.set(ats, 0);
   // Short read means the end of the table — wrap so the next cycle re-samples from the start,
   // picking up rows that failed earlier and anything new below the cursor.
   descCursor.set(ats, jobs.length < batchSize ? 0 : jobs[jobs.length - 1].id);
+  return { jobs };
+}
 
-  if (jobs.length === 0) return { filled: 0, failed: 0 };
+/** Fetch and store descriptions for an already-scanned batch. Pure HTTP work, safe to parallelise. */
+async function processCandidates(ats, jobs, concurrency) {
+  if (!jobs.length) return { filled: 0, failed: 0, skipped: 0, failures: [] };
 
   const failures = [];
   const results = await runWithConcurrency(jobs, concurrency, (job) => processJob(job, ats, failures));
@@ -1437,20 +1466,56 @@ async function backfillForAts(ats, batchSize, concurrency) {
   return { filled, failed, skipped, failures };
 }
 
+/**
+ * Scan + process one platform. Kept as-is for the single-platform callers
+ * (scripts/backfill-desc-generic.js, scripts/render-worker.js), which drive one ATS at a time and
+ * so never had the stampede problem that split these two halves apart.
+ */
+async function backfillForAts(ats, batchSize, concurrency) {
+  const scan = await scanCandidates(ats, batchSize);
+  if (scan.cooling) return { filled: 0, failed: 0, skipped: 0, cooling: true };
+  if (scan.timedOut) return { filled: 0, failed: 0, timedOut: true };
+  return processCandidates(ats, scan.jobs, concurrency);
+}
+
 async function backfillDescriptions() {
   logger.info('Description backfill: starting');
 
-  // Run all ATS platforms in parallel — each has its own rate limiting via delayMs
-  const results = await Promise.allSettled(
-    Object.entries(ATS_CONFIG).map(async ([ats, cfg]) => {
-      const { filled, failed, skipped, failures, cooling } = await backfillForAts(ats, cfg.batchSize, cfg.concurrency);
-      // A cooling platform is not idle — its candidate scan timed out and it is deliberately
-      // sitting out the next hour. That is worth one line, because a silent absence from the
+  // PHASE 1 — candidate scans, ONE AT A TIME.
+  //
+  // These used to run inside the same Promise.allSettled as the HTTP work below, which meant ~15
+  // simultaneous queries against a pool the fleet pins at PG_POOL_MAX=1. Each scan is only
+  // ~250ms served by idx_jobs_desc_backfill, but queued fifteen deep behind one connection they
+  // hit the 20s query_timeout together and the cool-off then parked most of the fleet for an
+  // hour at a time (measured 2026-08-21: nine platforms cooled in the same second).
+  //
+  // Serial costs ~4s for all fifteen and cannot stampede. The expensive half — the HTTP fetches —
+  // stays fully parallel in phase 2, so throughput is unchanged.
+  const scanned = [];
+  for (const [ats, cfg] of Object.entries(ATS_CONFIG)) {
+    let scan;
+    try {
+      scan = await scanCandidates(ats, cfg.batchSize);
+    } catch (err) {
+      logger.error({ ats, err: err.message }, 'Description backfill: candidate scan error');
+      continue;
+    }
+    if (scan.cooling) {
+      // A cooling platform is not idle — its candidate scan timed out twice running and it is
+      // deliberately sitting out. That is worth one line, because a silent absence from the
       // summary is indistinguishable from "nothing left to fill".
-      if (cooling) {
-        logger.info({ ats }, 'Description backfill: platform cooling off after a scan timeout');
-        return { ats, filled: 0, failed: 0 };
-      }
+      logger.info({ ats }, 'Description backfill: platform cooling off after repeated scan timeouts');
+      continue;
+    }
+    if (scan.timedOut || !scan.jobs.length) continue;
+    scanned.push([ats, cfg, scan.jobs]);
+  }
+
+  // PHASE 2 — fetch descriptions for every platform at once, as before. Each ATS has its own
+  // rate limiting via delayMs, so they do not contend with each other.
+  const results = await Promise.allSettled(
+    scanned.map(async ([ats, cfg, jobs]) => {
+      const { filled, failed, skipped, failures } = await processCandidates(ats, jobs, cfg.concurrency);
       if (filled > 0 || failed > 0 || skipped > 0) {
         // Carry a sample of WHY on any batch that filled nothing — that is the case where the
         // counts alone tell you nothing and someone has to go diagnose it.
@@ -1477,4 +1542,8 @@ async function backfillDescriptions() {
   return totalFilled;
 }
 
-module.exports = { backfillDescriptions, fetchDescription, backfillForAts, ATS_CONFIG };
+module.exports = {
+  backfillDescriptions, fetchDescription, backfillForAts, ATS_CONFIG,
+  // Exported for tests and for callers that want to separate the DB half from the HTTP half.
+  scanCandidates, processCandidates,
+};
