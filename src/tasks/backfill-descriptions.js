@@ -7,6 +7,7 @@
 const { query } = require('../db/connection');
 const { discoverConfig } = require('../adapters/workday');
 const { parseWorkdayUrl, workdayCxsUrl } = require('../utils/workday-url');
+const { parseOracleUrl, oracleDetailUrl } = require('../utils/oracle-url');
 const { fetchUnlockedHtml } = require('../utils/brightdata-proxy');
 const logger = require('../logger');
 const metrics = require('../utils/metrics');
@@ -470,24 +471,15 @@ function extractOracleRenderedDescription(html) {
 // Oracle tenants known to have no public descriptions (empty API + empty rendered HTML)
 const ORACLE_SKIP_TENANTS = new Set(['hcbt']);
 
-// Pull tenant / region / site / job id straight out of an Oracle Candidate Experience URL:
-//   https://{tenant}.fa.{region}.oraclecloud.com/hcmUI/CandidateExperience/en/sites/{site}/job/{id}
-// ...with an optional `requisitions/` segment before `job/`.
-//
-// This is the authoritative source, NOT ats_slug. The slug is supposed to be
+// Oracle coordinates come from the URL, NOT ats_slug. The slug is supposed to be
 // `tenant.region.siteNumber`, but rows imported from aggregators carry whatever the URL path
 // happened to yield — measured 2026-08-10: `hcmUI`, `eckx.em2`, `ibfhqy.ocs`, i.e. either a
 // literal path segment or a slug missing the site entirely. Every one of those failed the
 // `< 2 parts` / `no siteNumber` guards below and filled nothing, while the URL sitting in the
 // same row carried all four values. Slug stays as the fallback for rows with no URL.
-function parseOracleUrl(url) {
-  if (!url) return null;
-  const m = String(url).match(
-    /^https:\/\/([^./]+)\.fa\.([^./]+)\.oraclecloud\.com\/.*?\/sites\/([^/]+)\/(?:requisitions\/)?job\/(\d+)/i
-  );
-  if (!m) return null;
-  return { tenant: m[1], region: m[2], siteNumber: m[3], jobId: m[4] };
-}
+//
+// The parser itself now lives in src/utils/oracle-url.js so the dead-job pruner can share it —
+// see that file for the two host shapes and why they must not be parsed differently in two places.
 
 async function fetchOracleDescription(job) {
   // URL first, ats_slug only as a fallback — see parseOracleUrl.
@@ -503,9 +495,12 @@ async function fetchOracleDescription(job) {
       region: parts[1],
       siteNumber: parts.slice(2).join('.'),
       jobId: String(job.external_id || '').replace(/^oracle(?:cloud)?_/, ''),
+      // The slug path has no host to carry forward, so reassemble the region-ful shape — the
+      // only one a `tenant.region.site` slug can describe.
+      host: `${parts[0]}.fa.${parts[1]}.oraclecloud.com`,
     };
   }
-  const { tenant, region, siteNumber } = coords;
+  const { tenant, siteNumber } = coords;
   const jobId = coords.jobId;
 
   if (ORACLE_SKIP_TENANTS.has(tenant)) {
@@ -515,7 +510,7 @@ async function fetchOracleDescription(job) {
   // Strategy 1: REST API (fast, no proxy needed)
   let apiStatus = null;
   try {
-    const url = `https://${tenant}.fa.${region}.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitionDetails?onlyData=true&expand=all&finder=ById;Id=${jobId},siteNumber=${siteNumber}`;
+    const url = oracleDetailUrl(coords);
     const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
     apiStatus = res.status;
     if (res.ok) {

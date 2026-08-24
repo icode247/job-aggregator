@@ -12,6 +12,7 @@
  */
 
 const { parseWorkdayUrl, workdayCxsUrl } = require('../utils/workday-url');
+const { parseOracleUrl, oracleDetailUrl } = require('../utils/oracle-url');
 
 const DEAD_INDICATORS = [
   'this job posting is no longer available',
@@ -89,10 +90,64 @@ async function checkWorkdayUrl(url) {
   }
 }
 
+/**
+ * Oracle Candidate Experience postings, checked against the REST API rather than the page.
+ *
+ * The generic HTML check is STRUCTURALLY BLIND here, exactly the way it was for Workday. Oracle's
+ * Candidate Experience UI is a Knockout.js single-page app: it answers HTTP 200 for every path
+ * under the site, including requisitions that closed months ago, and renders "job not found"
+ * client-side after the fetch. So `checkUrl` saw 200, found no dead-page phrase in a shell page
+ * that contains no job text at all, and called every one of them alive.
+ *
+ * The API is unambiguous. `finder=ById` on a live requisition returns items=1 with the full
+ * description; on a retired one it returns HTTP 200 with an EMPTY items array. Measured
+ * 2026-08-24 across 40 live oraclecloud rows missing a description: 37 gone, 1 live, 2 network
+ * errors — and the tenants were serving normally throughout (the same endpoint returned a
+ * 7,916-character description for a current requisition on the very same site).
+ *
+ * `items: []` is therefore treated as dead, but ONLY on a clean 200 carrying a well-formed items
+ * array. A non-200, a malformed body, or any network error stays uncertain: this function can
+ * delete rows, and every ambiguous answer has to fall on the side of keeping the job.
+ */
+async function checkOracleUrl(url) {
+  const p = parseOracleUrl(url);
+  if (!p) return null; // not an Oracle CE posting URL — caller falls back to the generic check
+  try {
+    const res = await fetch(oracleDetailUrl(p), {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(20000),
+    });
+    if (res.status === 404 || res.status === 410) {
+      return { alive: false, reason: `oracle ce HTTP ${res.status}` };
+    }
+    if (!res.ok) return { alive: null, reason: `oracle ce HTTP ${res.status}` };
+
+    let detail;
+    try { detail = await res.json(); }
+    catch { return { alive: null, reason: 'oracle ce 200 with unparseable body' }; }
+
+    // Only an actual array proves the API answered the question. A 200 whose body has no items
+    // key at all is a different response shape than the one measured, so it stays uncertain.
+    if (!Array.isArray(detail?.items)) {
+      return { alive: null, reason: 'oracle ce 200 without an items array' };
+    }
+    return detail.items.length
+      ? { alive: true, reason: null }
+      : { alive: false, reason: 'oracle ce requisition no longer returned' };
+  } catch (err) {
+    return { alive: null, reason: `oracle ce ${err.name === 'AbortError' ? 'timeout' : err.message}` };
+  }
+}
+
 // Returns { alive: true|false|null, reason }. null = uncertain (do NOT prune).
 async function checkUrl(url) {
   const wd = await checkWorkdayUrl(url);
   if (wd) return wd;
+
+  // Before the generic HTML path, for the same reason as Workday: this platform's page returns
+  // 200 whether or not the job exists, so the HTML check cannot answer the question.
+  const oc = await checkOracleUrl(url);
+  if (oc) return oc;
 
   try {
     const controller = new AbortController();
@@ -268,4 +323,4 @@ async function pruneDeadJobs({
   return { checked: jobs.length, dead: deadIds.length, uncertain };
 }
 
-module.exports = { DEAD_INDICATORS, checkUrl, runWithConcurrency, pruneDeadJobs };
+module.exports = { DEAD_INDICATORS, checkUrl, checkOracleUrl, runWithConcurrency, pruneDeadJobs };
