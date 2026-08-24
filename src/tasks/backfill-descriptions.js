@@ -1449,7 +1449,7 @@ async function scanCandidates(ats, batchSize) {
 
 /** Fetch and store descriptions for an already-scanned batch. Pure HTTP work, safe to parallelise. */
 async function processCandidates(ats, jobs, concurrency) {
-  if (!jobs.length) return { filled: 0, failed: 0, skipped: 0, failures: [] };
+  if (!jobs.length) return { checked: 0, filled: 0, failed: 0, skipped: 0, failures: [] };
 
   const failures = [];
   const results = await runWithConcurrency(jobs, concurrency, (job) => processJob(job, ats, failures));
@@ -1458,7 +1458,10 @@ async function processCandidates(ats, jobs, concurrency) {
   const failed = results.filter(r => r === 'failed').length;
   const skipped = results.filter(r => r === 'skipped').length;
 
-  return { filled, failed, skipped, failures };
+  // `checked` lets a caller tell "this batch was all unfillable" from "there is nothing left",
+  // which a filled/failed pair cannot express. scripts/backfill-desc-generic.js needs the
+  // difference to walk past a wall of dead rows instead of halting at it.
+  return { checked: jobs.length, filled, failed, skipped, failures };
 }
 
 /**
@@ -1468,8 +1471,8 @@ async function processCandidates(ats, jobs, concurrency) {
  */
 async function backfillForAts(ats, batchSize, concurrency) {
   const scan = await scanCandidates(ats, batchSize);
-  if (scan.cooling) return { filled: 0, failed: 0, skipped: 0, cooling: true };
-  if (scan.timedOut) return { filled: 0, failed: 0, timedOut: true };
+  if (scan.cooling) return { checked: 0, filled: 0, failed: 0, skipped: 0, cooling: true };
+  if (scan.timedOut) return { checked: 0, filled: 0, failed: 0, timedOut: true };
   return processCandidates(ats, scan.jobs, concurrency);
 }
 
