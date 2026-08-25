@@ -341,16 +341,34 @@ async function verifyDetector(browser) {
   );
   if (!control.length) { console.log('VERIFY: no control jobs found — cannot prove safety'); return false; }
 
-  let falsePositives = 0;
+  // Only PHRASE-based verdicts can fail this gate.
+  //
+  // The phrase matching is the risky inference — it is what mistook a cookie table for a job
+  // status — so a "dead" phrase on an adapter-vouched live job means the detector is broken.
+  //
+  // A render-time 404/410 is a different thing entirely: it is the same unambiguous signal the
+  // HTTP check already acts on, and a job genuinely CAN close inside the six-hour control window.
+  // Failing the gate on those made it impossible to pass for reasons that had nothing to do with
+  // what the gate is testing (personio job 280774254 blocked a run this way, on a plain 404).
+  // They are reported, because a lot of them would mean the control window is too wide, but they
+  // do not block.
+  let phraseFP = 0;
+  let statusDeaths = 0;
   await runPool(browser, control, (job, v) => {
-    if (v.alive === false) {
-      falsePositives++;
+    if (v.alive !== false) return;
+    const isPhrase = String(v.reason || '').startsWith('rendered:');
+    if (isPhrase) {
+      phraseFP++;
       console.log(`  FALSE POSITIVE  job=${job.id} ats=${job.ats} ${v.reason}`);
       console.log(`     ${job.url.slice(0, 110)}`);
+    } else {
+      statusDeaths++;
+      console.log(`  (info) job=${job.id} ats=${job.ats} closed since last sync — ${v.reason}`);
     }
   });
-  console.log(`VERIFY: ${control.length} known-live jobs rendered, ${falsePositives} false positives`);
-  return falsePositives === 0;
+  console.log(`VERIFY: ${control.length} adapter-vouched live jobs rendered, `
+    + `${phraseFP} phrase false positives, ${statusDeaths} genuinely closed since sync`);
+  return phraseFP === 0;
 }
 
 (async () => {
@@ -363,7 +381,13 @@ async function verifyDetector(browser) {
   try {
     if (VERIFY) {
       const ok = await verifyDetector(browser);
-      if (!ok) { console.error('VERIFY FAILED — detector produces false positives, refusing to continue'); process.exit(1); }
+      if (!ok) {
+        // Exit 2, NOT 1. A supervising wrapper restarts on failure, and a generic exit 1 let a
+        // FAILED SAFETY GATE be retried — the next attempt skipped VERIFY and came up armed.
+        // A distinct code lets the wrapper tell "crashed, resume" from "refused, stop".
+        console.error('VERIFY FAILED — detector produces false positives, refusing to continue');
+        process.exit(2);
+      }
       if (!APPLY) { console.log('\nverify passed. Re-run with APPLY=1 to arm.'); process.exit(0); }
     }
 
