@@ -135,6 +135,25 @@ async function migrate() {
     await exec('CREATE INDEX IF NOT EXISTS idx_jobs_experience ON jobs(experience_level) WHERE removed_at IS NULL');
   }
 
+  // Absence counter — the mechanism that lets SYNC retire jobs again.
+  //
+  // Removal was taken out of syncForCompany because list-diffing was unsafe: a single partial
+  // adapter response marked every unreturned job dead, and the >50%-missing guard bolted on to
+  // stop that then froze real closures forever (ashby's jerry.ai held 350 stored against 48
+  // actually open). Nothing replaced it, so a 5,000-per-cycle HTTP scan became the ONLY
+  // retirement path for a 5M-row table — jobs leaked in far faster than it could clear them.
+  //
+  // A counter fixes the thing that made list-diffing unsafe. One absence proves nothing and
+  // retires nothing; it takes N CONSECUTIVE successful syncs without a job before it goes. A
+  // flaky page, a rate limit or a truncated response costs one increment and is wiped the moment
+  // the job reappears, while a genuine closure still clears in N syncs instead of never.
+  if (isPostgres) {
+    await exec('ALTER TABLE jobs ADD COLUMN IF NOT EXISTS absent_syncs INTEGER NOT NULL DEFAULT 0');
+    // Partial: only live rows that have actually gone missing at least once are ever scanned,
+    // which keeps this index tiny relative to the 5M-row table and shrinking as jobs return.
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_absent_syncs ON jobs(company_id, absent_syncs) WHERE removed_at IS NULL AND absent_syncs > 0');
+  }
+
   // Random rank for shuffling jobs from same sync batch
   if (isPostgres) {
     await exec('ALTER TABLE jobs ADD COLUMN IF NOT EXISTS random_rank DOUBLE PRECISION DEFAULT random()');
