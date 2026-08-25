@@ -136,7 +136,13 @@ function createSyncWorker() {
           job.experience_level = tags.experience_level;
         }
 
-        const diff = await jobsRepo.syncForCompany(companyId, ats, incomingJobs);
+        // meta.capped means the adapter KNOWS this set is short of the employer's real board —
+        // a paging ceiling (amazon stops at offset 10,000), a bounded sweep, or a shard that
+        // errored mid-run. Passing it through is what stops the absence counter reading a
+        // knowingly-truncated response as "these jobs are gone" and retiring the tail.
+        const diff = await jobsRepo.syncForCompany(companyId, ats, incomingJobs, {
+          partial: meta.capped === true,
+        });
         await companiesRepo.updateLastSynced(companyId);
 
         metrics.increment(`sync.success.${ats}`);
