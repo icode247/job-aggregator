@@ -21,6 +21,9 @@ const SUPPORTED_ATS = new Set([
   'greenhouse', 'ashby', 'lever', 'workable', 'recruitee', 'smartrecruiters', 'rippling',
   'personio', 'breezy', 'jazzhr', 'workday', 'zoho', 'icims', 'oracle', 'bamboohr', 'taleo',
   'pinpoint', 'successfactors', 'comeet', 'paylocity', 'teamtailor', 'jobvite',
+  // Direct-employer boards. Each is ONE company with a bespoke backend rather than a
+  // multi-tenant vendor, so ats_slug is a shard selector, not a tenant id.
+  'amazon', 'netflix', 'google',
   // Oracle Fusion (kept)
   'oraclecloud',
 ]);

@@ -20,6 +20,10 @@ const comeet = require('./comeet');
 const paylocity = require('./paylocity');
 const teamtailor = require('./teamtailor');
 const jobvite = require('./jobvite');
+// Direct-employer adapters: one company each, bespoke backend, not a multi-tenant ATS.
+const amazon = require('./amazon');
+const netflix = require('./netflix');
+const google = require('./google');
 
 const adapters = {
   greenhouse,
@@ -44,6 +48,9 @@ const adapters = {
   paylocity,
   teamtailor,
   jobvite,
+  amazon,
+  netflix,
+  google,
 };
 
 function getAdapter(atsName) {
