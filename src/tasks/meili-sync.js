@@ -27,10 +27,24 @@ const logger = require('../logger');
 // back to Postgres, where the same query cannot beat the statement timeout on 5M rows. So an
 // indexing burst surfaces to users as a failing search endpoint.
 //
-// 500 x 4 = 2,000/tick is a 10x cut. Steady-state crawl writes are far below that, and a bulk
-// import still drains overnight rather than taking the index down with it.
+// RAISED 2026-08-25, from 4 batches to 12, because the constraint the cap was sized against no
+// longer exists. Everything above describes Meilisearch on Render's STANDARD plan: 2GB of RAM and
+// ONE cpu. It now runs Pro Plus — 8GB and 4 cpus — so the memory ceiling that caused those three
+// OOM kills is four times higher and indexing no longer competes with search for a single core.
+//
+// The cap had stopped being a safety margin and become the bottleneck. Measured before the
+// change: the drain hit its 2,000-document ceiling on cycle after cycle (2000, 2000, 1923, 1834,
+// 1629, 1582 ...), which means the outbox was saturated, not merely busy. That backlog has a
+// user-visible consequence — the trigger fires on removed_at, so a RETIRED JOB ONLY LEAVES SEARCH
+// once its row drains. Jobs pruned at 19:50 were still being returned by /api/jobs an hour later
+// with index_dirty_at PENDING, and one company showed postgres live=27 against meili returning
+// 28. Pruning dead jobs is pointless if the removals queue behind crawler writes for an hour.
+//
+// 500 x 12 = 6,000/tick, roughly 360k/hour against the previous 120k. BATCH stays at 500 and
+// BATCH_PAUSE_MS at 2000: the burst SHAPE is what OOM-killed the index, not the hourly total, so
+// the fix is more spaced batches rather than bigger ones.
 const BATCH = parseInt(process.env.MEILI_SYNC_BATCH || '500', 10);
-const MAX_BATCHES = parseInt(process.env.MEILI_SYNC_MAX_BATCHES || '4', 10);
+const MAX_BATCHES = parseInt(process.env.MEILI_SYNC_MAX_BATCHES || '12', 10);
 
 // Pause between batches inside one tick. Meilisearch coalesces tasks that arrive together into a
 // single indexing operation, so firing batches back-to-back rebuilds the exact burst the limits
