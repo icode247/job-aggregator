@@ -72,25 +72,45 @@ function parseListing(html) {
   // saved page but ZERO on a live paged fetch — caught only because fetchJobs throws on an empty
   // parse instead of returning [].
   const anchorRe = /<a\b[^>]*?(?:href="jobs\/results\/(\d+)-([a-z0-9-]+)(?:[?#][^"]*)?"[^>]*?aria-label="Learn more about ([^"]+)"|aria-label="Learn more about ([^"]+)"[^>]*?href="jobs\/results\/(\d+)-([a-z0-9-]+)(?:[?#][^"]*)?")[^>]*>/gi;
+  // Locations render as `Google | <span..><span..>Sunnyvale, CA, USA</span>` INSIDE each card,
+  // before that card's link. Collected with their offsets so each job can take the nearest one
+  // that precedes it.
+  //
+  // Pairing is by DOCUMENT POSITION, not by array index. Index-pairing was the first attempt and
+  // it only worked when a page happened to yield equal counts — a real page gave 18 locations for
+  // 20 jobs, so the safe branch skipped them all and two thirds of the corpus came back with no
+  // location. Position-pairing degrades correctly instead: a card missing its location inherits
+  // nothing rather than shifting every subsequent job onto the wrong city, which is the outcome
+  // that actually matters since users filter on this.
+  const locs = [];
+  const locRe = /Google\s*\|\s*<span[^>]*>\s*<span[^>]*>([^<]+)</gi;
+  let lm;
+  while ((lm = locRe.exec(html)) !== null) locs.push({ at: lm.index, value: decode(lm[1]) });
+
+  // A location belongs to a card only if it sits BETWEEN the previous card's link and this one.
+  // "Nearest preceding" is not good enough and shipping it would have been a quiet data bug:
+  // a real listing page carries 18 locations for 20 jobs, because a couple of multi-site roles
+  // render their cities differently and emit no "Google | " block at all. Nearest-preceding hands
+  // those jobs the PREVIOUS job's city — the interleave showed "Strategic Partner Development
+  // Associate" (New York) inheriting Sunnyvale from the row above it. Bounded lookup leaves them
+  // null instead, which is the honest answer and the one the location filter can cope with.
+  const between = (lo, hi) => {
+    for (const l of locs) if (l.at > lo && l.at < hi) return l.value;
+    return null;
+  };
+
   let m;
+  let prevEnd = 0;
   while ((m = anchorRe.exec(html)) !== null) {
     const id = m[1] || m[5];
     const slug = m[2] || m[6];
     const title = decode(m[3] || m[4]);
+    const location = between(prevEnd, m.index);
+    prevEnd = anchorRe.lastIndex;
     if (!id || seen.has(id)) continue;
     seen.add(id);
-    out.push({ id, slug, title: title || null, location: null });
+    out.push({ id, slug, title: title || null, location });
   }
-
-  // Locations appear as `Google | <span..><span..>Sunnyvale, CA, USA</span>`, in document order.
-  // Assigned positionally ONLY when the counts match exactly — an 18-for-20 mismatch (which does
-  // happen) would otherwise shift every location onto the wrong job, and a wrong location is
-  // worse than none on a filter users trust.
-  const locs = [];
-  const locRe = /Google\s*\|\s*<span[^>]*>\s*<span[^>]*>([^<]+)</gi;
-  let lm;
-  while ((lm = locRe.exec(html)) !== null) locs.push(decode(lm[1]));
-  if (locs.length === out.length) out.forEach((j, i) => { j.location = locs[i] || null; });
 
   return out;
 }
@@ -148,9 +168,23 @@ function parseDetail(html) {
   }
   const description = sections.length ? sections.join('\n\n') : null;
 
+  // Location on the DETAIL page is rendered differently from the listing: there is no
+  // "Google | " attribution prefix at all (zero occurrences on a real detail page), just the
+  // title followed by the location spans. The stable anchor is `aria-current=page`, which marks
+  // the currently-open job in the rail — an accessibility attribute, so it is product behaviour
+  // rather than a build artefact, the same reasoning as the aria-label used for titles.
+  //
+  // Without this the adapter fell back to the listing's positional match, which only fires when
+  // a page happens to yield equal counts — measured 20 of 60 jobs with a location, i.e. two
+  // thirds blank on a filter users rely on.
   let location = null;
-  const lm = /Google\s*\|\s*<span[^>]*>\s*<span[^>]*>([^<]+)</i.exec(html);
+  const lm = /aria-current=["']?page["']?[^>]*>[\s\S]{0,500}?<span[^>]*>\s*<span[^>]*>([^<]+)</i.exec(html);
   if (lm) location = decode(lm[1]);
+  // Older/alternate rendering keeps the attribution prefix — accept it as a fallback.
+  if (!location) {
+    const alt = /Google\s*\|\s*<span[^>]*>\s*<span[^>]*>([^<]+)</i.exec(html);
+    if (alt) location = decode(alt[1]);
+  }
 
   return { description, location };
 }
@@ -159,8 +193,15 @@ async function fetchJobs(slug) {
   const listings = [];
   const seen = new Set();
   let sawHtmlWithNoJobs = false;
+  let truncated = false;
 
-  for (let page = 1; page <= MAX_PAGES; page++) {
+  // Bounded sweep, for verifying the parsers against the live site without a full multi-hour
+  // walk. A truncated sweep MUST report capped:true — it is a deliberate partial set, and
+  // syncForCompany would otherwise retire every job past the cut.
+  const pageCap = Math.min(parseInt(process.env.GOOGLE_MAX_PAGES || '0', 10) || MAX_PAGES, MAX_PAGES);
+
+  for (let page = 1; page <= pageCap; page++) {
+    if (page === pageCap && pageCap < MAX_PAGES) truncated = true;
     let html;
     try {
       html = await getHtml(`${LIST}?page=${page}`);
@@ -223,7 +264,11 @@ async function fetchJobs(slug) {
   const missing = jobs.filter((j) => !j.description).length;
   if (missing) logger.warn({ slug, missing, total: jobs.length }, 'Google: postings without a description');
 
-  return { jobs, meta: { companyName: 'Google', capped: false } };
+  if (truncated) {
+    logger.warn({ slug, pageCap, jobs: jobs.length },
+      'Google: sweep truncated by GOOGLE_MAX_PAGES — partial set, do NOT sync this as complete');
+  }
+  return { jobs, meta: { companyName: 'Google', capped: truncated } };
 }
 
 module.exports = { fetchJobs, parseListing, parseDetail };
