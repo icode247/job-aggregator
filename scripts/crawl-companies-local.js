@@ -88,7 +88,14 @@ async function crawlCompany(co) {
     const tags = classifyJob(job);
     job.is_remote = tags.is_remote; job.remote_worldwide = tags.remote_worldwide; job.experience_level = tags.experience_level;
   }
-  const diff = await jobsRepo.syncForCompany(co.id, co.ats, incoming);
+  // meta.capped means the adapter knows this set is short of the employer's real board (a paging
+  // ceiling, a bounded sweep, a shard that errored). The absence counter must not read a
+  // knowingly-truncated response as "these jobs are gone". This is the path the eleven-crawler
+  // fleet actually runs — sync.queue.js is the BullMQ path and is no longer driving production —
+  // so wiring it only there would have left the guard inert where it matters most.
+  const diff = await jobsRepo.syncForCompany(co.id, co.ats, incoming, {
+    partial: result && result.meta ? result.meta.capped === true : false,
+  });
   // syncForCompany doesn't bump last_synced_at; we already did at claim time.
   return { jobs: incoming.length, added: diff.added };
 }
