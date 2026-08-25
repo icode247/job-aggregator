@@ -29,21 +29,27 @@
  * before touching anything.
  *
  * TWO PHASES, so the browser does as little as possible.
- *   1. checkUrl() — free, no browser. Catches 404/410, Workday CXS, Oracle CE, redirects.
- *      Anything it calls dead is dead; anything it calls alive is left alone.
- *   2. Render ONLY what phase 1 could not decide, plus the SPA platforms it is blind to.
+ *   1. checkUrl() — free, no browser. A DEAD verdict here is final and costs nothing.
+ *      An "alive" verdict is NOT trusted: it only means HTTP 200 with no dead phrase in the RAW
+ *      HTML, and on a single-page app the raw HTML is an empty shell.
+ *   2. Render everything phase 1 did not kill. The browser is the arbiter, because it sees what
+ *      a candidate sees.
  *
- * WHERE RENDERING DOES AND DOES NOT HELP. Measured 2026-08-25, and worth knowing before reaching
- * for this script:
- *   - Workday dead postings render an EMPTY BODY. The SPA paints nothing at all, so a browser
- *     learns strictly less than the CXS API call already does. The `< 200 chars` guard below
- *     returns UNCERTAIN for these rather than dead, which is why that guard is not optional.
- *   - iCIMS answers 410 and Greenhouse redirects off the posting, both of which the free HTTP
- *     check already catches. A shadow run over 240 icims/taleo/successfactors rows retired 21
- *     and needed the browser for exactly none of them.
- * So this tool earns its cost ONLY on the slice where checkUrl returns null — a page that loads,
- * renders real text, and says in words that it is closed. Phase 1 exists to keep the browser out
- * of every other case.
+ * WHAT THE BROWSER SEES THAT A FETCH CANNOT. Measured 2026-08-25 on 89 jobs the HTTP check
+ * confidently called ALIVE: one of them — zoho job 102767103 — renders "No longer accepting
+ * applications" in plain sight while returning HTTP 200 with nothing incriminating in the raw
+ * HTML. That is ~1% of a supposedly-healthy population, and against 5.2M live rows it is tens of
+ * thousands of jobs that no status-code check will ever find. Those are the ones a user clicks.
+ *
+ * COOKIE BANNERS ARE NOT JOB STATUS. The same run flagged five pinpoint jobs dead because their
+ * cookie-policy table contains "As soon as browser window is closed" — five false positives for
+ * one true find. Hence two rules that are not optional: consent/cookie/nav regions are stripped
+ * from the DOM before the text is read, and every phrase in the list is a sentence fragment,
+ * never a loose word like "expired" or "is closed".
+ *
+ * Workday is the exception worth knowing: its dead postings render an EMPTY body, so the browser
+ * learns less than the CXS API call. The <200-char guard returns UNCERTAIN there rather than
+ * dead, which is why that guard exists.
  *
  * CANDIDATE ORDER. Jobs whose company has synced successfully since the job was last seen are
  * checked first. Measured 2026-08-25: those are dead at 16% versus 2% for everything else — an
@@ -80,22 +86,34 @@ const NAV_TIMEOUT_MS = parseInt(process.env.NAV_TIMEOUT_MS || '25000', 10);
 const RECYCLE_PAGES = 25;
 const RESTART_AFTER = 400;
 
-// Rendered-page phrases beyond the shared list. These are the ones that only ever appear AFTER
-// JavaScript has run, which is precisely why the raw-HTML checker cannot see them.
+// Rendered-page phrases. These only appear AFTER JavaScript has run, which is precisely why the
+// raw-HTML checker cannot see them — it is looking at an empty app shell.
+//
+// EVERY PHRASE HERE IS A FULL SENTENCE FRAGMENT, NEVER A LOOSE WORD. That rule was written in
+// blood: a first pass matched the substring "is closed" and flagged five pinpoint jobs as dead
+// because their COOKIE POLICY TABLE contains "As soon as browser window is closed". Five false
+// positives for one true find. "expired", "not found", "unavailable" and "is closed" are all
+// words that live happily in cookie notices, session-timeout copy and nav furniture, so none of
+// them can stand alone. If a phrase could plausibly appear on a page that is still hiring, it
+// does not belong in this list.
 const RENDERED_DEAD_PHRASES = [
   ...DEAD_INDICATORS,
   'no longer accepting applications',
-  'this job is no longer accepting applications',
-  'the job you are looking for is no longer',
+  'not accepting applications',
+  'we are no longer accepting',
+  'this job is no longer',
   'this position is no longer available',
-  'job posting has been closed',
+  'this position has been filled',
+  'this job posting has been closed',
   'this requisition has been closed',
-  'we are no longer accepting applications',
-  'applications are closed',
-  'this opportunity is closed',
-  'job not found',
-  'position not found',
   'this posting is no longer active',
+  'this opportunity is no longer available',
+  'applications for this position are closed',
+  'this vacancy is closed',
+  'this role is no longer open',
+  'the position you are looking for',
+  'this job has expired',
+  'job posting expired',
 ];
 
 // Phrases that mean "the page failed", NOT "the job closed". Treating these as dead is how a
@@ -177,9 +195,32 @@ async function renderCheck(page, url) {
   // "closed" banner, which is rendered from the first data response.
   await sleep(1200);
 
+  // Read the page as a CANDIDATE would, minus the furniture.
+  //
+  // Cookie banners, consent tables, privacy dialogs and nav chrome are not job status, but they
+  // are full of words that look like it — a pinpoint cookie table saying "As soon as browser
+  // window is closed" was enough to flag five live jobs dead. Those regions are removed from the
+  // DOM copy before the text is read, so they can never be evidence of anything.
   let text = '';
   try {
-    text = await page.evaluate(() => (document.body ? document.body.innerText : '').slice(0, 20000));
+    text = await page.evaluate(() => {
+      const JUNK = [
+        '[id*="cookie" i]', '[class*="cookie" i]', '[id*="consent" i]', '[class*="consent" i]',
+        '[id*="gdpr" i]', '[class*="gdpr" i]', '[aria-label*="cookie" i]',
+        '[id*="onetrust" i]', '[class*="onetrust" i]', '#onetrust-banner-sdk',
+        'nav', 'header', 'footer', 'script', 'style', 'noscript',
+      ];
+      // Operate on a detached clone so the live page is never mutated — a page we may still be
+      // navigating should not be edited underneath itself.
+      const clone = document.body ? document.body.cloneNode(true) : null;
+      if (!clone) return '';
+      for (const sel of JUNK) {
+        let nodes = [];
+        try { nodes = clone.querySelectorAll(sel); } catch { continue; }
+        nodes.forEach((n) => n.remove());
+      }
+      return (clone.innerText || clone.textContent || '').slice(0, 20000);
+    });
   } catch (err) {
     return { alive: null, reason: `render read failed: ${err.message.slice(0, 40)}` };
   }
@@ -327,13 +368,22 @@ async function verifyDetector(browser) {
       if (!jobs.length) continue;
 
       // Phase 1 — free. No browser.
+      // Phase 1 exists ONLY to skip work, never to clear a job. A "dead" verdict here is free
+      // and final. EVERYTHING ELSE GETS RENDERED — including the jobs checkUrl calls alive.
+      //
+      // That last part is the entire reason this script exists and the first version got it
+      // backwards: it trusted `alive: true` and never opened a tab for those. But `alive: true`
+      // just means "HTTP 200 and no dead phrase in the RAW HTML", and on a single-page app the
+      // raw HTML is an empty shell — the words "No longer accepting applications" are painted by
+      // JavaScript afterwards. Verified 2026-08-25: zoho job 102767103 returns 200, checkUrl
+      // calls it alive, and the rendered page says "No longer accepting applications" in plain
+      // sight. Skipping those is skipping the whole problem.
       const dead = [];
       const needsRender = [];
       await runWithConcurrency(jobs, 8, async (j) => {
         const r = await checkUrl(j.url);
         if (r.alive === false) dead.push({ id: j.id, reason: r.reason, ats: j.ats });
-        else if (r.alive === true) totAlive++;   // HTTP is confident it lives; do not spend a tab
-        else needsRender.push(j);                 // only the undecided get rendered
+        else needsRender.push(j);   // alive OR undecided — the browser is the arbiter
       });
       const httpDead = dead.length;
 
