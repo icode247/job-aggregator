@@ -311,23 +311,34 @@ async function runPool(browser, jobs, onResult) {
 }
 
 /**
- * Control run. Take jobs the HTTP checker is confident are ALIVE and render them. Any "dead"
- * verdict here is a FALSE POSITIVE, and the detector is not safe to arm.
+ * Control run. Render jobs that are INDEPENDENTLY known to be live, and treat any "dead" verdict
+ * as a false positive that blocks arming.
+ *
+ * "Independently" is the whole difficulty. The first version of this control sampled jobs the
+ * HTTP CHECK called alive — which is circular, because the entire premise of this script is that
+ * "HTTP says alive" is unreliable. It duly failed on zoho job 123591525, reported as a false
+ * positive: HTTP 200, no dead phrase in the raw HTML, and the rendered page reading "No longer
+ * accepting applications" above a posting last seen three months ago. The detector was right and
+ * the control was wrong, which is the worst way for a safety gate to fail — it blocks correct
+ * behaviour and would have been "fixed" by loosening the detector.
+ *
+ * The honest control is the ADAPTER, not the HTTP check. A job whose company synced within the
+ * last few hours and which still has absent_syncs = 0 was listed on the employer's own board by
+ * that employer's own API, minutes ago. If the renderer calls one of those dead, the detection
+ * really is broken.
  */
 async function verifyDetector(browser) {
-  console.log('VERIFY: sampling jobs the HTTP check says are alive...');
-  const { rows: [{ hi }] } = await query('SELECT MAX(id) AS hi FROM jobs');
-  const maxId = Number(hi);
-  const control = [];
-  for (let w = 0; w < 6 && control.length < 30; w++) {
-    const lo = Math.floor(maxId * (0.3 + 0.65 * w / 5));
-    const cands = await fetchCandidates(lo, 40);
-    await runWithConcurrency(cands, 6, async (j) => {
-      if (control.length >= 30) return;
-      const r = await checkUrl(j.url);
-      if (r.alive === true) control.push(j);
-    });
-  }
+  console.log('VERIFY: sampling jobs an adapter listed within the last few hours...');
+  const { rows: control } = await query(
+    `SELECT j.id, j.url, j.ats
+       FROM jobs j JOIN companies c ON j.company_id = c.id
+      WHERE j.removed_at IS NULL
+        AND j.url IS NOT NULL
+        AND j.absent_syncs = 0
+        AND j.last_seen_at > NOW() - INTERVAL '6 hours'
+        AND c.last_synced_at > NOW() - INTERVAL '6 hours'
+      LIMIT 40`
+  );
   if (!control.length) { console.log('VERIFY: no control jobs found — cannot prove safety'); return false; }
 
   let falsePositives = 0;
