@@ -83,7 +83,12 @@ LOG=/tmp
 # Postgres is standard-0 since 2026-08-05: 200 connections, not the 40 of essential-2.
 # Pools are still kept small — the web dyno must always be able to open one (it was starved
 # at 40/40 once, see feedback in git log) — but the fleet is no longer the binding constraint.
-COMMON="CONCURRENCY=3 DELAY_MS=400 PG_POOL_MAX=2"
+# SYNC_ABSENCE_REMOVAL=1 arms the absence counter: a job missing from 3 CONSECUTIVE successful
+# syncs is retired at sync time, with no HTTP call and no browser. Armed 2026-08-26 after a day
+# of observation showed the distribution was safe — 44,446 jobs at absent=1 but only 326 at
+# absent=3, i.e. 99.3% of one-off absences self-corrected on the next sync. A noisy signal would
+# have piled up at 2 and 3 instead.
+COMMON="CONCURRENCY=3 DELAY_MS=400 PG_POOL_MAX=2 SYNC_ABSENCE_REMOVAL=1"
 
 launch() { # name  ATS-list  logfile  [env-override]
   local name="$1" ats="$2" log="$3" envs="${4:-$COMMON}"
@@ -134,6 +139,13 @@ launch J "jazzhr"                                  "$LOG/crawl-J.log" "$COMMON P
 # Instance TT (teamtailor): public {slug}.teamtailor.com/jobs.json feed, direct. Feed carries full
 # descriptions (no backfill needed). Seeded ~1.5k companies from the ats-slugs dump. Caps 100/company.
 launch TT "teamtailor"                             "$LOG/crawl-TT.log" "$COMMON PROXY_DISABLED=1"
+# Instance JV (jobvite): jobs.jobvite.com/{slug}, server-rendered HTML — the listing carries every
+# posting with no pagination and each detail page usually carries schema.org JobPosting ld+json
+# (with an HTML fallback for the tenants that omit it). 40 boards seeded 2026-08-19 from
+# scripts/discover-jobvite.js; more land as the re-probe finishes. Cloudflare fronts these sites
+# and challenges bare scripted requests, but the adapter sends a browser UA and that is enough —
+# the residential proxy is not needed and PROXY_DISABLED=1 keeps it off the shared IPRoyal budget.
+launch JV "jobvite"                                "$LOG/crawl-JV.log" "$COMMON PROXY_DISABLED=1"
 # Instance P (pinpoint): distinct host (pinpointhq.com), plain JSON API — but it
 # FAILS through the residential proxy, so force PROXY_DISABLED=1 (crawls direct).
 launch P "pinpoint"                                "$LOG/crawl-P.log" "$COMMON PROXY_DISABLED=1"
@@ -153,6 +165,23 @@ launch Pay "paylocity"                              "$LOG/crawl-Pay.log" "$COMMO
 # adapter probes those in turn. Keep zoho OUT of B — the partitions must stay disjoint or
 # both instances hammer the same ATS.
 launch Z "zoho"                                    "$LOG/crawl-Z.log" "$COMMON PROXY_DISABLED=1"
+# Instance Pe (personio): added 2026-08-20. 3,325 boards arrived with the Sprout import and
+# nothing was crawling them - personio was absent from this file AND from the Render worker's
+# CRAWL_ATS, so half the import sat idle while every other imported ATS started producing.
+# Disjoint from both, per the rule above.
+#
+# Cheapest partition in the fleet per job stored: one request per company to
+# {slug}.jobs.personio.de/xml returns EVERY posting with full descriptions inline, so there is
+# no per-job detail fetch and no description backfill - the opposite of taleo/icims, which were
+# retired for costing a detail request per job.
+#
+# The adapter hardcodes .personio.de, which looks wrong for the ~37% of boards recorded on
+# .personio.com. It is not: the TLDs are interchangeable on the XML feed, verified on both
+# .com- and .de-registered tenants (identical position counts). Do not "fix" it per-tenant.
+#
+# Probe of 120 boards before launching: 73% serve jobs (12.9 avg), 27% 404 on a stale slug,
+# 0 errors and 0 timeouts. Expect roughly 31k postings and ~900 boards to fail out as dead.
+launch Pe "personio"                               "$LOG/crawl-Pe.log" "$COMMON PROXY_DISABLED=1"
 # Instance T (taleo): 109 boards relabelled off the adapter-less taleo_* alias labels, each
 # slug verified live via careersection/sitemap.jss. NOTE: adding 'taleo' to findDueForSync
 # does NOT make it crawl — BullMQ/Redis is retired, so nothing calls that query; the ATS env
