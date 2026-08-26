@@ -27,24 +27,30 @@ const logger = require('../logger');
 // back to Postgres, where the same query cannot beat the statement timeout on 5M rows. So an
 // indexing burst surfaces to users as a failing search endpoint.
 //
-// RAISED 2026-08-25, from 4 batches to 12, because the constraint the cap was sized against no
-// longer exists. Everything above describes Meilisearch on Render's STANDARD plan: 2GB of RAM and
-// ONE cpu. It now runs Pro Plus — 8GB and 4 cpus — so the memory ceiling that caused those three
-// OOM kills is four times higher and indexing no longer competes with search for a single core.
+// TRIED AND REVERTED 2026-08-25/26. The cap was raised to 12 batches on the reasoning that
+// Meilisearch had moved from Standard (2GB, 1 cpu) to Pro Plus (8GB, 4 cpus), so the ceiling that
+// caused those three OOM kills no longer applied. Meilisearch handled it fine — p90 search
+// latency actually improved from 3,240ms to 172ms. But the reasoning checked the wrong box: the
+// binding constraint is the WORKER this loop runs in, not the index it writes to. See the note on
+// MAX_BATCHES below.
 //
-// The cap had stopped being a safety margin and become the bottleneck. Measured before the
-// change: the drain hit its 2,000-document ceiling on cycle after cycle (2000, 2000, 1923, 1834,
-// 1629, 1582 ...), which means the outbox was saturated, not merely busy. That backlog has a
-// user-visible consequence — the trigger fires on removed_at, so a RETIRED JOB ONLY LEAVES SEARCH
-// once its row drains. Jobs pruned at 19:50 were still being returned by /api/jobs an hour later
-// with index_dirty_at PENDING, and one company showed postgres live=27 against meili returning
-// 28. Pruning dead jobs is pointless if the removals queue behind crawler writes for an hour.
-//
-// 500 x 12 = 6,000/tick, roughly 360k/hour against the previous 120k. BATCH stays at 500 and
-// BATCH_PAUSE_MS at 2000: the burst SHAPE is what OOM-killed the index, not the hourly total, so
-// the fix is more spaced batches rather than bigger ones.
+// The problem it was meant to solve was real: the drain was pinned at its 2,000 ceiling cycle
+// after cycle, and because the outbox trigger fires on removed_at, a retired job only leaves
+// search once its row drains — pruned jobs were still being returned an hour later. That backlog
+// has since cleared on its own, so the cap is no longer the bottleneck.
 const BATCH = parseInt(process.env.MEILI_SYNC_BATCH || '500', 10);
-const MAX_BATCHES = parseInt(process.env.MEILI_SYNC_MAX_BATCHES || '12', 10);
+// REVERTED to 4 on 2026-08-26. Raising this to 12 was sized against MEILISEARCH's memory (8GB
+// on Pro Plus) — the wrong box. The limit that matters is the WORKER's, and job-aggregator-va is
+// a 512MB starter instance that already runs company syncs, the classification backfill,
+// dead-job pruning at concurrency 10 and the demand crawler in the same process. Tripling the
+// rows this loop holds per tick pushed it over: the worker was SIGKILLed (exit 137) eight times
+// between 23:13 and 04:43, having not crashed at all beforehand.
+//
+// The raise is also no longer needed. It was made because the outbox was saturated and retired
+// jobs were taking an hour to leave search; that backlog has since cleared and ticks now drain
+// 255-1,089 documents, comfortably inside 500 x 4 = 2,000. If the backlog ever returns, the fix
+// is to give the worker more memory, not to make this loop hold more.
+const MAX_BATCHES = parseInt(process.env.MEILI_SYNC_MAX_BATCHES || '4', 10);
 
 // Pause between batches inside one tick. Meilisearch coalesces tasks that arrive together into a
 // single indexing operation, so firing batches back-to-back rebuilds the exact burst the limits
