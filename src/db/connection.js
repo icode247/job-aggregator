@@ -129,6 +129,26 @@ async function queryWithTimeout(sql, params = [], timeoutMs = 60000) {
  * - params: array of parameters
  * Returns: { rows, rowCount, lastId }
  */
+/**
+ * Errors worth retrying: the connection never reached Postgres.
+ *
+ * This machine resolves through one nameserver — the home router — and the fleet (eleven
+ * crawlers, two pruners, several backfillers) makes thousands of lookups a minute. Under that
+ * load the router's DNS intermittently fails, and `getaddrinfo ENOTFOUND` surfaces on a host
+ * that resolves 10/10 when tested by hand. Measured 2026-08-27: the dead-job pruner lost four
+ * whole cycles to it between 07:36 and 08:58, dropping retirement from ~9,000/hour to ~200.
+ * The same blip killed the Oracle description drain on 08-24 and put a `db_error` line in the
+ * health log.
+ *
+ * A momentary lookup failure should cost a few seconds, not a cycle's work.
+ *
+ * SQL errors, statement timeouts and read timeouts are deliberately NOT here. Those mean the
+ * query genuinely reached the database and failed, or that the database is already struggling —
+ * retrying those adds load to something that is telling you it has too much.
+ */
+const RETRYABLE_DB_ERRORS = /ENOTFOUND|EAI_AGAIN|ECONNRESET|ECONNREFUSED|EPIPE|ETIMEDOUT|Connection terminated|socket hang up/i;
+const DB_RETRY_ATTEMPTS = parseInt(process.env.DB_RETRY_ATTEMPTS, 10) || 3;
+
 async function query(sql, params = []) {
   if (isPostgres) {
     // Convert ? placeholders to $1, $2, etc.
@@ -140,12 +160,25 @@ async function query(sql, params = []) {
       .replace(/INSERT OR IGNORE/gi, 'INSERT')
       .replace(/INTEGER PRIMARY KEY AUTOINCREMENT/gi, 'SERIAL PRIMARY KEY');
 
-    const result = await getDb().query(finalSql, params);
-    return {
-      rows: result.rows,
-      rowCount: result.rowCount,
-      lastId: result.rows?.[0]?.id || null,
-    };
+    let lastErr;
+    for (let attempt = 0; attempt < DB_RETRY_ATTEMPTS; attempt++) {
+      try {
+        const result = await getDb().query(finalSql, params);
+        return {
+          rows: result.rows,
+          rowCount: result.rowCount,
+          lastId: result.rows?.[0]?.id || null,
+        };
+      } catch (err) {
+        lastErr = err;
+        const transient = RETRYABLE_DB_ERRORS.test(err.message || '') || RETRYABLE_DB_ERRORS.test(err.code || '');
+        if (!transient || attempt === DB_RETRY_ATTEMPTS - 1) throw err;
+        // Short, growing backoff — a DNS hiccup clears in well under a second, and waiting
+        // longer on a write path just holds a pool connection open for no benefit.
+        await new Promise((r) => setTimeout(r, 250 * (attempt + 1) ** 2));
+      }
+    }
+    throw lastErr;
   }
 
   // SQLite — convert ILIKE to LIKE (SQLite LIKE is case-insensitive for ASCII)
