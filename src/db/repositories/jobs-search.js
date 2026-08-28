@@ -16,6 +16,7 @@ const logger = require('../../logger');
 const { isShortAlias } = require('../../utils/location-aliases');
 const { resolveCountry } = require('../../utils/location-countries');
 const { parsePostedWindow } = require('../../utils/posted-window');
+const { regionCountries, canonicalSpelling } = require('../../utils/location-regions');
 const { normalizeEmploymentType } = require('../../utils/extract');
 
 const COUNT_CAP = parseInt(process.env.SEARCH_COUNT_CAP, 10) || 10000;
@@ -95,6 +96,28 @@ function buildFilter(filters = {}) {
       if (country) {
         or.push(`location_countries = ${q(country.code)}`);
         continue; // indexed, ~47ms — no substring scan needed
+      }
+
+      // A REGION is not a place any posting names. No job says it is in the "European Union" —
+      // it says Berlin, or Dublin. So the bloc has to become the countries inside it, which is
+      // the same indexed location_countries filter, just OR'd. Measured 2026-08-28: regions
+      // accounted for ~41,000 of the 54,652 searches still returning zero, the single largest
+      // recoverable group, and no amount of extra inventory would have fixed one of them.
+      const region = regionCountries(l);
+      if (region) {
+        for (const code of region) or.push(`location_countries = ${q(code)}`);
+        continue;
+      }
+
+      // Local-language and misspelled names, resolved through a fixed table and then handed back
+      // to the country resolver. Nothing here is fuzzy-matched: "Georgia" is a country AND a US
+      // state, and an edit-distance guess would silently merge them.
+      const fixed = canonicalSpelling(l);
+      if (fixed) {
+        const fixedCountry = resolveCountry(fixed);
+        if (fixedCountry) { or.push(`location_countries = ${q(fixedCountry.code)}`); continue; }
+        or.push(`location_tokens = ${q(fixed)}`);
+        continue;
       }
       // location_tokens is the tokenised location written at index time. Verified 2026-08-07 at
       // 100% coverage (2,758,541 of 2,758,541 docs) before this line was switched on — filtering
