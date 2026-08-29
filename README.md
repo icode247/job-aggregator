@@ -35,9 +35,39 @@ operational rules that are not obvious from the code.
 |---|---|---|
 | API (`src/web.js`) | Render web service | `render-web` |
 | Background worker (`scripts/render-worker.js`) | Render worker | `render-deploy` |
-| Crawler fleet, dead-job pruners, backfills | **a laptop**, started by `scripts/launch-local-crawlers.sh` | `wip-local-tooling` |
+| Crawler fleet, dead-job pruners, backfills | **a laptop**, started by `scripts/launch-local-crawlers.sh` | `main` |
 | Postgres | Heroku (`fastapply-board`), 40-connection cap | — |
 | Meilisearch | Render private service | — |
+
+### Branches — read this before deploying
+
+| branch | role |
+|---|---|
+| `main` | **canonical.** Everything lives here. Clone this. |
+| `render-web` | deploys the API. Autodeploy **off** — trigger manually. |
+| `render-deploy` | deploys the worker. Autodeploy **on** — a push ships it. |
+
+The deploy branches are **deliberately trimmed, service-specific trees**, not copies of `main`.
+`render-web` carries the API and search code; `render-deploy` carries the worker and its tasks.
+Neither carries the crawler-fleet tooling, and they have diverged from `main` by 100+ files.
+
+> **Do not merge `main` into a deploy branch.** It would drag the whole local fleet, unrelated
+> adapters and dev tooling into a 512MB service. The established pattern is to **port the
+> individual hunk** into a worktree and commit it there:
+>
+> ```bash
+> git worktree add /tmp/wt render-deploy
+> git diff <sha>~1 <sha> -- src/tasks/thing.js > /tmp/wt/fix.patch
+> git -C /tmp/wt apply --check fix.patch && git -C /tmp/wt apply fix.patch
+> node --check /tmp/wt/src/tasks/thing.js      # verify before committing
+> git -C /tmp/wt commit -am "..." && git -C /tmp/wt push origin render-deploy
+> ```
+>
+> Always `--check` first, and re-verify syntax in the worktree — the deploy branch may not have
+> the file's dependencies.
+
+Deploys are triggered with `render deploys create <service-id>`. Service IDs are in
+`scripts/README.md`.
 
 Two consequences worth knowing before you touch anything:
 
