@@ -1,8 +1,26 @@
 node_modules/
-data/*.db
 .env
+.DS_Store
 
-# Logo-review working files: scraper input/output, per-batch caches and the
-# generated preview page. Only processed.txt (the reviewed-company set) is tracked.
+# Local SQLite staging database and its WAL/SHM sidecars. jobs.db-wal and jobs.db-shm
+# were tracked until 2026-08-29 — they are transient SQLite internals and should never
+# have been in git.
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
+# RUNTIME STATE, not source. These are written by scripts as they work: resume
+# checkpoints, "already processed" sets, discovery output. Tracking them meant every
+# crawl produced a diff, and data/paylocity-salary.done alone was 1MB of churn.
+# The seed company lists in data/ (companies-*.txt, company-names.txt, yc-companies.txt)
+# ARE inputs and stay tracked.
+data/*.done
+data/*.done.run*
+data/*.checkpoint
+data/*.checkpoint.*
+data/*.jsonl
+data/*.offset
+
+# Logo-review working files: scraper input/output, per-batch caches and the generated
+# preview page. processed.txt is runtime state too and was untracked on 2026-08-29.
 data/logo/*
-!data/logo/processed.txt
