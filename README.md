@@ -78,16 +78,70 @@ Two consequences worth knowing before you touch anything:
 
 ---
 
-## Getting started
+## First run after cloning
+
+The repo alone is not enough to operate this system — **credentials and two machine-local files
+are not in git** and must be handed over separately.
+
+### 1. What you need from the previous maintainer
+
+| item | why |
+|---|---|
+| `.env` contents | Postgres URL, `API_SECRET`, Meili host/key, proxy keys. Nothing works without `DATABASE_URL`. |
+| Heroku access to `fastapply-board` | the database |
+| Render access | API, worker and Meilisearch services |
+| GitHub push access | this repo |
+
+### 2. Get the API running
 
 ```bash
 npm install
-cp .env.example .env          # then fill in DATABASE_URL at minimum
-npm run migrate               # create/upgrade the schema
+cp .env.example .env          # fill in DATABASE_URL and NODE_ENV=production
+npm run migrate               # safe: CREATE TABLE/INDEX IF NOT EXISTS only
 npm run start:web             # API on $PORT (default 3000)
 ```
 
-`.env.example` lists every variable with a note on which are required.
+Verify it reads real data:
+
+```bash
+curl "http://localhost:3000/health"
+```
+
+`NODE_ENV=production` is required against hosted Postgres — it enables TLS, which Heroku demands.
+
+### 3. Take over ingestion (the part that is easy to miss)
+
+The crawler fleet does **not** run on a server. It runs on a laptop, and it stops when that
+laptop sleeps. To move it to yours:
+
+```bash
+# The launcher reads the DB URL from this cache, so the fleet does not depend on the heroku CLI.
+heroku config:get DATABASE_URL -a fastapply-board > ~/.fastapply-database-url
+chmod 600 ~/.fastapply-database-url
+
+bash scripts/launch-local-crawlers.sh     # starts 11 crawlers, 2 pruners, the backfills
+pgrep -fl crawl-companies-local.js        # confirm
+```
+
+**Stop the old machine's fleet before starting yours**, or both will crawl the same companies and
+compete for the 40 Postgres connections.
+
+Hourly monitoring is a cron entry, also not in git:
+
+```bash
+crontab -e
+# 0 * * * * /path/to/job-aggregator/scripts/log-health.sh >/dev/null 2>&1
+tail ~/job-board-health.log
+```
+
+To survive reboots the previous setup used a macOS LaunchAgent calling
+`scripts/launch-local-crawlers.sh` at login; recreate that or start it by hand.
+
+### 4. Check it is actually working
+
+After an hour, `retired_1h` in the health log should be in the thousands and `fallbacks_1h`
+should be `0`. If `retired_1h` is in the low hundreds, the fleet is not really running — the most
+common cause is the machine sleeping.
 
 ### Reading data without a full setup
 

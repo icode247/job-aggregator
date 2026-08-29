@@ -27,10 +27,13 @@
 
 set -uo pipefail
 
-NODE=/Users/codev/.nvm/versions/node/v20.20.0/bin/node
-RENDER=/opt/homebrew/bin/render
-PY=/usr/bin/python3
-REPO=/Users/codev/job-aggregator
+# Absolute paths, because cron runs with a near-empty PATH — no nvm shim, no /opt/homebrew.
+# Resolved at RUN TIME rather than hardcoded, so this works on any machine: `command -v` is
+# evaluated by the interactive-ish shell running this script, not by cron's stripped one.
+# Override any of them from the environment if the layout differs.
+NODE="${NODE:-$(command -v node || echo /usr/local/bin/node)}"
+RENDER="${RENDER:-$(command -v render || echo /opt/homebrew/bin/render)}"
+REPO="${REPO:-$(cd "$(dirname "$0")/.." && pwd)}"
 LOG="${HEALTH_LOG:-$HOME/job-board-health.log}"
 
 TS=$(/bin/date -u '+%Y-%m-%d %H:%M')
