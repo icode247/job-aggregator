@@ -24,6 +24,9 @@ data/             seed company lists (input files, not runtime state)
 docs/             design notes
 ```
 
+**Taking this over?** Work through `HANDOVER.md` — a verification checklist with the expected
+values, built around the fact that most failures here are silent.
+
 **Start with `scripts/README.md`.** It documents what runs where, how to start it, and the
 operational rules that are not obvious from the code.
 
