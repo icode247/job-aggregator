@@ -5,7 +5,8 @@
  * re-check on an interval to catch new nulls as discovery/crawl lands more jobs.
  *
  * Reuses the existing per-ATS detail fetchers (rippling, breezy, recruitee, ...).
- * NOTE: workable is IP-blocked — use scripts/backfill-workable-desc-proxy.sh for it.
+ * NOTE: workable is IP-blocked. The proxy-based workaround was removed when the IPRoyal
+ * account died (2026-08-08) — workable descriptions currently have no working path.
  *
  * Run: DATABASE_URL=... node scripts/backfill-desc-generic.js rippling breezy
  * Env: LOOP=1 keep re-checking every RECHECK_S (default 480s); omit for one drain.

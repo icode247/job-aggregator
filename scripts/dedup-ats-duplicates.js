@@ -11,7 +11,7 @@
  *
  * Survivor = most live jobs, then lowest id. Rows are deactivated, never deleted, and only
  * postings currently live under the survivor are removed — anything unique to a retired
- * row is left for scripts/prune-dead-jobs.js, which does not filter on company status.
+ * row is left for scripts/prune-dead-jobs-local.js, which does not filter on company status.
  *
  *   DRY=1 node scripts/dedup-ats-duplicates.js    # report only
  *   node scripts/dedup-ats-duplicates.js          # write

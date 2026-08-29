@@ -137,6 +137,18 @@ const ATS_MODES = {
   icims: { ats: ['icims'], job: false },
   oracle: { ats: ['oracle', 'oraclecloud'], job: true },
   breezy: { ats: ['breezy'], job: false },
+  // Four more server-rendered boards, each with its own anchor in ats-logos.js. `root`
+  // trims career_url back to the board origin: rows here carry stray paths ("/en", "/job")
+  // that 404 or render a job detail with no header, and the logo lives on the board root.
+  pinpoint: { ats: ['pinpoint'], job: false, root: true },
+  personio: { ats: ['personio'], job: false, root: true },
+  jazzhr: { ats: ['jazzhr'], job: false, root: true },
+  // jobvite career_urls point at jobs.jobvite.com/<slug>, which is the board. NOT `root`:
+  // the slug IS the board identity here, so trimming to the origin collapses every jobvite
+  // company onto https://jobs.jobvite.com and the batch dedups 37 boards down to one.
+  // (The sibling careers.jobvite.com/<slug>/ must not be substituted either - it answers
+  // 200 with an Apache directory index or Jobvite's "pancake" error art.)
+  jobvite: { ats: ['jobvite'], job: false },
 };
 const ATS_CFG = ATS_MODES[ATS_MODE] || null;
 // ats_slug is not trustworthy on its own: some rows hold a path segment from the careers
@@ -169,14 +181,17 @@ function buildComeetBatch(rows) {
   const out = [];
   let dup = 0;
   for (const r of rows) {
-    const url = String(r.career_url).replace(/\/+$/, '');
+    let url = String(r.career_url).replace(/\/+$/, '');
+    // Board-root modes: keep only the origin. "snke.jobs.personio.de/job" and
+    // "iwbi.pinpointhq.com/en" are stored that way, and neither carries the header logo.
+    if (ATS_CFG && ATS_CFG.root) { try { url = new URL(url).origin; } catch { continue; } }
     if (seen.has(url)) { dup++; continue; }
     seen.add(url);
     r.scrape_target = url;
     out.push(r);
     if (out.length >= SIZE) break;
   }
-  console.log(`  ${out.length} comeet boards (skipped ${dup} sharing a career_url)`);
+  console.log(`  ${out.length} boards (skipped ${dup} sharing a career_url)`);
   return out;
 }
 

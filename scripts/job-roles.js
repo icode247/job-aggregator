@@ -1,7 +1,7 @@
 /**
  * Shared, comprehensive cross-industry job-role / job-title vocabulary.
  *
- * Both scripts/fetch-liftmycv.js and scripts/fetch-lazyapply.js discover jobs by
+ * scripts/fetch-liftmycv.js and the discover-* tools find jobs by
  * querying these strings against their source APIs (LiftMyCV / LazyApply). A job is
  * ONLY ever found if a role here names it -- discovery is keyword-driven. The lists
  * used to be tech-only, so non-tech industries (supply chain, aerospace, healthcare,

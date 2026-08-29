@@ -192,10 +192,10 @@ launch Pe "personio"                               "$LOG/crawl-Pe.log" "$COMMON 
 # of database load in the fleet: no apply automation, and because it has no bulk listing endpoint
 # every job costs its own detail request, so it managed ~1 company/min with 131 errors over 280.
 # launch T "taleo"                                 "$LOG/crawl-T.log" "CONCURRENCY=2 DELAY_MS=400 PG_POOL_MAX=2 FETCH_TIMEOUT=240000 PROXY_DISABLED=1"
-# Instance E (workable direct via IPRoyal proxy) is intentionally NOT auto-started
-# here: it uses the METERED residential proxy, so it must be a controlled one-time
-# drain, not an always-on refresh loop (a 60-min refresh would burn the GB plan).
-# Run it manually with: bash scripts/drain-workable-proxy.sh
+# Instance E (workable direct via IPRoyal proxy) is gone. It ran a controlled one-time
+# drain through a METERED residential proxy; the IPRoyal account died on 2026-08-08 and
+# Workable now blocks outright rather than rate-limiting per IP, so the script was
+# removed. Workable descriptions have no working path until a new proxy is provisioned.
 
 # Marketplace deep crawl: one-shot walk of the full ~170k; auto-restart resumes
 # from the top if it dies (upserts dedupe, so re-walking is harmless).

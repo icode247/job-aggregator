@@ -8,7 +8,6 @@
   "scripts": {
     "start:web": "node src/web.js",
     "start:worker": "node src/worker.js",
-    "seed": "node scripts/seed.js",
     "migrate": "node src/db/schema.js"
   },
   "dependencies": {

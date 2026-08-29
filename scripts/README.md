@@ -1,165 +1,228 @@
-# `scripts/` — what each script is, and whether it is still used
+# `scripts/`
 
-85 files accumulated over six months. Most are one-off tools that did their job and were never
-deleted. This document sorts them so a new maintainer knows what is load-bearing.
+Every script here is either **running in production** or **maintained and runnable on demand**.
+58 obsolete scripts were deleted on 2026-08-29 (dead credentials, superseded tools, finished
+one-off migrations, throwaway debug files). They are in git history if one is ever needed:
 
-**How to read the tags**
-
-| tag | meaning |
-|---|---|
-| **ACTIVE** | running right now, or launched by something that is. Do not delete. |
-| **ON-DEMAND** | maintained and correct; run by hand when needed. |
-| **DEAD** | the API, credential or account it depends on no longer works. |
-| **SUPERSEDED** | something else does this job better. Kept only for reference. |
-| **ONE-OFF** | a migration or repair that already ran. Historical. |
-| **DEBUG** | throwaway diagnostics from a past investigation. |
-
-Evidence used: what is in the process table, what `launch-local-crawlers.sh` and
-`render-worker.js` reference, what `package.json` declares, last-commit dates, and the scripts'
-own headers where they record a dead credential.
+```bash
+git log --diff-filter=D --name-only -- scripts/     # what was removed
+git show 60d4043:scripts/<name>                     # read one without restoring it
+git checkout 60d4043 -- scripts/<name>              # restore one
+```
 
 ---
 
-## Where the system actually runs
+## Where this system runs
 
-Two places, and it matters for knowing what is live:
+**This laptop** runs the ingestion fleet — 11 crawlers, 2 dead-job pruners, the description
+backfills — all started by `launch-local-crawlers.sh` at login via a LaunchAgent.
 
-- **This laptop** runs the crawler fleet, both dead-job pruners, and the description backfills,
-  all started by `launch-local-crawlers.sh` at login. **When the laptop sleeps, all of it stops** —
-  measured overnight, retirement drops from ~9,000/hour to ~200/hour.
-- **Render** runs the API (`src/web.js`, branch `render-web`) and a background worker
-  (`scripts/render-worker.js`, branch `render-deploy`). The worker is a 512MB starter instance
-  and restarts 13–18 times a day under memory pressure — long-standing, self-healing, not new.
+> **When the laptop sleeps, ingestion stops.** Measured overnight: job retirement drops from
+> ~9,000/hour to ~200/hour. This is the single most surprising operational fact about the system.
 
-Postgres is on Heroku. Meilisearch is a private service on Render.
+**Render** runs the API (`src/web.js`, branch `render-web`) and a background worker
+(`scripts/render-worker.js`, branch `render-deploy`). The worker is a 512MB starter instance
+and restarts 13–18 times a day under memory pressure — long-standing, self-healing, not a
+regression. Meilisearch is a private service there, which is why **Meili sync can only run from
+Render** and not from this laptop.
 
----
+**Postgres** is on Heroku (`fastapply-board`). The role is capped at 40 connections.
 
-## ACTIVE — running continuously
-
-| script | what it does |
-|---|---|
-| `launch-local-crawlers.sh` | Starts the whole local fleet at login: 11 crawler instances, 2 pruners, the backfills. **The entry point — read this first.** Sets `SYNC_ABSENCE_REMOVAL=1`, which arms automatic retirement. |
-| `crawl-companies-local.js` | The crawler. One process per ATS group, 11 running. Fetches each company's board and calls `jobsRepo.syncForCompany`. |
-| `prune-dead-jobs-local.js` | Dead-job pruner. Two instances split the corpus by id parity (`PARTITION_REMAINDER=0` and `1`). HTTP-checks 5,000 jobs a cycle and retires the confirmed-dead. |
-| `local-backfill-descriptions.js` | Fills missing descriptions across all automatable platforms. |
-| `backfill-desc-generic.js` | Same, but drives ONE platform to exhaustion. Currently looping on paylocity. |
-| `backfill-comeet-desc.js` | Comeet-specific description backfill (its detail pages need special handling). |
-| `render-worker.js` | The Render worker entry point. Runs company syncs, classification backfill, stale cleanup, demand crawl, and **Meili sync** — the last of which only works from Render, because Meilisearch is a private service. |
-| `log-health.sh` | Hourly cron job → `~/job-board-health.log`. One line of board health. |
-| `health-metrics.js` | The database half of `log-health.sh`. Not run directly. |
-| `job-roles.js` | Shared 1,683-entry role vocabulary. **A library, not a script** — imported by the keyword-driven discovery and fetch tools. |
-
-**Reading the health log.** `tail ~/job-board-health.log`. Two fields matter most:
-- `fallbacks_1h` — searches that gave up on Meilisearch and hit Postgres. This is the mechanism
-  that took the board down on 2026-08-20. Sustained non-zero is the real alarm.
-- `absent3` — jobs about to be auto-retired. If it climbs steadily rather than drifting down, the
-  absence signal has drifted and `SYNC_ABSENCE_REMOVAL` should be switched off.
+Credentials: `.env` in the repo root, plus `~/.fastapply-database-url` (cached DB URL that the
+fleet and cron read, so they do not depend on the `heroku` CLI).
 
 ---
 
-## ON-DEMAND — maintained, run when needed
+## Always running
 
-| script | when you would run it |
+Started automatically. You should not normally need to launch these by hand.
+
+### `launch-local-crawlers.sh` — the entry point
+Starts the entire local fleet. **Read this first**; it documents every instance and its tuning.
+Sets `SYNC_ABSENCE_REMOVAL=1`, which arms automatic job retirement at sync time.
+
+```bash
+bash scripts/launch-local-crawlers.sh          # start everything
+pgrep -fl crawl-companies-local.js             # what is running
+```
+
+To restart the fleet, **kill one process at a time and wait for each to come back**. Restarting
+all 11 at once pins the 40-connection Postgres limit and takes the live API down.
+
+### `crawl-companies-local.js` — the crawler
+One process per ATS group (11 running). Claims companies due for sync, fetches each board, calls
+`jobsRepo.syncForCompany`.
+
+```bash
+DATABASE_URL=$(cat ~/.fastapply-database-url) NODE_ENV=production \
+  ATS=greenhouse CONCURRENCY=3 node scripts/crawl-companies-local.js
+```
+`ATS` (comma list) · `CONCURRENCY` (3) · `BATCH` (40) · `STALE_MIN` (60) · `PROXY_DISABLED=1`
+
+### `prune-dead-jobs-local.js` — the dead-job pruner
+Two instances split the corpus by id parity. HTTP-checks 5,000 jobs a cycle and retires the
+confirmed-dead. Workday and Oracle are checked against their JSON APIs, because their pages
+return HTTP 200 for dead postings.
+
+```bash
+DATABASE_URL=$(cat ~/.fastapply-database-url) NODE_ENV=production \
+  LOOP=1 INTERVAL_S=300 LIMIT=5000 CONCURRENCY=8 PARTITION_REMAINDER=0 \
+  node scripts/prune-dead-jobs-local.js
+```
+`PARTITION_REMAINDER` must be `0` on one instance and `1` on the other, or they duplicate work.
+
+### `local-backfill-descriptions.js` — description backfill
+Fills missing descriptions across every automatable platform.
+
+```bash
+DATABASE_URL=$(cat ~/.fastapply-database-url) node scripts/local-backfill-descriptions.js
+```
+
+### `backfill-desc-generic.js` — one platform to exhaustion
+```bash
+DATABASE_URL=$(cat ~/.fastapply-database-url) LOOP=1 \
+  node scripts/backfill-desc-generic.js paylocity
+```
+Note: **workable has no working path** — it is IP-blocked and the proxy account is dead.
+
+### `backfill-comeet-desc.js` — comeet descriptions
+Comeet detail pages need special handling, hence its own script.
+```bash
+DATABASE_URL=$(cat ~/.fastapply-database-url) LOOP=1 node scripts/backfill-comeet-desc.js
+```
+
+### `render-worker.js` — the Render worker (not run locally)
+Company syncs, classification backfill, stale cleanup, demand crawl, and **Meili sync**.
+Deployed from branch `render-deploy`; it is the process entry point, not something you invoke.
+
+### `log-health.sh` + `health-metrics.js` — hourly monitoring
+Cron writes one line an hour to `~/job-board-health.log`.
+
+```bash
+tail ~/job-board-health.log
+crontab -l                       # 0 * * * * .../log-health.sh
+```
+
+Two fields matter most:
+
+| field | meaning |
 |---|---|
-| `discover-jobvite.js` | Find Jobvite boards by probing slug guesses (HEAD + `redirect: manual`, ~300ms each, zero bandwidth). The template for cheap ATS discovery. |
-| `import-jobvite-boards.js` | Import what the above confirmed. Takes the company name from Jobvite, never from the guess that found it. |
-| `discover-comeet.js` | Comeet discovery via SERP + page-embedded token extraction. |
-| `discover-workable-by-keyword.js` | Workable slug discovery by marketplace keyword search. Replaced manual Google dorking. |
-| `discover-all-roles.js` | Drives the above across the whole `job-roles.js` vocabulary. Checkpointed. |
-| `prune-dead-jobs-render.js` | Puppeteer pruner — renders pages to catch boards that return HTTP 200 while displaying "no longer accepting applications". **Shadow by default; needs `APPLY=1`.** Only ~1% of jobs need it, and 10 tabs will exhaust this laptop's memory. Use `TABS=4` and not while the crawlers are busy. |
-| `prune-workday-dead.js` | One-off Workday sweep. Parked at a cursor; the rotating pruner covers Workday now. |
-| `meili-backfill.js` | Rebuild the search index from Postgres. Read-only against the database. |
-| `meili-init.js` | Create the index with its settings. Run once per new index. |
-| `fetch-jobloo.js` | Bulk import from jobloo.co's public API. Shard by category or it degrades badly. |
-| `fetch-liftmycv.js` | LiftMyCV public API. Still works — no credential needed. |
-| `import-ats-slugs.js` | Seed companies from an external ATS-slug dump. |
+| `fallbacks_1h` | searches that gave up on Meilisearch and hit Postgres. **This is the alarm.** It is the mechanism that took the board down on 2026-08-20. Sustained non-zero needs attention; latency alone does not reach users. |
+| `absent3` | jobs about to be auto-retired. Should drift *down*. If it climbs steadily, the absence signal has drifted — switch `SYNC_ABSENCE_REMOVAL` off in the launcher. |
+
+### `job-roles.js` — shared vocabulary (library, not a script)
+1,683 job titles across 27 industries. Imported by the discovery tools. Do not run it.
+
+---
+
+## On demand
+
+### Finding new companies
+
+**`discover-jobvite.js`** — the template for cheap ATS discovery. Generates slug guesses from
+companies we already track and probes them with `HEAD` + `redirect: manual`: ~300ms each, zero
+bandwidth, no scraping account. A valid slug returns 200, an invalid one 302s away.
+```bash
+DATABASE_URL=$(cat ~/.fastapply-database-url) node scripts/discover-jobvite.js
+```
+`OUT` · `CHECKPOINT` (resumable) · `CONCURRENCY` (8) · `LIMIT`
+
+**`import-jobvite-boards.js`** — import what discovery confirmed. Dry-run by default.
+```bash
+node scripts/import-jobvite-boards.js            # dry run
+APPLY=1 node scripts/import-jobvite-boards.js    # write
+```
+Takes the company name from Jobvite's own posting data, never from the guess that found it —
+11 of 40 boards had a different real owner than the slug suggested.
+
+**`discover-workable-by-keyword.js`** — Workable slugs via marketplace keyword search.
+```bash
+DATABASE_URL=... node scripts/discover-workable-by-keyword.js "Purchasing Agent"
+DATABASE_URL=... node scripts/discover-workable-by-keyword.js --file keywords.txt
+```
+
+**`discover-all-roles.js`** — drives the above across all 1,683 roles. Checkpointed to
+`/tmp/discover-roles.checkpoint`; safe to interrupt and resume.
+
+**`discover-comeet.js`** — Comeet discovery via SERP + page-embedded token extraction.
+
+### Bulk import
+
+| script | use |
+|---|---|
+| `fetch-jobloo.js` | jobloo.co public API. **Shard by category** — a plain offset walk degrades to 30+ hours. |
+| `fetch-liftmycv.js` | LiftMyCV public API. Still works; no credential needed. |
+| `import-ats-slugs.js` | Seed companies from an external slug dump. `SLUGS_FILE=... node scripts/import-ats-slugs.js` |
 | `import-ats-companies-csv.js` | Seed from the `ats-scrapers` tenant lists. |
-| `sync-jobs-to-postgres.js` | Push local SQLite rows to Postgres. |
-| `check-dead-jobs.js` | CLI for the dead-job checker. Useful for testing one URL by hand. |
-| `dedup-ats-duplicates.js` | Deduplicate rows sharing `(ats, ats_slug)`. |
-| `test-sync-batch.js` | Verifies the batched `syncForCompany` upsert. Worth running after touching sync. |
+| `sync-jobs-to-postgres.js` | Push local SQLite rows into Postgres. |
+
+### Cleanup and repair
+
+**`prune-dead-jobs-render.js`** — Puppeteer pruner. Renders pages to catch boards that return
+HTTP 200 while displaying "no longer accepting applications" — about 1% of jobs, invisible to any
+status-code check.
+```bash
+node scripts/prune-dead-jobs-render.js                    # SHADOW, writes nothing
+VERIFY=1 node scripts/prune-dead-jobs-render.js           # prove the detector first
+APPLY=1 TABS=4 node scripts/prune-dead-jobs-render.js     # armed
+```
+**Use `TABS=4`, not the default 10, and not while the crawlers are busy.** At 10 tabs it spawned
+32 Chrome processes, pushed this 8GB laptop to 7.0GB, and every tab began timing out.
+
+**`prune-workday-dead.js`** — one-off Workday sweep, parked at a cursor. The rotating pruner
+covers Workday now; only useful for a targeted catch-up.
+
+**`check-dead-jobs.js`** — CLI for the dead-job checker. Useful for testing a single URL by hand.
+```bash
+node scripts/check-dead-jobs.js --ats=zoho --limit=50
+```
+
+**`dedup-ats-duplicates.js`** — deduplicate rows sharing `(ats, ats_slug)`.
+
+### Search index — `meili-init.js`, `meili-backfill.js`
+
+```bash
+node scripts/meili-init.js --probe      # health + settings, writes nothing
+node scripts/meili-init.js --seed       # mark all live jobs for reindexing
+node scripts/meili-backfill.js          # copy jobs straight in; read-only on Postgres
+```
+`meili-backfill.js` checkpoints to `/tmp/meili-backfill.pos`, so it resumes after an interruption.
+
+### Testing
+
+**`test-sync-batch.js`** — verifies the batched `syncForCompany` upsert. Worth running after any
+change to sync.
 
 ---
 
-## DEAD — the credential or API no longer works
+## `logo-review/`
 
-Do not debug these expecting them to run. Each is blocked on an account, not a bug.
-
-| script | why |
-|---|---|
-| `fetch-lazyapply.js` | LazyApply proxies through **ScrapingDog**, whose quota is exhausted. Returns `403 {"error":"ScrapingDog API error"}` **even with a valid token** — the 403 is not an auth problem. |
-| `fetch-wonsulting.js` | Cookie-based auth, exhausted / server cap. |
-| `fetch-apify-ats.js` | Apify actor quota. |
-| `fetch-fantastic-jobs.js` | Apify actor quota. |
-| `discover-serp.js` | SERP API quota exhausted; ScrapingDog fallback also dead. |
-| `backfill-workable-desc-proxy.sh` | Depends on the **IPRoyal** proxy account, dead as of 2026-08-08. |
-| `drain-workable-proxy.sh` | Same. Its header records that Workable now blocks outright rather than rate-limiting. |
-| `fetch-resumly.js`, `fetch-resumly-bulk.js`, `import-resumly-file.js`, `resumly-roles.js` | resumly.ai stopped producing 2026-07-30. Needs a fresh 24h JWT to revive. |
-| `fetch-trueup.js` | Not in any active path; unverified since July. |
-
-**Note on the BrightData key**: `BRIGHT_DATA_API_KEY` in `.env` returns `HTTP 407`.
-`BRIGHT_DATA_API_KEY_STANDBY` works. Anything routed through the Web Unlocker is silently
-failing until those are swapped.
+A separate multi-step pipeline for sourcing and approving company logos
+(harvest → export → eyeball → approve → save). Not part of job ingestion. Several `sprout-*.js`
+files there are uncommitted work in progress and were left untouched.
 
 ---
 
-## SUPERSEDED — something else does this better
+## Two rules that were learned the hard way
 
-| script | replaced by |
-|---|---|
-| `prune-dead-jobs.js` | `prune-dead-jobs-local.js` (partitioned, resumable, platform-aware). |
-| `scrape-google-ats.js` | Slug probing (see `discover-jobvite.js`). Cheaper, more accurate, no scraping account. |
-| `import-liftmycv.js` | `fetch-liftmycv.js`. |
-| `backfill-classify.js`, `classify-experience-openai.js` | `src/tasks/backfill-classifications.js`, run by the worker. |
-| `backfill-bamboohr-desc.js` | `backfill-desc-generic.js bamboohr`. |
-| `crawl-allscm-jobs.js`, `scrape-allscm.js`, `scrape-paylocity.js` | Superseded by the paylocity adapter and the normal crawler. |
-| `discover-wwr-companies.js` | Superseded by keyword discovery. |
-
----
-
-## ONE-OFF — already ran, kept for history
-
-`migrate-to-pg.js` · `migrate-oraclecloud.js` · `backfill-enrichment.js` · `backfill-salary.js` ·
-`backfill-batched.js` · `refetch-paylocity-salary.js` · `refetch-personio-desc.js` ·
-`reset-visa-classification.js` · `fix-workday-career-urls.js` · `import-breezy-csv.js` ·
-`import-flexjobs-csv.js` · `import-bamboohr-dataset.js` · `import-ats-dataset.js` ·
-`import-ats-companies-v2.js` · `import-remote-companies.js` · `extract-icims-oracle-bamboohr.js` ·
-`scan-bamboohr-greenhouse.js` · `merge-companies.js` · `seed.js` ·
-`run-backfills-overnight.sh` · `seed-index-overnight.sh`
-
-`backfill-batched.js` is worth reading before any bulk UPDATE — its header records why a single
-600k-row update had to be cancelled after 27 minutes.
-
----
-
-## DEBUG — throwaway diagnostics
-
-`debug-discovery.js` · `debug-fetchers.js` · `debug-fetchers2.js` ·
-`diagnose-description-fetchers.js` · `diagnose-freeze.js` · `dry-run-guard.js` ·
-`verify-fetcher-fixes.js` · `check-csv-companies.js` · `check-desc-backfill.js` ·
-`test-backfill-apis.js` · `test-icims-api.js` · `test-icims-html.js` · `test-jazzhr.js` ·
-`test-classify.js` · `test-worldwide.js`
-
-All safe to delete. They reference schemas and failures from March–May and several no longer run.
-
----
-
-## `logo-review/` — a separate pipeline
-
-Its own multi-step workflow for sourcing and approving company logos (harvest → export → eyeball
-→ approve → save). Not part of job ingestion. Several `sprout-*.js` files there are uncommitted
-work in progress.
-
----
-
-## Two rules worth keeping
-
-**Anything that deletes rows runs in shadow mode first.** On 2026-08-25 a plausible rule
-("retire jobs whose company synced after the job was last seen") looked like it would clear
+**Anything that deletes rows runs in shadow mode first.** On 2026-08-25 a plausible rule —
+"retire jobs whose company synced after the job was last seen" — looked like it would clear
 ~3,000,000 rows. HTTP-testing 60 of those candidates found **48 still alive**. Shipping it would
-have deleted roughly 2.5 million live jobs. Removal is soft (`removed_at`), never `DELETE`.
+have deleted roughly 2.5 million live jobs. Removal is always soft (`removed_at`), never `DELETE`.
 
 **Never mass-restart the database clients.** Restarting all 11 crawlers at once pins the
-40-connection Postgres limit and takes the live API down. Restart one at a time and wait for each
-to come back.
+40-connection Postgres limit and takes the live API down. One at a time, waiting for each.
+
+---
+
+## Known-dead credentials
+
+Worth knowing before debugging something that cannot work:
+
+- **`BRIGHT_DATA_API_KEY` returns HTTP 407.** `BRIGHT_DATA_API_KEY_STANDBY` works. Anything routed
+  through the BrightData Web Unlocker is failing silently until these are swapped.
+- **IPRoyal proxy account died 2026-08-08.** Workable now blocks outright rather than
+  rate-limiting per IP, so Workable descriptions have no working path.
+- **ScrapingDog, Apify and SERP quotas are exhausted.** The scripts that used them were deleted;
+  do not reintroduce that approach without checking the accounts first. Slug probing (see
+  `discover-jobvite.js`) finds boards more accurately for free.
