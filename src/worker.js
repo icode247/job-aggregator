@@ -99,6 +99,24 @@ async function main() {
   // Ship changed jobs into the search index. Driven by the index_dirty_at outbox column, so it
   // sees writes from every source including the laptop scripts. No-ops entirely when MEILI_HOST
   // is unset, so this is safe to ship before the index exists.
+  // Apply index settings on boot, before the first sync runs.
+  //
+  // ensureIndex() was previously called only by scripts/meili-init.js, which has to be run by
+  // hand from inside Render because the index is a private service unreachable from a laptop.
+  // That made a settings change — adding a filterable attribute, say — a manual step somebody
+  // has to remember, and a filter shipped without it fails at query time as an unknown
+  // attribute. The service that owns the index should apply its own settings.
+  //
+  // Both calls are upserts and cheap when nothing changed, so re-running on every restart is
+  // harmless (this worker restarts 13-18 times a day under memory pressure). Failure is logged
+  // and swallowed: an unreachable index must never stop the worker from syncing companies.
+  try {
+    await require('./utils/meili').ensureIndex();
+    logger.info('Meili index settings applied');
+  } catch (err) {
+    logger.error({ err: err.message }, 'Meili ensureIndex failed (continuing without it)');
+  }
+
   let meiliSyncRunning = false;
   async function runMeiliSync() {
     if (meiliSyncRunning) return;
