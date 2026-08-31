@@ -1,6 +1,7 @@
 const { query, transaction, isPostgres } = require('../connection');
 const logger = require('../../logger');
 const { aliasGroup, isShortAlias } = require('../../utils/location-aliases');
+const { annualiseSalary } = require('../../utils/salary');
 
 /**
  * Build WHERE clauses from filters.
@@ -335,7 +336,7 @@ const jobsRepo = {
       const CHUNK = 200;
       for (let i = 0; i < deduped.length; i += CHUNK) {
         const slice = deduped.slice(i, i + CHUNK);
-        const rowSql = `(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`;
+        const rowSql = `(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`;
         const params = [];
         for (const job of slice) {
           params.push(
@@ -349,7 +350,12 @@ const jobsRepo = {
             job.visa_sponsorship || '',
             job.experience_level || '',
             job.is_remote || false,
-            job.remote_worldwide || false
+            job.remote_worldwide || false,
+            // Annualised so salary is comparable between postings: the raw columns are TEXT and
+            // each posting states its own interval, so hourly and yearly rows cannot be compared
+            // without this. Null when the interval is missing or implausible for the amount.
+            annualiseSalary(job.salary_min, job.salary_interval),
+            annualiseSalary(job.salary_max, job.salary_interval)
           );
         }
 
@@ -360,6 +366,7 @@ const jobsRepo = {
             salary_min, salary_max, salary_currency, salary_interval,
             description, url, posted_at, raw_data,
             visa_sponsorship, experience_level, is_remote, remote_worldwide,
+            salary_min_annual, salary_max_annual,
             first_seen_at, last_seen_at
           )
           VALUES ${slice.map(() => rowSql).join(', ')}
@@ -381,6 +388,10 @@ const jobsRepo = {
             salary_max = COALESCE(EXCLUDED.salary_max, jobs.salary_max),
             salary_currency = COALESCE(EXCLUDED.salary_currency, jobs.salary_currency),
             salary_interval = COALESCE(EXCLUDED.salary_interval, jobs.salary_interval),
+            -- Same COALESCE as the columns they derive from, or a sync carrying no salary would
+            -- blank the annualised copy while the raw values survive, and the two would disagree.
+            salary_min_annual = COALESCE(EXCLUDED.salary_min_annual, jobs.salary_min_annual),
+            salary_max_annual = COALESCE(EXCLUDED.salary_max_annual, jobs.salary_max_annual),
             description = COALESCE(EXCLUDED.description, jobs.description),
             url = EXCLUDED.url,
             posted_at = EXCLUDED.posted_at,
