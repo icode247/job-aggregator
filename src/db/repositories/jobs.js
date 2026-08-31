@@ -16,6 +16,25 @@ function buildFilters(filters = {}) {
   const params = [];
   let needsJoin = false;
 
+  // Salary. Filters on the annualised numeric copies, never the raw TEXT columns, and EXCLUDES
+  // unpriced jobs by design — asking for "over 100k" and being shown jobs with no stated salary
+  // is not a useful answer. Currency is filtered alongside the amount because no FX conversion
+  // happens and 56 currencies are present.
+  if (filters.salaryMin) {
+    const n = parseInt(filters.salaryMin, 10);
+    if (Number.isFinite(n)) { clauses.push('j.salary_min_annual IS NOT NULL AND j.salary_min_annual >= ?'); params.push(n); }
+  }
+  if (filters.salaryMax) {
+    const n = parseInt(filters.salaryMax, 10);
+    // Bounded by the LOW end of the posted range: a job advertised 80k-250k satisfies
+    // "up to 120k" for a candidate whose ceiling is 120k.
+    if (Number.isFinite(n)) { clauses.push('j.salary_min_annual IS NOT NULL AND j.salary_min_annual <= ?'); params.push(n); }
+  }
+  if (filters.salaryCurrency) {
+    clauses.push('j.salary_currency = ?');
+    params.push(String(filters.salaryCurrency).toUpperCase());
+  }
+
   // Role / Keywords — use full-text search on Postgres, ILIKE fallback on SQLite
   if (filters.q) {
     // Support comma-separated role queries: "Senior Developer, technical writer"
@@ -268,7 +287,8 @@ const jobsRepo = {
     const descCol = filters.includeDescription ? ', j.description' : '';
     const cols = `SELECT j.id, j.external_id, j.company_id, j.ats, j.title, j.department,
         j.location, j.workplace_type, j.employment_type, j.salary_min, j.salary_max,
-        j.salary_currency, j.salary_interval, j.url, j.posted_at, j.first_seen_at,
+        j.salary_currency, j.salary_interval, j.salary_min_annual, j.salary_max_annual,
+        j.url, j.posted_at, j.first_seen_at,
         j.is_remote, j.remote_worldwide, j.visa_sponsorship, j.experience_level,
         c.domain, c.ats_slug, c.company_name, c.logo_url${descCol}`;
 
